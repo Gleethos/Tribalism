@@ -1,10 +1,6 @@
 package net;
 
 import binding.UserContext;
-import org.eclipse.jetty.websocket.api.Session;
-import org.eclipse.jetty.websocket.api.annotations.OnWebSocketConnect;
-import org.eclipse.jetty.websocket.api.annotations.OnWebSocketMessage;
-import org.eclipse.jetty.websocket.api.annotations.WebSocket;
 import org.json.JSONObject;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -14,37 +10,40 @@ import swingtree.api.mvvm.ValDelegate;
 import java.lang.reflect.InvocationTargetException;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.function.Consumer;
 
-@WebSocket
 public class BindingWebSocket {
 
     private final static Logger log = LoggerFactory.getLogger(BindingWebSocket.class);
 
     private final UserContext userContext;
+    private final Client client;
 
-    private Session session;
-
-    public BindingWebSocket(UserContext userContext) {
+    public BindingWebSocket(UserContext userContext, Client client) {
         this.userContext = userContext;
+        this.client = client;
+        log.info("Connected to {}", client.getRemoteAddress());
     }
 
     private void _send( JSONObject json ) {
         try {
             String message = json.toString();
-            session.getRemote().sendStringByFuture(message);
+            client.send(message);
             log.debug("Sent: " + message);
         } catch (Throwable t) {
             log.error("Error sending message to websocket!", t);
         }
     }
 
-    @OnWebSocketConnect
-    public void onConnect(Session session) {
-        this.session = session;
-        log.info("Connected to client: {}", session.getRemoteAddress().getAddress());
+    //@OnWebSocketConnect
+    public void onConnect(
+            //Session session
+    ) {
+        //this.session = session;
+        //log.info("Connected to client: {}", session.getRemoteAddress().getAddress());
     }
 
-    @OnWebSocketMessage
+    //@OnWebSocketMessage
     public void onMessage(String message) {
         log.debug("Received: " + message);
 
@@ -111,7 +110,7 @@ public class BindingWebSocket {
         var vm = userContext.get(vmId);
         vmJson.put(Constants.EVENT_TYPE, Constants.RETURN_GET_VM);
         vmJson.put(Constants.EVENT_PAYLOAD, BindingUtil.toJson(vm, userContext));
-        BindingUtil.bind( vm, new Action<ValDelegate<Object>>() {
+        BindingUtil.bind( vm, new Action<>() {
             @Override
             public void accept(ValDelegate<Object> delegate) {
                 try {
@@ -126,7 +125,9 @@ public class BindingWebSocket {
                     e.printStackTrace();
                 }
             }
-            @Override public boolean canBeRemoved() { return !session.isOpen(); }
+            @Override public boolean canBeRemoved() {
+                return !client.isOpen();
+            }
         });
         // Send a message to the client that sent the message
         _send(vmJson);

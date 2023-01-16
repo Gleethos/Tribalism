@@ -56,12 +56,12 @@ public class UserPageView extends JPanel
             );
     }
 
-    public static void main(String[] args) {
-        JFrame frame = new JFrame("User Page");
-        frame.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
-        frame.add(new UserPageView(new UserPageViewModel()));
-        frame.pack();
-        frame.setVisible(true);
-    }
+    //public static void main(String[] args) {
+    //    JFrame frame = new JFrame("User Page");
+    //    frame.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
+    //    frame.add(new UserPageView(new UserPageViewModel()));
+    //    frame.pack();
+    //    frame.setVisible(true);
+    //}
 
 }

@@ -78,8 +78,8 @@ public class UserRegistrationView extends JPanel
         );
     }
 
-    public static void main( String[] args ) {
-        UI.show(new UserRegistrationView(new UserRegistrationViewModel()));
-    }
+    //public static void main( String[] args ) {
+    //    UI.show(new UserRegistrationView(new UserRegistrationViewModel()));
+    //}
 
 }
