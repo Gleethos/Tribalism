@@ -47,8 +47,14 @@ public class BindingWebSocket {
     public void onMessage(String message) {
         log.debug("Received: " + message);
 
-        var json = new JSONObject(message);
-
+        JSONObject json;
+        try {
+            json = new JSONObject(message);
+        } catch (Exception e) {
+            log.error("Error parsing message '{}' from websocket as json!", message, e);
+            sendError(e);
+            return;
+        }
         if ( !json.has(Constants.EVENT_TYPE) ) return;
 
         String type = json.getString(Constants.EVENT_TYPE);

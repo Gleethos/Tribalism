@@ -46,9 +46,9 @@ public class GreetingController {
     @SendTo("/topic/greetings")
     public Greeting greeting(HelloMessage message) throws Exception {
         Thread.sleep(1000); // simulated delay
-        //this.bindingWebSocket.onMessage(message.getName());
-        //return new Greeting(this.sent[0]);
-        return new Greeting("Hello, " + HtmlUtils.htmlEscape(message.getName()) + "!");
+        this.bindingWebSocket.onMessage(message.getName());
+        return new Greeting(this.sent[0]);
+        //return new Greeting("Hello, " + HtmlUtils.htmlEscape(message.getName()) + "!");
     }
 
 }
