@@ -1,3 +1,6 @@
+import SockJS from "sockjs-client"
+import {Stomp} from "@stomp/stompjs"
+
 /*
     Some constants needed to communicate with the server:
     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -44,7 +47,7 @@ const ERROR_TYPE = "type";
     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
  */
 
-function Var(get, set, observe, type) {
+export function Var(get, set, observe, type) {
     Var.prototype.getOnce = get;
     Var.prototype.onShow = observe;
     Var.prototype.type = type;
@@ -52,14 +55,14 @@ function Var(get, set, observe, type) {
     Var.prototype.set = set;
 }
 
-function Val(get, observe, type) {
+export function Val(get, observe, type) {
     Val.prototype.getOnce = get;
     Val.prototype.onShow = observe;
     Val.prototype.type = type;
     Val.prototype.get = (consumer) => { get(consumer); observe(consumer); }
 }
 
-function Get(get) {
+export function Get(get) {
     Get.prototype.get = get;
 }
 
@@ -76,7 +79,7 @@ function Get(get) {
  * @return vmGet a function for registering an observer for a property of the view model in the backend
  * @constructor
  */
-function VM(
+export function VM(
     session,   // For loading view models like this one
     vm,        // The current view model
     vmSet,     // Send a property change to the server, expects 2 arguments: propName, value
@@ -194,7 +197,7 @@ function VM(
  * @param getViewModel a function for fetching a view model from the server
  * @constructor
  */
-function Session(
+export function Session(
     getViewModel // For loading a view model, expects 2 parameters: the view model id and the action to call when the view model is loaded
 ) {
     Session.prototype.get = getViewModel;
@@ -216,7 +219,7 @@ function Session(
  * @param iniViewModelId the id of the view model to load
  * @param frontend the function to call when the view model is loaded
  */
-function start(serverAddress, iniViewModelId, frontend) {
+export function start(serverAddress, iniViewModelId, frontend) {
     let ws = null;
     const propertyObservers = {};
     const viewModelObservers = {};
@@ -227,18 +230,30 @@ function start(serverAddress, iniViewModelId, frontend) {
                         });
 
     function startWebsocket(action) {
-        ws = new WebSocket(serverAddress)
-        ws.onopen = () => { action(); };
-        ws.onclose = () => {
-            // connection closed, discard old websocket and create a new one in 5s
-            ws = null;
-            setTimeout(() => startWebsocket( ()=>{} ), 5000);
-        }
-        ws.onmessage = (event) => {
-            //console.log('Message from server: ' + event.data);
-            // We parse the data as json:
-            processResponse(JSON.parse(event.data));
-        };
+        ws = Stomp.over(()=>{
+            return new SockJS(serverAddress)
+        });
+        ws.connect({}, (frame)=>{
+            console.log('Yes!!! Connected: ' + frame);
+            action();
+            ws.subscribe('/topic/greetings', (greeting)=>{
+                console.log('Message from server: ' + greeting.body);
+                // We parse the data as json:
+                processResponse(JSON.parse(JSON.parse(greeting.body).content));
+            });
+        });
+        //ws = new WebSocket(serverAddress)
+        //ws.onopen = () => { action(); };
+        //ws.ws.onclose = () => {
+        //    // connection closed, discard old websocket and create a new one in 5s
+        //    ws = null;
+        //    setTimeout(() => startWebsocket( ()=>{} ), 5000);
+        //}
+        //ws.onmessage = (event) => {
+        //    //console.log('Message from server: ' + event.data);
+        //    // We parse the data as json:
+        //    processResponse(JSON.parse(event.data));
+        //};
     }
     startWebsocket( () => sendVMRequest(iniViewModelId) );
 
@@ -249,11 +264,12 @@ function start(serverAddress, iniViewModelId, frontend) {
         if ( ws ) {
             // The web socket might be closed, if so we reopen it
             // and send the message when it is open again:
-            if ( ws.readyState === WebSocket.CLOSED ) {
+            if ( ws.ws.readyState === WebSocket.CLOSED ) {
                 startWebsocket(() => { send(message); });
                 return;
             }
-            ws.send(message);
+            console.log('Sending message: ' + message);
+            ws.send("/app/hello", {}, JSON.stringify({'name': message}));
         }
         else {
             console.log("Websocket missing! Failed to send message '" + message + "'. Retrying in 100ms.");
@@ -335,6 +351,9 @@ function start(serverAddress, iniViewModelId, frontend) {
             }
         } else if ( data[EVENT_TYPE] === ERROR ) {
             console.log("Server error: " + data[EVENT_PAYLOAD]);
+        }
+        else {
+            console.log("Unknown event type: " + data[EVENT_TYPE] + "! \nData:\n" + JSON.stringify(data));
         }
     }
 }
