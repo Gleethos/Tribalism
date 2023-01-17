@@ -1,22 +1,28 @@
 import logo from './logo.svg';
 import './App.css';
 import './mvvm/app.js';
+import {
+  connect,
+  disconnect,
+  sendName
+} from "./mvvm/app.js"
+
 
 function App() {
   const connectHandle = event => {
     event.preventDefault()
     console.log('You clicked the button')
-    //connect();
+    connect();
   }
   const disconnectHandle = event => {
     event.preventDefault()
     console.log('You clicked the button')
-    //disconnect();
+    disconnect();
   }
   const sendHandle = event => {
     event.preventDefault()
     console.log('You clicked the button')
-    //sendName();
+    sendName();
   }
   return (
     <div className="App">

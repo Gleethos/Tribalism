@@ -1,5 +1,5 @@
 import SockJS from "sockjs-client"
-import "@stomp/stompjs"
+import {Stomp} from "@stomp/stompjs"
 
 var stompClient = null;
 
@@ -14,9 +14,9 @@ function setConnected(connected) {
     }
 }
 
-function connect() {
+export function connect() {
     var socket = new SockJS('/gs-guide-websocket');
-    stompClient = null;// Stomp.over(socket);
+    stompClient = Stomp.over(socket);
     stompClient.connect({}, function (frame) {
         setConnected(true);
         console.log('Connected: ' + frame);
@@ -26,7 +26,7 @@ function connect() {
     });
 }
 
-function disconnect() {
+export function disconnect() {
     if (stompClient !== null) {
         stompClient.disconnect();
     }
@@ -34,7 +34,7 @@ function disconnect() {
     console.log("Disconnected");
 }
 
-function sendName() {
+export function sendName() {
     // We get the name from the input field (id == "name")
     const name = document.getElementById("name").value;
     stompClient.send("/app/hello", {}, JSON.stringify({'name': name}));

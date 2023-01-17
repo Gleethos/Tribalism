@@ -3,8 +3,6 @@ plugins {
     id 'org.springframework.boot' version '3.0.0'
     id 'io.spring.dependency-management' version '1.1.0'
     id 'java'
-    //id "com.github.node-gradle.node" version "3.0.1"
-    //id "com.moowork.node" version "1.3.1"
     id "com.github.node-gradle.node" version "3.5.1"
 }
 
@@ -12,6 +10,7 @@ group 'org.gleethos'
 version '0.0.0'
 sourceCompatibility = '17'
 
+var REACT_SKIN_LOCATION = 'src/main/webapp/tribee-portal'
 
 repositories {
     jcenter()
@@ -110,7 +109,7 @@ node {
     // The Node.js project directory location
     // This is where the package.json file and node_modules directory are located
     // By default it is at the root of the current project
-    nodeProjectDir = file("${project.projectDir}/src/main/webapp/tribee-portal")
+    nodeProjectDir = file("${project.projectDir}/$REACT_SKIN_LOCATION")
 
     // Whether the plugin automatically should add the proxy configuration to npm and yarn commands
     // according the proxy configuration defined for Gradle
@@ -119,20 +118,14 @@ node {
     nodeProxySettings = ProxySettings.SMART
 }
 
-task myScript(type: NodeTask) {
-    script = file("${project.projectDir}/src/main/webapp/scripts/build_frontend.js")
-    args = []
-    options = []
-}
-
 task appNpmBuild(type: NpmTask) {
     description = "Builds production version of tribee-portal"
-    workingDir = file("${project.projectDir}/src/main/webapp/tribee-portal")
+    workingDir = file("${project.projectDir}/$REACT_SKIN_LOCATION")
     args = ["run", "build"]
 }
 
 task copyWebApp(type: Copy) {
-    from 'src/main/webapp/tribee-portal/build'
+    from "$REACT_SKIN_LOCATION/build"
     into 'build/resources/main/static/.'
 }
 
