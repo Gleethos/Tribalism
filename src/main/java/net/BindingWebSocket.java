@@ -10,19 +10,25 @@ import swingtree.api.mvvm.ValDelegate;
 import java.lang.reflect.InvocationTargetException;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Set;
 import java.util.function.Consumer;
 
-public class BindingWebSocket {
-
+public class BindingWebSocket
+{
     private final static Logger log = LoggerFactory.getLogger(BindingWebSocket.class);
 
     private final UserContext userContext;
     private final Client client;
 
+    private final Set<Object> _boundViewModels;
+
     public BindingWebSocket(UserContext userContext, Client client) {
         this.userContext = userContext;
         this.client = client;
         log.info("Connected to {}", client.getRemoteAddress());
+        // We create a weak set of view models so that they can be garbage collected
+        // when they are no longer referenced.
+        _boundViewModels = java.util.Collections.newSetFromMap(new java.util.WeakHashMap<>());
     }
 
     private void _send( JSONObject json ) {
@@ -33,14 +39,6 @@ public class BindingWebSocket {
         } catch (Throwable t) {
             log.error("Error sending message to websocket!", t);
         }
-    }
-
-    //@OnWebSocketConnect
-    public void onConnect(
-            //Session session
-    ) {
-        //this.session = session;
-        //log.info("Connected to client: {}", session.getRemoteAddress().getAddress());
     }
 
     //@OnWebSocketMessage
@@ -120,25 +118,27 @@ public class BindingWebSocket {
         var vm = userContext.get(vmId);
         vmJson.put(Constants.EVENT_TYPE, Constants.RETURN_GET_VM);
         vmJson.put(Constants.EVENT_PAYLOAD, BindingUtil.toJson(vm, userContext));
-        BindingUtil.bind( vm, new Action<>() {
-            @Override
-            public void accept(ValDelegate<Object> delegate) {
-                try {
-                    JSONObject update = new JSONObject();
-                    update.put(Constants.EVENT_TYPE, Constants.RETURN_PROP);
-                    update.put(Constants.EVENT_PAYLOAD,
-                            BindingUtil.jsonFromProperty(delegate.getCurrent(), userContext)
-                                    .put(Constants.VM_ID, vmId)
-                    );
-                    _send(update);
-                } catch (Exception e) {
-                    e.printStackTrace();
+        if ( !_boundViewModels.contains(vm) )
+            BindingUtil.bind( vm, new Action<>() {
+                @Override
+                public void accept(ValDelegate<Object> delegate) {
+                    try {
+                        JSONObject update = new JSONObject();
+                        update.put(Constants.EVENT_TYPE, Constants.RETURN_PROP);
+                        update.put(Constants.EVENT_PAYLOAD,
+                                BindingUtil.jsonFromProperty(delegate.getCurrent(), userContext)
+                                .put(Constants.VM_ID, vmId)
+                        );
+                        _send(update);
+                    } catch (Exception e) {
+                        e.printStackTrace();
+                    }
                 }
-            }
-            @Override public boolean canBeRemoved() {
-                return !client.isOpen();
-            }
-        });
+                @Override public boolean canBeRemoved() {
+                    return !client.isOpen();
+                }
+            });
+        _boundViewModels.add(vm);
         // Send a message to the client that sent the message
         _send(vmJson);
     }

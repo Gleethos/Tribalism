@@ -318,7 +318,9 @@ public class BindingUtil {
 
     private static Object toJsonCompatibleValueFromProperty( Val<?> prop, UserContext userContext ) {
 
-        if ( prop.isEmpty() ) return null;
+        if ( prop.isEmpty() ) // We return a json null if the property is empty
+            return JSONObject.NULL;
+
 
         if ( prop.type() == Boolean.class )
             return prop.get();

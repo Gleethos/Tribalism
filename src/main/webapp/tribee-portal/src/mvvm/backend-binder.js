@@ -107,13 +107,17 @@ export function VM(
                         method[METHOD_NAME],
                         args,
                         (property) => {
-                            console.log("Got property: " + property);
+                            console.log("Got property: " + JSON.stringify(property));
                             // If the property value is a view model, we need to load it:
                             if ( property[PROP_TYPE][TYPE_IS_VM] ) {
-                                session.get(
-                                    property[PROP_VALUE],
-                                    (vm) => consumer(vm) // Here we expect a VM object where the user can bind to...
-                                );
+                                // We expect the property value not to be "undefined":
+                                if ( property[PROP_VALUE] !== undefined ) {
+                                    session.get(
+                                        property[PROP_VALUE],
+                                        (vm) => consumer(vm) // Here we expect a VM object where the user can bind to...
+                                    );
+                                }
+                                else throw "Expected a property value, but got undefined!";
                             }
                             else
                                 consumer(property[PROP_VALUE]); // This is a primitive value, we can just pass it on...
@@ -225,8 +229,12 @@ export function start(serverAddress, iniViewModelId, frontend) {
     const viewModelObservers = {};
     const methodObservers = {};
     const session = new Session((vmId, action) => {
-                            viewModelObservers[vmId] = action;
-                            sendVMRequest(vmId);
+                            if ( vmId ) {
+                                viewModelObservers[vmId] = action;
+                                sendVMRequest(vmId);
+                            }
+                            else // We log an error if the view model id is null
+                                console.error("Expected a view model id, but got null!");
                         });
 
     function startWebsocket(action) {
@@ -258,29 +266,38 @@ export function start(serverAddress, iniViewModelId, frontend) {
     startWebsocket( () => sendVMRequest(iniViewModelId) );
 
     function send(data) {
-        // First up: If the message is a JSON we turn it into a string:
-        const message = typeof data === "string" ? data : JSON.stringify(data);
+        if ( data ) {
+            // First up: If the message is a JSON we turn it into a string:
+            const message = typeof data === "string" ? data : JSON.stringify(data);
 
-        if ( ws ) {
-            // The web socket might be closed, if so we reopen it
-            // and send the message when it is open again:
-            if ( ws.ws.readyState === WebSocket.CLOSED ) {
-                startWebsocket(() => { send(message); });
-                return;
+            if (ws) {
+                // The web socket might be closed, if so we reopen it
+                // and send the message when it is open again:
+                if (ws.ws.readyState === WebSocket.CLOSED) {
+                    startWebsocket(() => {
+                        send(message);
+                    });
+                    return;
+                }
+                console.log('Sending message: ' + message);
+                ws.send("/app/hello", {}, JSON.stringify({'name': message}));
+            } else {
+                console.log("Websocket missing! Failed to send message '" + message + "'. Retrying in 100ms.");
+                // The web socket is not open yet, so we try again in 100ms:
+                setTimeout(() => send(message), 100);
             }
-            console.log('Sending message: ' + message);
-            ws.send("/app/hello", {}, JSON.stringify({'name': message}));
         }
-        else {
-            console.log("Websocket missing! Failed to send message '" + message + "'. Retrying in 100ms.");
-            // The web socket is not open yet, so we try again in 100ms:
-            setTimeout(() => send(message), 100);
-        }
+        else
+            throw "Null is not a valid message!";
     }
 
     function sendVMRequest(vmId) {
-        console.log("Requesting view model: " + vmId);
-        send({[EVENT_TYPE]: GET_VM, [VM_ID]: vmId});
+        if ( vmId ) {
+            console.log("Requesting view model: " + vmId);
+            send({[EVENT_TYPE]: GET_VM, [VM_ID]: vmId});
+        }
+        else
+            throw "The view model id is null!";
     }
 
     function processResponse(data) {
