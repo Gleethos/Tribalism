@@ -111,6 +111,10 @@ public class BindingWebSocket {
     }
 
     private void sendVMToFrontend(JSONObject json) {
+        if ( !json.has(Constants.VM_ID) ) {
+            log.error("No view model ID in message: '" + json + "', need VMID to send VM to frontend!");
+            throw new RuntimeException("No view model ID in message: '" + json + "', need VMID to send VM to frontend!");
+        }
         String vmId = json.getString(Constants.VM_ID);
         JSONObject vmJson = new JSONObject();
         var vm = userContext.get(vmId);
