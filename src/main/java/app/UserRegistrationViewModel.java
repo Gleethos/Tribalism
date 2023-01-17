@@ -51,7 +51,6 @@ public class UserRegistrationViewModel
 
     public Val<UserPageViewModel> userPageViewModel() { return userPageViewModel; }
 
-    public void testMe() {}
 
     private String validatePassword() {
         if ( password.get().length() < 8 )

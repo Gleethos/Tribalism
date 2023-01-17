@@ -271,17 +271,17 @@ public class BindingUtil {
                 var args = new JSONObject();
                 for ( var param : method.getParameters() )
                     args.put(Constants.METHOD_ARG_NAME, param.getName())
-                        .put(Constants.METHOD_ARG_TYPE, param.getType().getSimpleName())
-                        .put(Constants.TYPE_IS_VM, Viewable.class.isAssignableFrom(method.getReturnType()));
+                            .put(Constants.METHOD_ARG_TYPE, param.getType().getSimpleName())
+                            .put(Constants.TYPE_IS_VM, Viewable.class.isAssignableFrom(method.getReturnType()));
 
                 publicMethods.put(
                         new JSONObject()
                                 .put(Constants.METHOD_NAME, methodName)
                                 .put(Constants.METHOD_ARGS, args)
                                 .put(Constants.METHOD_RETURNS,
-                                    new JSONObject()
-                                        .put(Constants.TYPE_NAME, returnType)
-                                        .put(Constants.TYPE_IS_VM, Viewable.class.isAssignableFrom(method.getReturnType()))
+                                        new JSONObject()
+                                                .put(Constants.TYPE_NAME, returnType)
+                                                .put(Constants.TYPE_IS_VM, Viewable.class.isAssignableFrom(method.getReturnType()))
                                 )
                 );
             } catch (Exception e) {
@@ -293,8 +293,8 @@ public class BindingUtil {
 
 
     public static JSONObject jsonFromProperty(
-        Val<?> property,
-        UserContext userContext
+            Val<?> property,
+            UserContext userContext
     ) {
         Class<?> type = property.type();
         List<String> knownStates = new ArrayList<>();
@@ -306,10 +306,10 @@ public class BindingUtil {
         json.put(Constants.PROP_NAME, property.id());
         json.put(Constants.PROP_VALUE, toJsonCompatibleValueFromProperty(property, userContext));
         json.put(Constants.PROP_TYPE,
-            new JSONObject()
-            .put(Constants.PROP_TYPE_NAME, type.getName())
-            .put(Constants.PROP_TYPE_STATES, knownStates)
-            .put(Constants.TYPE_IS_VM, Viewable.class.isAssignableFrom(type))
+                new JSONObject()
+                        .put(Constants.PROP_TYPE_NAME, type.getName())
+                        .put(Constants.PROP_TYPE_STATES, knownStates)
+                        .put(Constants.TYPE_IS_VM, Viewable.class.isAssignableFrom(type))
         );
 
         return json;

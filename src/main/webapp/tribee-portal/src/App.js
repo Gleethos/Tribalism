@@ -6,7 +6,7 @@ import { Var, Val, Get, VM, Session, start } from "./mvvm/backend-binder";
 function App() {
   const build = event => {
     start(
-        '/gs-guide-websocket',
+        'ws://localhost:8080/websocket',
         'app.UserRegistrationViewModel-0', // The "main" view model where the application starts
         (session, vm) => {
           const props = vm.state["props"];

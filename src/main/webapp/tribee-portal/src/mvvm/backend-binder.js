@@ -238,30 +238,18 @@ export function start(serverAddress, iniViewModelId, frontend) {
                         });
 
     function startWebsocket(action) {
-        ws = Stomp.over(()=>{
-            return new SockJS(serverAddress)
-        });
-        ws.connect({}, (frame)=>{
-            console.log('Yes!!! Connected: ' + frame);
-            action();
-            ws.subscribe('/topic/greetings', (greeting)=>{
-                console.log('Message from server: ' + greeting.body);
-                // We parse the data as json:
-                processResponse(JSON.parse(JSON.parse(greeting.body).content));
-            });
-        });
-        //ws = new WebSocket(serverAddress)
-        //ws.onopen = () => { action(); };
-        //ws.ws.onclose = () => {
-        //    // connection closed, discard old websocket and create a new one in 5s
-        //    ws = null;
-        //    setTimeout(() => startWebsocket( ()=>{} ), 5000);
-        //}
-        //ws.onmessage = (event) => {
-        //    //console.log('Message from server: ' + event.data);
-        //    // We parse the data as json:
-        //    processResponse(JSON.parse(event.data));
-        //};
+        ws = new WebSocket(serverAddress)
+        ws.onopen = () => { action(); };
+        ws.onclose = () => {
+            // connection closed, discard old websocket and create a new one in 5s
+            ws = null;
+            setTimeout(() => startWebsocket( ()=>{} ), 5000);
+        }
+        ws.onmessage = (event) => {
+            //console.log('Message from server: ' + event.data);
+            // We parse the data as json:
+            processResponse(JSON.parse(event.data));
+        };
     }
     startWebsocket( () => sendVMRequest(iniViewModelId) );
 
@@ -273,14 +261,14 @@ export function start(serverAddress, iniViewModelId, frontend) {
             if (ws) {
                 // The web socket might be closed, if so we reopen it
                 // and send the message when it is open again:
-                if (ws.ws.readyState === WebSocket.CLOSED) {
+                if (ws.readyState === WebSocket.CLOSED) {
                     startWebsocket(() => {
                         send(message);
                     });
                     return;
                 }
                 console.log('Sending message: ' + message);
-                ws.send("/app/hello", {}, JSON.stringify({'name': message}));
+                ws.send(message);
             } else {
                 console.log("Websocket missing! Failed to send message '" + message + "'. Retrying in 100ms.");
                 // The web socket is not open yet, so we try again in 100ms:
