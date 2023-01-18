@@ -11,6 +11,7 @@ import org.slf4j.LoggerFactory;
 import swingtree.api.mvvm.Action;
 import swingtree.api.mvvm.ValDelegate;
 
+import javax.servlet.http.HttpSession;
 import java.lang.reflect.InvocationTargetException;
 import java.util.ArrayList;
 import java.util.List;
@@ -23,9 +24,11 @@ public class BindingWebSocket {
     private final UserContext userContext;
 
     private Session session;
+    private HttpSession httpSession;
 
-    public BindingWebSocket(UserContext userContext) {
+    public BindingWebSocket(UserContext userContext, HttpSession httpSession) {
         this.userContext = userContext;
+        this.httpSession = httpSession;
     }
 
     private void _send( JSONObject json ) {

@@ -18,7 +18,15 @@ public class WebSocketEndpoint extends WebSocketServlet {
         factory.getPolicy().setIdleTimeout(10000);
         // register my socket
         factory.setCreator((req, res)->{
-            return new BindingWebSocket(userContext);
+            /*
+                Ok, so a websocket does not really have a session (req.gtSession() is null),
+                but we can fake it by
+                using the session from the http request.
+                But how do we get the session from the http request?
+                Like so:
+             */
+            var session = req.getHttpServletRequest().getSession();
+            return new BindingWebSocket(userContext, session);
         });
     }
 }
