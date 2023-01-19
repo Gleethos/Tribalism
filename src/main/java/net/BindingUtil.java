@@ -1,6 +1,6 @@
 package net;
 
-import binding.UserContext;
+import binding.WebUserContext;
 import org.json.JSONArray;
 import org.json.JSONObject;
 import swingtree.api.mvvm.*;
@@ -167,7 +167,7 @@ public class BindingUtil {
     public static JSONObject callViewModelMethod(
             Object vm,
             JSONObject methodCallData,
-            UserContext userContext
+            WebUserContext webUserContext
     ) throws NoSuchMethodException, InvocationTargetException, IllegalAccessException, ClassNotFoundException {
         /*
             The call request should look like this:
@@ -217,7 +217,7 @@ public class BindingUtil {
             result = method.invoke(vm, methodArgs[0]);
         }
         if ( result instanceof Val<?> property ) {
-            result = BindingUtil.jsonFromProperty(property, userContext);
+            result = BindingUtil.jsonFromProperty(property, webUserContext);
         }
         return new JSONObject()
                 .put(Constants.METHOD_NAME, methodName)
@@ -231,14 +231,14 @@ public class BindingUtil {
         BindingUtil.findPropertiesInViewModel(vm).forEach(p -> p.onShow(observer) );
     }
 
-    public static JSONObject toJson(Object vm, UserContext userContext) {
+    public static JSONObject toJson(Object vm, WebUserContext webUserContext) {
         JSONObject json = new JSONObject();
         for ( var property : BindingUtil.findPropertiesInViewModel(vm) )
-            json.put(property.id(), BindingUtil.jsonFromProperty(property, userContext));
+            json.put(property.id(), BindingUtil.jsonFromProperty(property, webUserContext));
 
         JSONObject result = new JSONObject();
         result.put(Constants.PROPS, json);
-        result.put(Constants.VM_ID, userContext.vmIdOf(vm).toString());
+        result.put(Constants.VM_ID, webUserContext.vmIdOf(vm).toString());
         result.put("methods", _getMethodsForViewModel(vm));
         return result;
     }
@@ -294,7 +294,7 @@ public class BindingUtil {
 
     public static JSONObject jsonFromProperty(
             Val<?> property,
-            UserContext userContext
+            WebUserContext webUserContext
     ) {
         Class<?> type = property.type();
         List<String> knownStates = new ArrayList<>();
@@ -304,7 +304,7 @@ public class BindingUtil {
         }
         JSONObject json = new JSONObject();
         json.put(Constants.PROP_NAME, property.id());
-        json.put(Constants.PROP_VALUE, toJsonCompatibleValueFromProperty(property, userContext));
+        json.put(Constants.PROP_VALUE, toJsonCompatibleValueFromProperty(property, webUserContext));
         json.put(Constants.PROP_TYPE,
                 new JSONObject()
                         .put(Constants.PROP_TYPE_NAME, type.getName())
@@ -316,7 +316,7 @@ public class BindingUtil {
     }
 
 
-    private static Object toJsonCompatibleValueFromProperty( Val<?> prop, UserContext userContext ) {
+    private static Object toJsonCompatibleValueFromProperty( Val<?> prop, WebUserContext webUserContext) {
 
         if ( prop.isEmpty() ) // We return a json null if the property is empty
             return JSONObject.NULL;
@@ -332,10 +332,10 @@ public class BindingUtil {
             return ((Enum)prop.get()).name();
         else if (Viewable.class.isAssignableFrom(prop.type())) {
             Viewable viewable = (Viewable) prop.get();
-            if ( !userContext.hasVM(viewable) ) userContext.put(viewable);
+            if ( !webUserContext.hasVM(viewable) ) webUserContext.put(viewable);
 
             // We do not send the entire viewable object, but only the id
-            return userContext.vmIdOf(viewable).toString();
+            return webUserContext.vmIdOf(viewable).toString();
         }
         else if ( prop.type() == Color.class ) {
             // In the frontend colors are usually hex strings

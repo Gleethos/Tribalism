@@ -8,10 +8,12 @@ import java.util.WeakHashMap;
  *  Mostly a register for view model instances.
  *  The view model instances are stored in a WeakHashMap, so they can be garbage collected.
  */
-public class UserContext {
-
+public class WebUserContext {
     private final Map<Class, Map<Integer, Object>> _viewModels = new HashMap<>();
     private final Map<Object, VMID<?>> _vmids = new WeakHashMap<>();
+
+    public WebUserContext() {
+    }
 
     public <T> T get( VMID<T> id ) {
         return (T)_viewModels.get(id.type()).get(id.id());

@@ -2,116 +2,110 @@ package app;
 
 import swingtree.api.mvvm.Val;
 import swingtree.api.mvvm.Var;
+import swingtree.api.mvvm.Viewable;
 
 import java.awt.*;
+import java.util.Optional;
 
-public class UserRegistrationViewModel
+public class RegisterViewModel implements Viewable
 {
     public enum Gender { NOT_SELECTED, MALE, FEMALE, OTHER }
-    private final Var<String>  username         ;
+
+    private final ContentViewModel contentViewModel;
+
+    private final Var<String> username         ;
     private final Var<String>  password         ;
-    private final Var<String>  email            ;
+    private final Var<Boolean> usernameIsValid;
+    private final Var<Boolean> passwordIsValid;
+    private final Var<Boolean> asGameMaster;
     private final Var<String>  feedback         ;
     private final Var<Color>   feedbackColor    ;
-    private final Var<Gender>  gender           ;
-    private final Var<Boolean> termsAccepted    ;
     private final Var<Boolean> allInputsDisabled;
-    private final Var<UserPageViewModel> userPageViewModel; // Only exists if registration was successful
+    private final Var<Boolean> inputValid       ;
 
-
-    public UserRegistrationViewModel() {
+    public RegisterViewModel(AppContext context, ContentViewModel contentViewModel) {
+        this.contentViewModel = contentViewModel;
         this.username          = Var.of("").withId("username").onAct( it -> validateAll() );
         this.password          = Var.of("").withId("password").onAct( it -> validateAll() );
-        this.email             = Var.of("").withId("email").onAct( it -> validateAll() );
-        this.gender            = Var.of(Gender.NOT_SELECTED).withId("gender").onAct( it -> validateAll() );
-        this.termsAccepted     = Var.of(false).withId("termsAccepted").onAct( it -> validateAll() );
+        this.usernameIsValid   = Var.of(false).withId("usernameIsValid");
+        this.passwordIsValid   = Var.of(false).withId("passwordIsValid");
+        this.asGameMaster      = Var.of(false).withId("asGameMaster");
         this.feedback          = Var.of("").withId("feedback");
         this.feedbackColor     = Var.of(Color.BLACK).withId("feedbackColor");
         this.allInputsDisabled = Var.of(false).withId("allInputsDisabled");
-        this.userPageViewModel = Var.ofNullable(UserPageViewModel.class, null).withId("userPageViewModel");
+        this.inputValid        = Var.of(false).withId("inputValid");
         validateAll();
     }
 
 
     public Var<String> username() { return username; }
-    
+
     public Var<String> password() { return password; }
-    
-    public Var<String> email() { return email; }
-    
+
+    public Var<Boolean> asGameMaster() { return asGameMaster; }
+
+    public Val<Boolean> usernameIsValid() { return usernameIsValid; }
+
+    public Val<Boolean> passwordIsValid() { return passwordIsValid; }
+
     public Val<String> feedback() { return feedback; }
-    
+
     public Val<Color> feedbackColor() { return feedbackColor; }
-    
-    public Var<Gender> gender() { return gender; }
-    
-    public Var<Boolean> termsAccepted() { return termsAccepted; }
-    
+
     public Val<Boolean> allInputsDisabled() { return allInputsDisabled; }
 
-    public Val<UserPageViewModel> userPageViewModel() { return userPageViewModel; }
+    public Val<Boolean> inputValid() { return inputValid; }
 
 
     private String validatePassword() {
-        if ( password.get().length() < 8 )
-            return "Password must be at least 8 characters long";
-        if ( !password.get().matches(".*[A-Z].*") )
+        if ( password.get().length() < 3 ) {
+            this.passwordIsValid.set(false);
+            this.inputValid.set(false);
+            return "Password must be at least 3 characters long";
+        }
+        if ( !password.get().matches(".*[A-Z].*") ) {
+            this.passwordIsValid.set(false);
+            this.inputValid.set(false);
             return "Password must contain at least one uppercase letter";
+        }
+        this.passwordIsValid.set(true);
         return "";
     }
-    
-    private String validateEmail() {
-        if ( !email.get().matches(".*@.*") )
-            return "Email must contain an @ character";
-        return "";
-    }
-    
+
     private String validateUsername() {
-        if ( username.get().length() < 3 )
+        if ( username.get().length() < 3 ) {
+            this.usernameIsValid.set(false);
+            this.inputValid.set(false);
             return "Username must be at least 3 characters long";
+        }
+        this.usernameIsValid.set(true);
         return "";
     }
-    
-    private String validateTerms() {
-        if ( !termsAccepted.get() )
-            return "You must accept the terms and conditions";
-        return "";
-    }
-    
-    private String validateGender() {
-        if ( gender.is(Gender.NOT_SELECTED) )
-            return "You must select a valid gender";
-        return "";
-    }
-    
+
     private String generateValidationMessage() {
         String username = validateUsername();
         String password = validatePassword();
-        String email    = validateEmail();
-        String terms    = validateTerms();
-        String gender   = validateGender();
-        
-        if ( username.isEmpty() && password.isEmpty() && email.isEmpty() && terms.isEmpty() && gender.isEmpty() )
+
+        if ( username.isEmpty() && password.isEmpty() )
             return "";
-        
+
         return "Please fix the following errors:\n" +
                 username + "\n" +
-                password + "\n" +
-                email + "\n" +
-                terms + "\n" +
-                gender;
+                password + "\n";
     }
-    
+
     public boolean validateAll() {
         String validationMessage = generateValidationMessage();
         if ( validationMessage.isEmpty() ) {
             feedback.set("All inputs are valid, feel fre to press the submit button!");
             feedbackColor.set(Color.GREEN);
             rebroadcast();
+            this.inputValid.set(true);
             return true;
         } else {
             feedback.set(validationMessage);
             feedbackColor.set(Color.RED);
+            this.inputValid.set(false);
             rebroadcast();
             return false;
         }
@@ -121,10 +115,8 @@ public class UserRegistrationViewModel
         // We rebroadcast all properties:
         username.show();
         password.show();
-        email.show();
+        asGameMaster.show();
         feedbackColor.show();
-        gender.show();
-        termsAccepted.show();
         feedback.show();
         /*
             This method is COMPLETELY redundant when we have only one view.
@@ -133,22 +125,26 @@ public class UserRegistrationViewModel
          */
     }
 
-    public void register() {
+    public Optional<User> register() {
         if ( validateAll() ) {
             allInputsDisabled.set(true);
             feedbackColor.set(Color.BLACK);
             doRegistration();
             feedback.set("Registration successful!");
             feedbackColor.set(Color.GREEN);
-            userPageViewModel.set(new UserPageViewModel());
+            return Optional.of(new User(username.get(), password.get(), asGameMaster.get()));
         } else {
             allInputsDisabled.set(false);
             feedback.set("Registration failed!");
             feedbackColor.set(Color.RED);
-            userPageViewModel.set(null);
+            return Optional.empty();
         }
     }
-    
+
+    public void switchToLogin() {
+        this.contentViewModel.showLogin();
+    }
+
     private void doRegistration() {
         try {
             feedback.set("...connecting to server...");
@@ -164,20 +160,19 @@ public class UserRegistrationViewModel
         }
     }
 
-    public boolean successfullyRegistered() {
-        return feedback.get().equals("Registration successful!");
-    }
-    
     public void reset() {
         username.set("");
         password.set("");
-        email.set("");
-        termsAccepted.set(false);
-        gender.set(Gender.NOT_SELECTED);
         feedback.set("");
         feedbackColor.set(Color.BLACK);
         allInputsDisabled.set(false);
-        userPageViewModel.set(null);
+        asGameMaster.set(false);
         validateAll();
     }
+
+    @Override
+    public <V> V createView(Class<V> viewType) {
+        return viewType.cast(new RegisterView(this));
+    }
+
 }

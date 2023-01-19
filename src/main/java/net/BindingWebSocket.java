@@ -1,6 +1,6 @@
 package net;
 
-import binding.UserContext;
+import binding.WebUserContext;
 import org.eclipse.jetty.websocket.api.Session;
 import org.eclipse.jetty.websocket.api.annotations.OnWebSocketConnect;
 import org.eclipse.jetty.websocket.api.annotations.OnWebSocketMessage;
@@ -21,13 +21,13 @@ public class BindingWebSocket {
 
     private final static Logger log = LoggerFactory.getLogger(BindingWebSocket.class);
 
-    private final UserContext userContext;
+    private final WebUserContext webUserContext;
 
     private Session session;
     private HttpSession httpSession;
 
-    public BindingWebSocket(UserContext userContext, HttpSession httpSession) {
-        this.userContext = userContext;
+    public BindingWebSocket(WebUserContext webUserContext, HttpSession httpSession) {
+        this.webUserContext = webUserContext;
         this.httpSession = httpSession;
     }
 
@@ -124,9 +124,9 @@ public class BindingWebSocket {
         }
         String vmId = json.getString(Constants.VM_ID);
         JSONObject vmJson = new JSONObject();
-        var vm = userContext.get(vmId);
+        var vm = webUserContext.get(vmId);
         vmJson.put(Constants.EVENT_TYPE, Constants.RETURN_GET_VM);
-        vmJson.put(Constants.EVENT_PAYLOAD, BindingUtil.toJson(vm, userContext));
+        vmJson.put(Constants.EVENT_PAYLOAD, BindingUtil.toJson(vm, webUserContext));
         BindingUtil.bind( vm, new Action<>() {
             @Override
             public void accept(ValDelegate<Object> delegate) {
@@ -134,7 +134,7 @@ public class BindingWebSocket {
                     JSONObject update = new JSONObject();
                     update.put(Constants.EVENT_TYPE, Constants.RETURN_PROP);
                     update.put(Constants.EVENT_PAYLOAD,
-                            BindingUtil.jsonFromProperty(delegate.getCurrent(), userContext)
+                            BindingUtil.jsonFromProperty(delegate.getCurrent(), webUserContext)
                                     .put(Constants.VM_ID, vmId)
                     );
                     _send(update);
@@ -152,7 +152,7 @@ public class BindingWebSocket {
         String vmId     = json.getString(Constants.VM_ID);
         String propName = json.getString(Constants.PROP_NAME);
         String value    = String.valueOf(json.get(Constants.PROP_VALUE));
-        var vm = userContext.get(vmId);
+        var vm = webUserContext.get(vmId);
         BindingUtil.applyToViewModelPropertyById(vm, propName, value);
     }
 
@@ -164,8 +164,8 @@ public class BindingWebSocket {
             ClassNotFoundException
     {
         String vmId     = json.getString(Constants.VM_ID);
-        var vm = userContext.get(vmId);
-        var result = BindingUtil.callViewModelMethod(vm, json.getJSONObject(Constants.EVENT_PAYLOAD), userContext);
+        var vm = webUserContext.get(vmId);
+        var result = BindingUtil.callViewModelMethod(vm, json.getJSONObject(Constants.EVENT_PAYLOAD), webUserContext);
         JSONObject returnJson = new JSONObject();
         returnJson.put(Constants.EVENT_TYPE, Constants.CALL_RETURN);
         returnJson.put(Constants.EVENT_PAYLOAD, result.put(Constants.VM_ID, vmId));

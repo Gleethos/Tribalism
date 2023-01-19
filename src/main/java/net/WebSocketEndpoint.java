@@ -1,15 +1,21 @@
 package net;
 
-import binding.UserContext;
+import app.AppContext;
+import binding.WebUserContext;
 import org.eclipse.jetty.websocket.servlet.WebSocketServlet;
 import org.eclipse.jetty.websocket.servlet.WebSocketServletFactory;
 
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
+
 public class WebSocketEndpoint extends WebSocketServlet {
 
-    private final UserContext userContext;
+    private final AppContext context;
 
-    public WebSocketEndpoint(UserContext userContext) {
-        this.userContext = userContext;
+    private final Map<String, WebUserContext> userContexts = new ConcurrentHashMap<>();
+
+    public WebSocketEndpoint(AppContext context) {
+        this.context = context;
     }
 
     @Override
@@ -26,6 +32,15 @@ public class WebSocketEndpoint extends WebSocketServlet {
                 Like so:
              */
             var session = req.getHttpServletRequest().getSession();
+            WebUserContext userContext;
+            if ( !userContexts.containsKey(session.getId()) ) {
+                userContext = new WebUserContext();
+                context.registerWebUserContext(userContext);
+                userContexts.put(session.getId(), userContext);
+            }
+            else
+                userContext = userContexts.get(session.getId());
+
             return new BindingWebSocket(userContext, session);
         });
     }
