@@ -122,5 +122,57 @@ class Database_Spec extends Specification
             thrown(IllegalArgumentException)
     }
 
+    def 'You can only create a table of a type if it has only primitive field types, or the referenced types are specified.'()
+    {
+        reportInfo """
+            If you have multiple models with complex interdependencies, you 
+            should create the tables all at once instead of creating them one by one!
+            This demonstrates that otherwise you would get an exception.
+        """
+
+        given : 'We create a database instance for testing, the database will be opened in a test folder.'
+            def db = new DataBase(TEST_DB_FILE)
+            db.dropAllTables()
+        when : 'We try to create a table for a model that has a field of type "Person".'
+            db.createTablesFor(Person)
+        then : 'An exception should be thrown.'
+            thrown(IllegalArgumentException)
+        and : 'There should be no tables in the database.'
+            db.listOfAllTableNames() == []
+
+        when : 'We try to create a table from a basic model without references on its own.'
+            db.createTablesFor(Address)
+        then : 'No exception should be thrown.'
+            noExceptionThrown()
+        and : 'There should be a table in the database.'
+            db.listOfAllTableNames() == ["dal_Address_table"]
+    }
+
+    def 'Tables of "Person", "Address" and "Item" all have their complex relationships preserved.'()
+    {
+        reportInfo """ 
+            If you examine the model types used in this example, you will see that they have
+            complex relationships. The "Person" type has a reference to an "Address" type, and
+            a list of "Item" types. 
+            Besides that a Person has a list of children, and a reference to a parent.
+            The "Item" and "Address" types have no references to other types.
+            This test demonstrates that the database can handle such complex relationships.
+        """
+        given : 'We create a database instance for testing, the database will be opened in a test folder.'
+            def db = new DataBase(TEST_DB_FILE)
+            db.dropAllTables()
+            db.createTablesFor(Person, Address, Item)
+        expect : 'The 3 tables exist!'
+            db.listOfAllTableNames() as Set == ["dal_Address_table", "dal_Item_table", "dal_Person_table"] as Set
+        and : 'The tables are empty.'
+            db.selectAll(Person).size() == 0
+            db.selectAll(Address).size() == 0
+            db.selectAll(Item).size() == 0
+        and : 'The sql code of the 3 tables will be as expected:'
+            db.sqlCodeOfTable(Person) == """CREATE TABLE dal_Person_table (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT, age INT, fk_parent_id INTEGER, fk_address_id INTEGER, fk_children_id INTEGER)"""
+            db.sqlCodeOfTable(Address) == """CREATE TABLE dal_Address_table (id INTEGER PRIMARY KEY AUTOINCREMENT, street TEXT, city TEXT, state TEXT, zip TEXT, country TEXT)"""
+            db.sqlCodeOfTable(Item) == """CREATE TABLE dal_Item_table (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT, fk_items_id INTEGER)"""
+    }
+
 
 }

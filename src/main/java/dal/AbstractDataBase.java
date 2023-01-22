@@ -221,6 +221,7 @@ public class AbstractDataBase {
                     pstmt.close();
                 } catch (SQLException e) {
                     e.printStackTrace();
+                    pstmt.close();
                 }
             } catch (SQLException e) {
                 e.printStackTrace();

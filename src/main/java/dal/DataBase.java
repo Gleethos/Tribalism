@@ -198,6 +198,9 @@ public class DataBase extends AbstractDataBase
     }
 
     public <T> Optional<T> get( Class<T> model, int id ) {
+        if ( !_modelSummaries.contains(model) )
+            throw new IllegalArgumentException("Model '" + model.getName() + "' does not exist in database as table.");
+
         String tableName = _tableNameFromClass(model);
         String sql = "SELECT * FROM " + tableName + " WHERE id = ?;";
 
@@ -209,7 +212,9 @@ public class DataBase extends AbstractDataBase
 
         // There should only be one row, if there are more or less then something is wrong
         if (result.get("id").size() != 1)
-            throw new RuntimeException("There should only be one row, if there are more or less then something is wrong");
+            throw new IllegalStateException(
+                    "Failed to get a single row from the database for model type '" + model.getName() + "' with id '" + id + "'."
+                );
 
         return Optional.ofNullable(_fromMapToModel(0, model, result));
     }
@@ -246,7 +251,7 @@ public class DataBase extends AbstractDataBase
                             ParameterizedType pType = (ParameterizedType) type;
                             Type[] fieldArgTypes = pType.getActualTypeArguments();
                             if (fieldArgTypes.length != 1)
-                                throw new RuntimeException("List or Set must have exactly one type argument");
+                                throw new IllegalArgumentException("List or Set field '" + f.getName() + "' in model '" + model.getName() + "' has more than one type argument.");
                             Class<?> fieldArgType = (Class<?>) fieldArgTypes[0];
                             if ( _modelSummaries.contains( fieldArgType ) ) {
                                 /*
@@ -288,13 +293,13 @@ public class DataBase extends AbstractDataBase
                                 }
                             }
                             else
-                                throw new RuntimeException("Unknown type of list or set");
+                                throw new IllegalArgumentException("List or Set field '" + f.getName() + "' in model '" + model.getName() + "' has a type argument that is not a model.");
                         }
                         else
-                            throw new RuntimeException("Unknown type of list or set");
+                            throw new IllegalArgumentException("List or Set field '" + f.getName() + "' in model '" + model.getName() + "' has no type arguments.");
                     }
                     else
-                        throw new RuntimeException("Unknown type of field");
+                        throw new IllegalArgumentException("Field '" + f.getName() + "' in model '" + model.getName() + "' has an unsupported type.");
                 }
             }
             return instance;
@@ -361,19 +366,23 @@ public class DataBase extends AbstractDataBase
                                 }
                                 else {
                                     if ( _isBasicDataType(actualTypeArgumentClass) )
-                                        throw new RuntimeException("A list of basic data types cannot be persisted as column entries in a database!");
+                                        throw new IllegalArgumentException(
+                                             "The type argument of the list field '" + f.getName() + "' in model '" + modelType.getName() + "' is a " +
+                                             "list of basic data types which cannot be persisted as column entries in a database! " +
+                                             "Only lists of models can be persisted in a database."
+                                        );
                                     else
-                                        throw new RuntimeException("The type of the list is not a model");
+                                        throw new IllegalArgumentException("The type of the list is not a model");
                                 }
                             }
                             else
-                                throw new RuntimeException("The type of the list is not a class");
+                                throw new IllegalStateException("The type of the list is not a class");
                         }
                         else
-                            throw new RuntimeException("We only support one generic type argument for lists");
+                            throw new IllegalStateException("We only support one generic type argument for lists");
                     }
                     else
-                        throw new RuntimeException("The type of the list is not a class");
+                        throw new IllegalStateException("The type of the list is not a class");
                 }
                 else if (otherModels.contains(type)) {
                     allForeignRefs.add(type);
@@ -384,7 +393,7 @@ public class DataBase extends AbstractDataBase
                     // Do nothing, this will be a regular column entry
                 }
                 else {
-                    throw new RuntimeException("Unknown type: " + type + "! Cannot persist unknown types!");
+                    throw new IllegalArgumentException("Unknown type: " + type + "! Cannot persist unknown types!");
                 }
             }
         }
@@ -516,7 +525,10 @@ public class DataBase extends AbstractDataBase
             var modelSummary = _modelSummaries.get(model);
             var references = new ArrayList<Class<?>>();
             references.addAll(modelSummary.getAllForeignReferences());
-            references.remove(model); // We don't want to reference ourselves because a table "knows about itself".
+            // We don't want to reference ourselves because a table "knows about itself":
+            while ( references.contains(model) ) {
+                references.remove(model);
+            }
             modelReferences.put(model, references);
         }
 
@@ -528,7 +540,10 @@ public class DataBase extends AbstractDataBase
                     modelsWithoutReferences.add(model);
             }
             if ( modelsWithoutReferences.isEmpty() )
-                throw new RuntimeException("There is a circular reference between the models!");
+                throw new IllegalArgumentException(
+                        "There is a circular reference between the " +
+                        "specified models '" + Arrays.toString(models) + "'."
+                    );
             for ( Class<?> model : modelsWithoutReferences ) {
                 sortedModels.add(model);
                 modelReferences.remove(model);
@@ -578,7 +593,10 @@ public class DataBase extends AbstractDataBase
             if ( f.getName().equals("id") ) {
                 // We expect the id field to be an int
                 if ( !type.equals(int.class) )
-                    throw new RuntimeException("The id field must be an int!");
+                    throw new IllegalArgumentException(
+                            "The id field of the provided model '" + model.getName() + "' is of " +
+                            "type '" + type.getName() + "', it must be an int!"
+                        );
 
                 continue;
             }
@@ -594,22 +612,30 @@ public class DataBase extends AbstractDataBase
                 if ( genericType instanceof ParameterizedType parameterizedType ) {
                     var actualTypeArguments = parameterizedType.getActualTypeArguments();
                     if ( actualTypeArguments.length != 1 )
-                        throw new RuntimeException("The list/set field must have exactly one type argument!");
+                        throw new IllegalArgumentException("Field '" + f.getName() + "' of model '" + model.getName() + "' must have exactly one type argument!");
                     var typeArgument = actualTypeArguments[0];
                     if ( !(typeArgument instanceof Class) )
-                        throw new RuntimeException("The type argument must be a class!");
+                        throw new IllegalArgumentException("Field '" + f.getName() + "' of model '" + model.getName() + "' must have a type argument that is a class!");
                     var typeArgumentClass = (Class<?>) typeArgument;
                     if ( !_modelSummaries.contains(typeArgumentClass) )
-                        throw new RuntimeException("The type argument must be a model!");
+                        throw new IllegalArgumentException(
+                                "Field '" + f.getName() + "' of model '" + model.getName() + "' must have a type argument that is a model! " +
+                                "Type argument '" + typeArgumentClass.getName() + "' is not a model!"
+                        );
                 } else {
-                    throw new RuntimeException("The list/set field must have exactly one type argument!");
+                    throw new IllegalArgumentException("Field '" + f.getName() + "' of model '" + model.getName() + "' must have a type argument!");
                 }
+            } else if ( model == type ) {
+                // A self reference! This is simple! a foreign key to the same table, but with a different name
+                // This will be built later
+            } else if ( _modelSummaries.contains(type) ) {
+                // This will be built later
             } else {
                 // We raise an exception if it is not a primitive type
                 // and it is not a List or Set containing other models
-                throw new RuntimeException(
-                        "The field " + f.getName() + " in the model " + model.getName() +
-                        " is not a primitive type and it is not a List or Set containing other models!"
+                throw new IllegalArgumentException(
+                        "The field '" + f.getName() + "' in the model '" + model.getName() + "' " +
+                        "is not a primitive type and it is not a List or Set containing other models!"
                 );
             }
         }
@@ -631,5 +657,26 @@ public class DataBase extends AbstractDataBase
 
         _execute(sql.toString());
     }
+
+    /**
+     *  This reads the sql defining the table of the provided model type.
+     *
+     * @param model The model type
+     * @return The sql defining the table of the provided model type
+     */
+    public String sqlCodeOfTable(Class<?> model) {
+        // We query the database for the sql code of the table
+        var sql = new StringBuilder();
+        sql.append("SELECT sql FROM sqlite_master WHERE type='table' AND name='");
+        sql.append(_modelSummaries.get(model).getTableName());
+        sql.append("'");
+        Map<String, List<Object>> result = _query(sql.toString());
+        if ( result.isEmpty() )
+            throw new IllegalArgumentException("The model '" + model.getName() + "' does not have a table in the database!");
+        if ( result.size() > 1 )
+            throw new IllegalArgumentException("There are multiple tables for the model '" + model.getName() + "' in the database!");
+        return (String) result.get("sql").get(0);
+    }
+
 
 }
