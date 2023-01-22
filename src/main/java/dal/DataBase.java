@@ -3,8 +3,10 @@ package dal;
 import org.slf4j.Logger;
 
 import java.io.File;
+import java.lang.reflect.Field;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.ParameterizedType;
+import java.lang.reflect.Type;
 import java.util.*;
 
 /**
@@ -222,7 +224,77 @@ public class DataBase extends AbstractDataBase
                     f.set(instance, result.get("id").get(row));
                 }
                 else {
-                    f.set(instance, result.get(f.getName()).get(row));
+                    /*
+                        Ok, so usually the value we get from the database is a simple primitive type
+                        like an int or a String. But sometimes it is a more complex type like a
+                        reference to another model, or even a list or set of models. So we need to
+                        check the type of the field and then handle it accordingly.
+                     */
+                    if ( _isBasicDataType( f.getType() ) )
+                        f.set(instance, result.get(f.getName()).get(row));
+                    else if ( _modelSummaries.contains( f.getType() ) ) {
+                        String fieldName = "fk_" + f.getName() + "_id";
+                        int id = (int) result.get(fieldName).get(row);
+                        // Now we have to load the model from the database
+                        Object m = get(f.getType(), id).orElseThrow();
+                        f.set(instance, m);
+                    }
+                    else if ( _isListOrSet( f.getType() ) ) {
+                        // We need to get the type of the list or set
+                        Type type = f.getGenericType();
+                        if (type instanceof ParameterizedType) {
+                            ParameterizedType pType = (ParameterizedType) type;
+                            Type[] fieldArgTypes = pType.getActualTypeArguments();
+                            if (fieldArgTypes.length != 1)
+                                throw new RuntimeException("List or Set must have exactly one type argument");
+                            Class<?> fieldArgType = (Class<?>) fieldArgTypes[0];
+                            if ( _modelSummaries.contains( fieldArgType ) ) {
+                                /*
+                                    Ok, so we have a list or set of models.
+                                    The problem is that in our database we don't actually store a
+                                    list or set of models, but instead the models we are referencing here
+                                    each have a foreign key to this model which is simply named after this field
+                                    variable name. So we need to get the name of the foreign key column
+                                    and then query the database for all the models that have a foreign key
+                                    that matches this model's id.
+                                 */
+                                String fkColumnName = "fk_" + f.getName() + "_id";
+                                String sql = "SELECT * FROM " + _tableNameFromClass(fieldArgType) + " WHERE " + fkColumnName + " = ?;";
+                                int thisId = (int) result.get("id").get(row);
+                                Map<String, List<Object>> queryResult = _query(sql, List.of(thisId));
+                                if (queryResult.isEmpty()) {
+                                    // We set an empty list or set
+                                    if ( List.class.isAssignableFrom( f.getType() ) )
+                                        f.set(instance, new ArrayList<>());
+                                    else
+                                        f.set(instance, new HashSet<>());
+                                }
+                                else {
+                                    // We set a list or set with the models we got from the database
+                                    if ( List.class.isAssignableFrom( f.getType() ) ) {
+                                        List<Object> list = new ArrayList<>();
+                                        for (int i = 0; i < queryResult.get("id").size(); i++) {
+                                            list.add(_fromMapToModel(i, fieldArgType, queryResult));
+                                        }
+                                        f.set(instance, list);
+                                    }
+                                    else {
+                                        Set<Object> set = new HashSet<>();
+                                        for (int i = 0; i < queryResult.get("id").size(); i++) {
+                                            set.add(_fromMapToModel(i, fieldArgType, queryResult));
+                                        }
+                                        f.set(instance, set);
+                                    }
+                                }
+                            }
+                            else
+                                throw new RuntimeException("Unknown type of list or set");
+                        }
+                        else
+                            throw new RuntimeException("Unknown type of list or set");
+                    }
+                    else
+                        throw new RuntimeException("Unknown type of field");
                 }
             }
             return instance;
@@ -253,8 +325,18 @@ public class DataBase extends AbstractDataBase
 
         private final Class<?> modelType;
         private final String tableName;
-        private final List<Class<?>> basicModelRefs = new ArrayList<>(); // Basically foreign keys referencing "id"
+        private final List<Class<?>> allForeignRefs = new ArrayList<>(); // Basically foreign keys referencing "id"
+
+        private final List<Class<?>> specifiedForeignRefs = new ArrayList<>(); // Basically foreign keys referenced by "id"
+        private final List<Field> specifiedForeignRefsFields = new ArrayList<>();
+
         private final List<Class<?>> oneToManyModelRefs = new ArrayList<>(); // One to many foreign keys referencing "id", basically a list of models
+        private final List<Field> oneToManyRefFields = new ArrayList<>(); // The fields that are one to many foreign keys
+
+
+        // This is the above but received from the other side of the relationship:
+        private final List<Field> receivedOneToManyRefFields = new ArrayList<>(); // The fields that are one to many foreign keys
+
 
         public ModelSummary(Class<?> modelType, List<Class<?>> otherModels) {
             this.modelType = modelType;
@@ -275,6 +357,7 @@ public class DataBase extends AbstractDataBase
                                 var actualTypeArgumentClass = (Class<?>) actualTypeArgument;
                                 if (otherModels.contains(actualTypeArgumentClass)) {
                                     oneToManyModelRefs.add(actualTypeArgumentClass);
+                                    oneToManyRefFields.add(f);
                                 }
                                 else {
                                     if ( _isBasicDataType(actualTypeArgumentClass) )
@@ -293,7 +376,9 @@ public class DataBase extends AbstractDataBase
                         throw new RuntimeException("The type of the list is not a class");
                 }
                 else if (otherModels.contains(type)) {
-                    basicModelRefs.add(type);
+                    allForeignRefs.add(type);
+                    specifiedForeignRefs.add(type);
+                    specifiedForeignRefsFields.add(f);
                 }
                 else if (_isBasicDataType(type)) {
                     // Do nothing, this will be a regular column entry
@@ -304,12 +389,28 @@ public class DataBase extends AbstractDataBase
             }
         }
 
-        public List<Class<?>> getForeignReferences() {
-            return Collections.unmodifiableList(basicModelRefs);
+        public List<Class<?>> getAllForeignReferences() {
+            return allForeignRefs;
+        }
+
+        public List<Class<?>> getSpecifiedForeignRefs() {
+            return Collections.unmodifiableList(specifiedForeignRefs);
+        }
+
+        public List<Field> getSpecifiedForeignRefsFields() {
+            return Collections.unmodifiableList(specifiedForeignRefsFields);
         }
 
         public List<Class<?>> getOneToManyModelRefs() {
             return Collections.unmodifiableList(oneToManyModelRefs);
+        }
+
+        public List<Field> getReceivedOneToManyRefFields() {
+            return receivedOneToManyRefFields;
+        }
+
+        public List<Field> getOneToManyRefFields() {
+            return Collections.unmodifiableList(oneToManyRefFields);
         }
 
         public String getTableName() {
@@ -341,6 +442,10 @@ public class DataBase extends AbstractDataBase
                 type.equals(byte.class) ||
                 type.equals(Character.class) ||
                 type.equals(char.class);
+    }
+
+    private boolean _isListOrSet(Class<?> type) {
+        return type.equals(List.class) || type.equals(Set.class);
     }
 
     public void createTablesFor(
@@ -387,9 +492,11 @@ public class DataBase extends AbstractDataBase
         // First let's resolve the 1:n relationships
         for ( Class<?> model : models ) {
             var modelSummary = _modelSummaries.get(model);
-            for ( Class<?> oneToManyModel : modelSummary.getOneToManyModelRefs() ) {
-                var oneToManyModelSummary = _modelSummaries.get(oneToManyModel);
-                oneToManyModelSummary.getForeignReferences().add(model);
+            for ( Class<?> oneOfManyModel : modelSummary.getOneToManyModelRefs() ) {
+                var oneOfMany = _modelSummaries.get(oneOfManyModel);
+                oneOfMany.getAllForeignReferences().add(model);
+                int index = modelSummary.getOneToManyModelRefs().indexOf(oneOfManyModel);
+                oneOfMany.getReceivedOneToManyRefFields().add(modelSummary.getOneToManyRefFields().get(index));
             }
         }
 
@@ -408,7 +515,7 @@ public class DataBase extends AbstractDataBase
         for ( Class<?> model : models ) {
             var modelSummary = _modelSummaries.get(model);
             var references = new ArrayList<Class<?>>();
-            references.addAll(modelSummary.getForeignReferences());
+            references.addAll(modelSummary.getAllForeignReferences());
             references.remove(model); // We don't want to reference ourselves because a table "knows about itself".
             modelReferences.put(model, references);
         }
@@ -506,10 +613,17 @@ public class DataBase extends AbstractDataBase
                 );
             }
         }
-        for ( var foreignKey : modelSummary.getForeignReferences() ) {
+        for ( var f : modelSummary.getSpecifiedForeignRefsFields() ) {
             sql.append(", ");
             sql.append("fk_");
-            sql.append(_modelSummaries.get(foreignKey).getTableName());
+            sql.append(f.getName());
+            sql.append("_id");
+            sql.append(" INTEGER");
+        }
+        for ( var f : modelSummary.getReceivedOneToManyRefFields() ) {
+            sql.append(", ");
+            sql.append("fk_");
+            sql.append(f.getName());
             sql.append("_id");
             sql.append(" INTEGER");
         }
