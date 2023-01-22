@@ -17,7 +17,6 @@ public class RegisterViewModel implements Viewable
     private final Var<String>  password         ;
     private final Var<Boolean> usernameIsValid;
     private final Var<Boolean> passwordIsValid;
-    private final Var<Boolean> asGameMaster;
     private final Var<String>  feedback         ;
     private final Var<Color>   feedbackColor    ;
     private final Var<Boolean> allInputsDisabled;
@@ -29,7 +28,6 @@ public class RegisterViewModel implements Viewable
         this.password          = Var.of("").withId("password").onAct( it -> validateAll() );
         this.usernameIsValid   = Var.of(false).withId("usernameIsValid");
         this.passwordIsValid   = Var.of(false).withId("passwordIsValid");
-        this.asGameMaster      = Var.of(false).withId("asGameMaster");
         this.feedback          = Var.of("").withId("feedback");
         this.feedbackColor     = Var.of(Color.BLACK).withId("feedbackColor");
         this.allInputsDisabled = Var.of(false).withId("allInputsDisabled");
@@ -41,8 +39,6 @@ public class RegisterViewModel implements Viewable
     public Var<String> username() { return username; }
 
     public Var<String> password() { return password; }
-
-    public Var<Boolean> asGameMaster() { return asGameMaster; }
 
     public Val<Boolean> usernameIsValid() { return usernameIsValid; }
 
@@ -115,7 +111,6 @@ public class RegisterViewModel implements Viewable
         // We rebroadcast all properties:
         username.show();
         password.show();
-        asGameMaster.show();
         feedbackColor.show();
         feedback.show();
         /*
@@ -132,7 +127,7 @@ public class RegisterViewModel implements Viewable
             doRegistration();
             feedback.set("Registration successful!");
             feedbackColor.set(Color.GREEN);
-            return Optional.of(new User(username.get(), password.get(), asGameMaster.get()));
+            return Optional.of(new User(username.get(), password.get()));
         } else {
             allInputsDisabled.set(false);
             feedback.set("Registration failed!");
@@ -166,7 +161,6 @@ public class RegisterViewModel implements Viewable
         feedback.set("");
         feedbackColor.set(Color.BLACK);
         allInputsDisabled.set(false);
-        asGameMaster.set(false);
         validateAll();
     }
 

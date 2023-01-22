@@ -20,19 +20,13 @@ repositories {
 }
 
 dependencies {
-    //implementation 'org.springframework.boot:spring-boot-starter-websocket'
-    //implementation 'org.webjars:webjars-locator-core'
-    //implementation 'org.webjars:sockjs-client:1.0.2'
-    //implementation 'org.webjars:stomp-websocket:2.3.3'
-    //implementation 'org.webjars:bootstrap:3.3.7'
-    //implementation 'org.webjars:jquery:3.1.1-1'
-    //testImplementation 'org.springframework.boot:spring-boot-starter-test'
 
     implementation 'javax.websocket:javax.websocket-api:1.1'
     implementation 'org.eclipse.jetty:jetty-servlet:9.4.29.v20200521'
     implementation 'org.eclipse.jetty.websocket:websocket-server:9.4.50.v20221201'
     implementation 'org.eclipse.jetty:jetty-server:9.4.48.v20220622'
 
+    implementation group: 'org.xerial', name: 'sqlite-jdbc', version: '3.36.0.3'
     implementation group: 'com.github.globaltcad', name: 'swing-tree', version:'5066ece'
 
     //implementation 'org.apache.groovy:groovy:3.0.9'

@@ -1,6 +1,5 @@
 package app;
 
-import app.AppContext;
 import net.WebSocketEndpoint;
 import org.eclipse.jetty.server.Server;
 import org.eclipse.jetty.server.ServerConnector;
