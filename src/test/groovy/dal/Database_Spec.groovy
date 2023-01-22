@@ -172,6 +172,35 @@ class Database_Spec extends Specification
             db.sqlCodeOfTable(Person) == """CREATE TABLE dal_Person_table (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT, age INT, fk_parent_id INTEGER, fk_address_id INTEGER, fk_children_id INTEGER)"""
             db.sqlCodeOfTable(Address) == """CREATE TABLE dal_Address_table (id INTEGER PRIMARY KEY AUTOINCREMENT, street TEXT, city TEXT, state TEXT, zip TEXT, country TEXT)"""
             db.sqlCodeOfTable(Item) == """CREATE TABLE dal_Item_table (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT, fk_items_id INTEGER)"""
+
+        when : 'We create a family of people, where the oldest son lives elsewhere, and they all own different items.'
+            var familyAddress = new Address(street: "Main Street", city: "New York", state: "NY", zip: "12345", country: "USA")
+            var sonAddress = new Address(street: "Son Street", city: "New York", state: "NY", zip: "12345", country: "USA")
+            var house = new Item(name: "House")
+            var father = new Person()
+            father.name = "Mr Smith"
+            father.age = 42
+            father.address = familyAddress
+            father.items = [new Item(name: "Car"), house, new Item(name: "Boat")]
+            var mother = new Person()
+            mother.name = "Mrs Smith"
+            mother.age = 40
+            mother.address = familyAddress
+            mother.items = [new Item(name: "Bike"), house]
+            var daughter = new Person()
+            daughter.name = "Daughter"
+            daughter.age = 10
+            daughter.address = familyAddress
+            daughter.items = [new Item(name: "Doll"), house]
+            var son = new Person()
+            son.name = "Son"
+            son.age = 12
+            son.address = sonAddress
+            son.items = [new Item(name: "Computer"), new Item(name: "Apartment"), house]
+            father.children = [daughter, son]
+            son.parent = father
+            daughter.parent = father
+
     }
 
 
