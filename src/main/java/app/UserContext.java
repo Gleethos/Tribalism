@@ -1,5 +1,7 @@
 package app;
 
+import app.models.User;
+
 public class UserContext {
 
     private final User user;

@@ -1,5 +1,6 @@
 package app;
 
+import app.models.User;
 import swingtree.api.mvvm.Val;
 import swingtree.api.mvvm.Var;
 import swingtree.api.mvvm.Viewable;
@@ -11,6 +12,7 @@ public class RegisterViewModel implements Viewable
 {
     public enum Gender { NOT_SELECTED, MALE, FEMALE, OTHER }
 
+    private final AppContext context;
     private final ContentViewModel contentViewModel;
 
     private final Var<String> username         ;
@@ -23,6 +25,7 @@ public class RegisterViewModel implements Viewable
     private final Var<Boolean> inputValid       ;
 
     public RegisterViewModel(AppContext context, ContentViewModel contentViewModel) {
+        this.context = context;
         this.contentViewModel = contentViewModel;
         this.username          = Var.of("").withId("username").onAct( it -> validateAll() );
         this.password          = Var.of("").withId("password").onAct( it -> validateAll() );
@@ -120,19 +123,20 @@ public class RegisterViewModel implements Viewable
          */
     }
 
-    public Optional<User> register() {
+    public void register() {
         if ( validateAll() ) {
             allInputsDisabled.set(true);
             feedbackColor.set(Color.BLACK);
             doRegistration();
             feedback.set("Registration successful!");
             feedbackColor.set(Color.GREEN);
-            return Optional.of(new User(username.get(), password.get()));
+            var user = context.db().create(User.class);
+            user.username().set(username.get());
+            user.password().set(password.get());
         } else {
             allInputsDisabled.set(false);
             feedback.set("Registration failed!");
             feedbackColor.set(Color.RED);
-            return Optional.empty();
         }
     }
 
