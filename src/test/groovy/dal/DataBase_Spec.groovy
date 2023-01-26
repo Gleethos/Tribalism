@@ -120,7 +120,7 @@ class DataBase_Spec extends Specification
             db.createTablesFor(Workplace, Person, Address)
 
         then : 'The database should now contain two tables.'
-            db.listOfAllTableNames() as Set == ["dal_models_Address_table", "dal_models_Workplace_table", "dal_models_Person_table"] as Set
+            db.listOfAllTableNames() as Set == ["dal_models_Address_table", "dal_models_Workplace_table", "dal_models_Person_table", "employees_list_table"] as Set
 
         when : 'We create a new workplace with and address and 2 people working there.'
             var address = db.create(Address)
@@ -133,6 +133,39 @@ class DataBase_Spec extends Specification
         then :
             workplace.address().get() == address
             workplace.employees().toSet() == [person, person2] as Set
+
+        and :
+            workplace.toString() == "Workplace[" +
+                                        "id=1, " +
+                                        "name=\"\", " +
+                                        "fk_address_id=Address[id=1, country=\"\", street=\"\", postalCode=\"\", city=\"\"], " +
+                                        "employees=[" +
+                                            "Person[id=1, fk_address_id=Address[id=null, country=null, street=null, postalCode=null, city=null], lastName=\"\", firstName=\"\"], " +
+                                            "Person[id=2, fk_address_id=Address[id=null, country=null, street=null, postalCode=null, city=null], lastName=\"\", firstName=\"\"], ]" +
+                                        "]"
+
+        when :
+            person2.firstName().set("Jane")
+        then :
+            workplace.toString() == "Workplace[" +
+                                        "id=1, " +
+                                        "name=\"\", " +
+                                        "fk_address_id=Address[id=1, country=\"\", street=\"\", postalCode=\"\", city=\"\"], " +
+                                        "employees=[" +
+                                            "Person[id=1, fk_address_id=Address[id=null, country=null, street=null, postalCode=null, city=null], lastName=\"\", firstName=\"\"], " +
+                                            "Person[id=2, fk_address_id=Address[id=null, country=null, street=null, postalCode=null, city=null], lastName=\"\", firstName=\"Jane\"], ]" +
+                                        "]"
+
+        when :
+            db.remove(person2)
+        then :
+            workplace.toString() == "Workplace[" +
+                                        "id=1, " +
+                                        "name=\"\", " +
+                                        "fk_address_id=Address[id=1, country=\"\", street=\"\", postalCode=\"\", city=\"\"], " +
+                                        "employees=[" +
+                                            "Person[id=1, fk_address_id=Address[id=null, country=null, street=null, postalCode=null, city=null], lastName=\"\", firstName=\"\"], " +
+                                        "]"
 
         cleanup:
             db.close()

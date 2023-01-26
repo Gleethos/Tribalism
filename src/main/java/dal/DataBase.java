@@ -69,7 +69,7 @@ public class DataBase extends AbstractDataBase
 
             Map<String, List<Object>> result = _dataBase._query(select.toString(), Collections.singletonList(_id));
             if (result.isEmpty())
-                throw new IllegalStateException("No result for query: '" + select + "' with id: " + _id );
+                return null;
             else {
                 List<Object> values = result.get(_fieldName);
                 if (values.isEmpty())
@@ -395,6 +395,11 @@ public class DataBase extends AbstractDataBase
                         throw new UnsupportedOperationException("Not supported yet."); //To change body of generated methods, choose Tools | Templates.
                     }
 
+                    @Override
+                    public boolean isIntermediateTable() {
+                        return true;
+                    }
+
                 });
             else
                 return Optional.empty();
@@ -404,6 +409,14 @@ public class DataBase extends AbstractDataBase
             var prop = new ModelProperty(db, id, this.getName(), _tableNameFromClass(ownerModelClass), propertyValueType);
 
             Class<?> propertyType = ModelField.this.propertyType;
+
+            // Let's check if the property is a Val
+            boolean isVal = Val.class.isAssignableFrom(propertyType);
+            if ( !isVal )
+                throw new IllegalArgumentException(
+                        "The return type of the method " + method.getName() + " is not a subclass " +
+                        "of " + Val.class.getName() + " or " + Vals.class.getName() + " with one type parameter"
+                    );
 
             // Let's create the proxy:
             return  (Val<Object>) Proxy.newProxyInstance(
@@ -480,8 +493,12 @@ public class DataBase extends AbstractDataBase
             List<Object> param = Collections.singletonList(id);
             Map<String, List<Object>> result = db._query(query, param);
             // The result should contain a single column:
-            if ( result.size() != 1 )
-                throw new IllegalStateException("The result should contain a single column");
+            //if ( result.size() != 1 )
+            //    throw new IllegalStateException("The result should contain a single column");
+
+            if ( result.size() == 0 )
+                result.put(otherTableIdColumn, new ArrayList<>());
+
             // The column should be named after the id column of the other table:
             if ( !result.containsKey(otherTableIdColumn) )
                 throw new IllegalStateException("The column should be named after the id column of the other table");
@@ -551,11 +568,16 @@ public class DataBase extends AbstractDataBase
 
                 @Override
                 public Vars<Object> addAt(int index, Var<Object> var) {
+                    // First let's verify the type:
+                    if ( !propertyValueType.isAssignableFrom(var.type()) )
+                        throw new IllegalArgumentException("The type of the var is not the same as the type of the property");
+
                     /*
                         We need to insert a row into the intermediate table! Basic stuff...
                     */
+                    Object o = var.get();
                     int leftId = id;
-                    int rightId = (Integer) var.get();
+                    int rightId = ((Model) o).id().get();
                     String query = "INSERT INTO " + intermediateTable.getName() + " " +
                                     "(" + thisTableIdColumn + ", " + otherTableIdColumn + ") " +
                                     "VALUES (?, ?)";
@@ -763,6 +785,11 @@ public class DataBase extends AbstractDataBase
             return defaultValues;
         }
 
+        @Override
+        public boolean isIntermediateTable() {
+            return false;
+        }
+
     }
 
     interface ModelTable {
@@ -785,6 +812,8 @@ public class DataBase extends AbstractDataBase
         String createTableStatement();
 
         List<Object> getDefaultValues();
+
+        boolean isIntermediateTable();
     }
 
     private static class ModelRegistry
@@ -802,13 +831,13 @@ public class DataBase extends AbstractDataBase
             distinct.addAll(modelInterfaces);
             modelInterfaces = new ArrayList<>(distinct);
 
-            Map<Class<? extends Model<?>>, ModelTable> newModelTables = new LinkedHashMap<>();
+            Map<String, ModelTable> newModelTables = new LinkedHashMap<>();
             for ( Class<? extends Model<?>> modelInterface : modelInterfaces ) {
                 ModelTable modelTable = new BasicModelTable(modelInterface, modelInterfaces);
-                newModelTables.put(modelInterface, modelTable);
+                newModelTables.put(modelTable.getName(), modelTable);
                 modelTable.getFields().forEach(
                         f -> f.getIntermediateTable().ifPresent(
-                                t -> newModelTables.put((Class<? extends Model<?>>) f.getType(), t)
+                                t -> newModelTables.put(t.getName(), t)
                         )
                 );
             }
@@ -875,7 +904,7 @@ public class DataBase extends AbstractDataBase
             }
 
             for ( Class<?> model : sortedModels ) {
-                ModelTable modelTable = newModelTables.get(model);
+                ModelTable modelTable = newModelTables.get(_tableNameFromClass(model));
                 modelTables.put(modelTable.getName(), modelTable);
             }
 
@@ -890,7 +919,7 @@ public class DataBase extends AbstractDataBase
                 ModelTable modelTable,
                 Set<ModelTable> visited,
                 Set<ModelTable> currentPath,
-                Map<Class<? extends Model<?>>, ModelTable> newModelTables
+                Map<String, ModelTable> newModelTables
         ) {
             if ( visited.contains(modelTable) )
                 return false;
@@ -898,7 +927,7 @@ public class DataBase extends AbstractDataBase
                 return true;
             currentPath.add(modelTable);
             for ( Class<? extends Model<?>> referencedModel : modelTable.getReferencedModels() ) {
-                if ( _hasCycle(newModelTables.get(referencedModel), visited, currentPath, newModelTables) )
+                if ( _hasCycle(newModelTables.get(_tableNameFromClass(referencedModel)), visited, currentPath, newModelTables) )
                     return true;
             }
             currentPath.remove(modelTable);
@@ -1062,6 +1091,53 @@ public class DataBase extends AbstractDataBase
             if ( methodName.equals("hashCode") ) {
                 return _id;
             }
+            // Something a little more complicated: toString
+            if ( methodName.equals("toString") ) {
+                /*
+                    Let's not be lazy and actually build a string that contains all the properties!
+                 */
+                StringBuilder sb = new StringBuilder();
+                sb.append(_modelTable.getModelInterface().map(Class::getSimpleName).orElse(_modelTable.getName()));
+                sb.append("[");
+                for ( var field : _modelTable.getFields() ) {
+                    if ( !field.isList() ) {
+                        Object o = field.asProperty(_dataBase, _id).orElseNull();
+                        String asString;
+                        if ( o == null )
+                            asString = "null";
+                        else if ( o instanceof String )
+                            asString = "\"" + o + "\"";
+                        else
+                            asString = o.toString();
+
+                        sb.append(field.getName());
+                        sb.append("=").append(asString);
+                        sb.append(", ");
+                    }
+                    else {
+                        sb.append(field.getName());
+                        sb.append("=[");
+                        for ( Object o : field.asProperties(_dataBase, _id) ) {
+                            String asString;
+                            if ( o == null )
+                                asString = "null";
+                            else if ( o instanceof String )
+                                asString = "\"" + o + "\"";
+                            else
+                                asString = o.toString();
+
+                            sb.append(asString);
+                            sb.append(", ");
+                        }
+                        sb.append("], ");
+                    }
+                }
+                // remove the last comma
+                if ( _modelTable.getFields().size() > 0 )
+                    sb.delete(sb.length() - 2, sb.length());
+                sb.append("]");
+                return sb.toString();
+            }
 
             ModelField modelField = _modelTable.getField(methodName);
             if ( modelField == null )
@@ -1182,6 +1258,22 @@ public class DataBase extends AbstractDataBase
         return select(model, id);
     }
 
+    public <M extends Model<M>> void remove(M model) {
+        Objects.requireNonNull(model, "The provided model is null!");
+        Class<?> modelProxyClass = model.getClass();
+        // Now we need to get the interface class defining the model
+        Class<?> modelInterfaceClass = null;
+        for ( Class<?> c : modelProxyClass.getInterfaces() ) {
+            if ( Model.class.isAssignableFrom(c) ) {
+                modelInterfaceClass = c;
+                break;
+            }
+        }
+        int id = model.id().get();
+        String tableName = _tableNameFromClass(modelInterfaceClass);
+        String sql = "DELETE FROM " + tableName + " WHERE id = ?";
+        boolean success = _update(sql, Collections.singletonList(id));
+    }
 
 
 }
