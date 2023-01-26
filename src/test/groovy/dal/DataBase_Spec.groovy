@@ -44,15 +44,27 @@ class DataBase_Spec extends Specification
         then : 'The database should now contain two tables.'
             db.listOfAllTableNames() as Set == ["dal_models_Person_table", "dal_models_Address_table"] as Set
         and : 'The table code is as expected!'
-            table1 == "CREATE TABLE dal_models_Person_table (fk_dal_models_Address_table_id INTEGER NOT NULL REFERENCES dal_models_Address_table(id), lastName TEXT NOT NULL, firstName TEXT NOT NULL, id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT)"
-            table2 == "CREATE TABLE dal_models_Address_table (country TEXT NOT NULL, postalCode TEXT NOT NULL, street TEXT NOT NULL, city TEXT NOT NULL, id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT)"
+            table1 == "CREATE TABLE dal_models_Person_table (id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT, fk_address_id INTEGER REFERENCES dal_models_Address_table(id), lastName TEXT NOT NULL, firstName TEXT NOT NULL)"
+            table2 == "CREATE TABLE dal_models_Address_table (id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT, country TEXT NOT NULL, postalCode TEXT NOT NULL, street TEXT NOT NULL, city TEXT NOT NULL)"
 
 
         when : 'We try to create a table that already exists...'
             db.createTablesFor(Person)
-
         then : 'The database should still contain two tables.'
             db.listOfAllTableNames() as Set == ["dal_models_Person_table", "dal_models_Address_table"] as Set
+
+        when : 'We create and modify a person...'
+            var person = db.create(Person)
+            person.firstName().set("John")
+            person.lastName().set("Doe")
+        then :
+            person.firstName().get() == "John"
+            person.lastName().get() == "Doe"
+        when : 'We manually update the person...'
+            db.execute("UPDATE dal_models_Person_table SET firstName = 'Jane', lastName = 'Doe' WHERE id = ${person.id().get()}")
+        then :
+            person.firstName().get() == "Jane"
+            person.lastName().get() == "Doe"
 
         cleanup:
             db.close()

@@ -185,10 +185,10 @@ public class AbstractDataBase {
         return (Integer)_query("SELECT last_insert_rowid()").get("last_insert_rowid()").get(0);
     }
 
-    private PreparedStatement _newPreparedStatement(String sql, List<Object> values) throws SQLException {
+    private PreparedStatement _newPreparedStatement(String sql, List<? extends Object> values) throws SQLException {
         PreparedStatement pstmt = _connections.get(Thread.currentThread()).prepareStatement(sql);
-        if(values!=null) {
-            for(int i=0; i<values.size(); i++) pstmt.setObject(i+1, values.get(i));
+        if ( values != null ) {
+            for(int i=0; i<values.size(); i++) pstmt.setObject(i + 1, values.get(i));
         }
         return pstmt;
     }
@@ -354,7 +354,7 @@ public class AbstractDataBase {
      * SQL execution on connection!
      * @param sql
      */
-    protected boolean _update(String sql, List<Object> values ){
+    protected boolean _update(String sql, List<? extends Object> values ){
         Function<String, String> exceptionMessageCreator = (s)->{
             String[] parts = s.split(" \\? ");
             String joined = String.join(",",values.stream().map(v->"'"+v.toString()+"'").collect(Collectors.toList()));

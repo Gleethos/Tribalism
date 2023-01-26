@@ -6,6 +6,8 @@ import java.io.File;
 import java.lang.reflect.*;
 import java.util.*;
 import java.util.function.Function;
+import java.util.stream.Collectors;
+import java.util.stream.IntStream;
 
 /**
  *  This class constitutes both a representation of a database
@@ -37,13 +39,15 @@ public class DataBase extends AbstractDataBase
     private static class ModelField {
 
         private final Method method;
+        private final Class<? extends Model<?>> ownerClass;
         private final Class<?> propertyValueType;
         private final Class<?> propertyType;
         private final FieldKind kind;
         private final List<Class<? extends Model<?>>> otherModels;
 
-        private ModelField(Method method, List<Class<? extends Model<?>>> otherModels) {
+        private ModelField(Method method, Class<? extends Model<?>> ownerClass, List<Class<? extends Model<?>>> otherModels) {
             this.method = method;
+            this.ownerClass = ownerClass;
             this.propertyType = method.getReturnType();
             this.otherModels = Collections.unmodifiableList(otherModels);
 
@@ -181,6 +185,8 @@ public class DataBase extends AbstractDataBase
         }
 
         public String getName() {
+            if ( this.kind == FieldKind.FOREIGN_KEY )
+                return "fk_" + method.getName() + "_id";
             return method.getName();
         }
 
@@ -245,28 +251,37 @@ public class DataBase extends AbstractDataBase
                                   ");";
                     }
 
+                    @Override
+                    public List<Object> getDefaultValues() {
+                        throw new UnsupportedOperationException("Not supported yet."); //To change body of generated methods, choose Tools | Templates.
+                    }
+
                 });
             else
                 return Optional.empty();
         }
 
-        public Var<Object> asProperty(DataBase db, int id) {
-            return new Var<>() {
+        public Val<Object> asProperty(DataBase db, int id) {
+            var prop = new Var<>() {
                 @Override
                 public Object orElseThrow() {
-                    if ( isEmpty() )
+                    Object o =  _get();
+                    if ( o == null )
                         throw new NoSuchElementException("No value present");
+                    return o;
+                }
 
+                private Object _get() {
                     Object value;
                     StringBuilder select = new StringBuilder();
                     select.append("SELECT ");
                     select.append(ModelField.this.getName());
                     select.append(" FROM ");
-                    select.append(_tableNameFromClass(ModelField.this.method.getDeclaringClass()));
+                    select.append(_tableNameFromClass(ModelField.this.ownerClass));
                     select.append(" WHERE id = ?");
                     Map<String, List<Object>> result = db._query(select.toString(), Collections.singletonList(id));
                     if (result.isEmpty())
-                        throw new IllegalStateException("No result for query: " + select);
+                        throw new IllegalStateException("No result for query: '" + select + "' with id: " + id );
                     else {
                         List<Object> values = result.get(ModelField.this.getName());
                         if (values.isEmpty())
@@ -311,7 +326,9 @@ public class DataBase extends AbstractDataBase
                         update.append(" SET ");
                         update.append(ModelField.this.getName());
                         update.append(" = ? WHERE id = ?");
-                        db._update(update.toString(), Arrays.asList(newItem, id));
+                        boolean success = db._update(update.toString(), Arrays.asList(newItem, id));
+                        if ( !success )
+                            throw new IllegalStateException("Failed to update table entry for id " + id);
                     }
                     return this;
                 }
@@ -332,10 +349,11 @@ public class DataBase extends AbstractDataBase
 
                 @Override
                 public Object orElseNullable(Object other) {
-                    if ( isEmpty() )
+                    var o = _get();
+                    if ( o == null )
                         return other;
                     else
-                        return get();
+                        return o;
                 }
 
                 @Override public boolean isPresent() { return orElseNull() != null; }
@@ -357,6 +375,18 @@ public class DataBase extends AbstractDataBase
 
                 @Override public boolean allowsNull() { return true; }
             };
+
+            Class<?> propertyType = ModelField.this.propertyType;
+            // Let's create the proxy:
+
+            return  (Val<Object>) Proxy.newProxyInstance(
+                    propertyType.getClassLoader(),
+                    new Class[]{propertyType},
+                    (proxy, method, args) -> {
+                        // We simply delegate to the property
+                        return method.invoke(prop, args);
+                    }
+            );
         }
 
         public Vars<Object> asProperties(DataBase db, int id) {
@@ -365,17 +395,38 @@ public class DataBase extends AbstractDataBase
 
         public Optional<String> asSqlColumn() {
             String name = getName();
-            String properties = " NOT NULL";
-            if ( name.equals("id") )
-                properties += " PRIMARY KEY AUTOINCREMENT";
-
-            if ( !Model.class.isAssignableFrom(propertyValueType) )
-                return Optional.of(getName() + " " + _fromJavaTypeToDBType(propertyValueType) + properties);
-            else if ( this.kind == FieldKind.FOREIGN_KEY ) {
+            if ( !Model.class.isAssignableFrom(propertyValueType) ) {
+                String properties = " NOT NULL";
+                if ( name.equals("id") )
+                    properties += " PRIMARY KEY AUTOINCREMENT";
+                return Optional.of(name + " " + _fromJavaTypeToDBType(propertyValueType) + properties);
+            } else if ( this.kind == FieldKind.FOREIGN_KEY ) {
                 String otherTable = _tableNameFromClass(propertyValueType);
-                return Optional.of("fk_" + otherTable + "_id INTEGER" + properties + " REFERENCES " + otherTable + "(id)");
+                return Optional.of(name + " INTEGER REFERENCES " + otherTable + "(id)");
             } else if ( this.kind == FieldKind.INTERMEDIATE_TABLE ) {
                 return Optional.empty(); // The field is not a column in the table, but a table itself
+            } else
+                throw new IllegalStateException("Unknown field kind: " + this.kind);
+        }
+
+        public Object getDefaultValue() {
+            if ( this.kind == FieldKind.FOREIGN_KEY )
+                return null;
+            else if ( this.kind == FieldKind.INTERMEDIATE_TABLE )
+                return null;
+            else if ( this.kind == FieldKind.VALUE ) {
+                if ( propertyValueType == String.class )
+                    return "";
+                else if ( propertyValueType == Integer.class )
+                    return 0;
+                else if ( propertyValueType == Double.class )
+                    return 0.0;
+                else if ( propertyValueType == Boolean.class )
+                    return false;
+                else
+                    throw new IllegalStateException("Unknown property type: " + propertyValueType);
+            } else if ( this.kind == FieldKind.ID ) {
+                return 1;
             } else
                 throw new IllegalStateException("Unknown field kind: " + this.kind);
         }
@@ -450,14 +501,14 @@ public class DataBase extends AbstractDataBase
                             "The method " + method.getName() + " of the interface " + modelInterface.getName() + " is not allowed to be called \"id\", " +
                             "because that is field is already present!"
                             );
-                    fields.add(new ModelField(method, otherModels));
+                    fields.add(new ModelField(method, modelInterface, otherModels));
                 }
             }
             // Now we add the id field
             Class<Model> modelClass = Model.class;
             try {
                 Method idMethod = modelClass.getMethod("id");
-                fields.add(new ModelField(idMethod, otherModels));
+                fields.add(0, new ModelField(idMethod, modelInterface, otherModels));
             } catch (NoSuchMethodException | SecurityException e) {
                 throw new RuntimeException(e);
             }
@@ -507,6 +558,19 @@ public class DataBase extends AbstractDataBase
             return sb.toString();
         }
 
+        @Override
+        public List<Object> getDefaultValues() {
+            List<Object> defaultValues = new ArrayList<>();
+            for ( ModelField field : fields ) {
+                if ( field.isForeignKey() ) {
+                    defaultValues.add(null);
+                } else {
+                    defaultValues.add(field.getDefaultValue());
+                }
+            }
+            return defaultValues;
+        }
+
     }
 
     interface ModelTable {
@@ -528,6 +592,7 @@ public class DataBase extends AbstractDataBase
 
         String createTableStatement();
 
+        List<Object> getDefaultValues();
     }
 
     private static class ModelRegistry
@@ -845,8 +910,28 @@ public class DataBase extends AbstractDataBase
 
         // Now let's create the model
         ModelTable modelTable = _modelRegistry.getTable(model);
-        String sql = "INSERT INTO " + modelTable.getName() + " DEFAULT VALUES";
-        _execute(sql);
+        List<Object> defaultValues = modelTable.getDefaultValues();
+        List<String> fieldNames    = modelTable.getFields().stream().map(ModelField::getName).collect(Collectors.toList());
+        int idIndex = -1;
+        for ( int i = 0; i < fieldNames.size(); i++ ) {
+            if ( fieldNames.get(i).equals("id") ) {
+                idIndex = i;
+                break;
+            }
+        }
+        if ( idIndex == -1 )
+            throw new IllegalArgumentException("The model '" + model.getName() + "' does not have an id field!");
+        else {
+            defaultValues.remove(idIndex);
+            fieldNames.remove(idIndex);
+        }
+        String sql =
+                "INSERT INTO " + _tableNameFromClass(model) +
+                " (" + String.join(", ", fieldNames) + ") " +
+                " VALUES (" + IntStream.range(0, fieldNames.size()).mapToObj(i -> " ? ").collect(Collectors.joining(",")) + ")";
+        boolean success = _update(sql, defaultValues);
+        if ( !success )
+            throw new IllegalArgumentException("Failed to create a new model of type '" + model.getName() + "'!");
 
         // Now let's get the id of the model
         sql = "SELECT last_insert_rowid()";
