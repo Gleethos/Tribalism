@@ -1,6 +1,6 @@
 package dal.models;
 
-import dal.Model;
+import dal.api.Model;
 import swingtree.api.mvvm.Var;
 
 public interface Address extends Model<Address> {

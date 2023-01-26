@@ -1,4 +1,4 @@
-package dal;
+package dal.api;
 
 import swingtree.api.mvvm.Val;
 
