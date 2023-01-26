@@ -2,6 +2,7 @@ package dal
 
 import dal.models.Address
 import dal.models.Person
+import dal.models.Workplace
 import spock.lang.Narrative
 import spock.lang.Specification
 import spock.lang.Title
@@ -99,6 +100,39 @@ class DataBase_Spec extends Specification
             person2.address().set(address)
         then :
             person2.address().get() == address
+
+        cleanup:
+            db.close()
+    }
+
+    def 'We can create a "Workplace" referencing multiple people.'()
+    {
+        reportInfo """
+            This feature demonstrates how to create a table that references multiple other tables.
+        """
+        given : 'We create a database instance for testing, the database will be opened in a test folder.'
+            def db = new DataBase(TEST_DB_FILE)
+            db.dropAllTables()
+        expect : 'Initially there are no tables in the database.'
+            db.listOfAllTableNames() == []
+
+        when : 'We request the necessary table creations for the model type in the database...'
+            db.createTablesFor(Workplace, Person, Address)
+
+        then : 'The database should now contain two tables.'
+            db.listOfAllTableNames() as Set == ["dal_models_Address_table", "dal_models_Workplace_table", "dal_models_Person_table"] as Set
+
+        when : 'We create a new workplace with and address and 2 people working there.'
+            var address = db.create(Address)
+            var person = db.create(Person)
+            var person2 = db.create(Person)
+            var workplace = db.create(Workplace)
+            workplace.address().set(address)
+            workplace.employees().add(person)
+            workplace.employees().add(person2)
+        then :
+            workplace.address().get() == address
+            workplace.employees().toSet() == [person, person2] as Set
 
         cleanup:
             db.close()

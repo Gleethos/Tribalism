@@ -36,6 +36,141 @@ public class DataBase extends AbstractDataBase
         INTERMEDIATE_TABLE
     }
 
+    private static class ModelProperty implements Var<Object> {
+
+        private final DataBase _dataBase;
+        private final int _id;
+        private final String _fieldName;
+        private final String _tableName;
+        private final Class<?> _propertyValueType;
+
+        private ModelProperty(DataBase dataBase, int id, String fieldName, String tableName, Class<?> propertyValueType) {
+            _dataBase = dataBase;
+            _id = id;
+            _fieldName = fieldName;
+            _tableName = tableName;
+            _propertyValueType = propertyValueType;
+        }
+
+        @Override
+        public Object orElseThrow() {
+            Object o =  _get();
+            if ( o == null )
+                throw new NoSuchElementException("No value present");
+            return o;
+        }
+
+        private Object _get() {
+            Object value;
+            StringBuilder select = new StringBuilder();
+            select.append("SELECT ").append(_fieldName)
+                    .append(" FROM ").append(_tableName)
+                    .append(" WHERE id = ?");
+
+            Map<String, List<Object>> result = _dataBase._query(select.toString(), Collections.singletonList(_id));
+            if (result.isEmpty())
+                throw new IllegalStateException("No result for query: '" + select + "' with id: " + _id );
+            else {
+                List<Object> values = result.get(_fieldName);
+                if (values.isEmpty())
+                    throw new IllegalStateException("Failed to find table entry for id " + _id);
+                else if (values.size() > 1)
+                    throw new IllegalStateException("Found more than one table entry for id " + _id);
+                else
+                    value = values.get(0);
+            }
+
+            if ( !Model.class.isAssignableFrom(_propertyValueType) )
+                return value;
+            else {
+                // A foreign key to another model! We already have the id, so we can just create the model
+                // and return it.
+                // But first let's check if the object we found is not null and actually a number
+                if ( value == null )
+                    throw new IllegalStateException("The foreign key value is null");
+                else if ( !Number.class.isAssignableFrom(value.getClass()) )
+                    throw new IllegalStateException("The foreign key value is not a number");
+                else {
+                    // We have a number, so we can find the model
+                    int foreignKeyId = ((Number) value).intValue();
+                    Class<? extends Model<?>> foreignKeyModelClass = (Class<? extends Model<?>>) _propertyValueType;
+                    value = _dataBase.select((Class) foreignKeyModelClass, foreignKeyId);
+                    if ( value == null )
+                        throw new IllegalStateException("Failed to find model of type " + foreignKeyModelClass.getName() + " with id " + foreignKeyId);
+                    else
+                        return value;
+                }
+            }
+        }
+
+        @Override
+        public Var<Object> set(Object newItem) {
+            if ( !(newItem instanceof Model<?>) ) {
+                String update = "UPDATE " + _tableName +
+                                " SET " + _fieldName +
+                                " = ? WHERE id = ?";
+                boolean success = _dataBase._update(update, Arrays.asList(newItem, _id));
+                if ( !success )
+                    throw new IllegalStateException("Failed to update table entry for id " + _id);
+            } else {
+                // We have a model, so we need to update the foreign key
+                Model<?> model = (Model<?>) newItem;
+                StringBuilder update = new StringBuilder();
+                update.append("UPDATE ");
+                update.append(_tableName);
+                update.append(" SET ");
+                update.append(_fieldName);
+                update.append(" = ? WHERE id = ?");
+                boolean success = _dataBase._update(update.toString(), Arrays.asList(model.id().get(), _id));
+                if ( !success )
+                    throw new IllegalStateException("Failed to update table entry for id " + _id);
+            }
+            return this;
+        }
+
+        @Override
+        public Var<Object> withId(String id) {
+            throw new UnsupportedOperationException();
+        }
+
+        @Override
+        public Var<Object> onAct(Action<ValDelegate<Object>> action) { return this; }
+
+        @Override
+        public Var<Object> act() { return this; }
+
+        @Override
+        public Var<Object> act(Object newValue) { return set(newValue); }
+
+        @Override
+        public Object orElseNullable(Object other) {
+            var o = _get();
+            if ( o == null )
+                return other;
+            else
+                return o;
+        }
+
+        @Override public boolean isPresent() { return orElseNull() != null; }
+
+        @Override
+        public <U> Val<U> viewAs(Class<U> type, Function<Object, U> mapper) {
+            throw new UnsupportedOperationException();
+        }
+
+        @Override public String id() { return ""; }
+
+        @Override
+        public Class<Object> type() { return (Class<Object>) _propertyValueType; }
+
+        @Override
+        public Val<Object> onShow(Action<ValDelegate<Object>> displayAction) { return this; }
+
+        @Override public Val<Object> show() { return this; }
+
+        @Override public boolean allowsNull() { return true; }
+    }
+
     private static class ModelField {
 
         private final Method method;
@@ -266,133 +401,11 @@ public class DataBase extends AbstractDataBase
         }
 
         public Val<Object> asProperty(DataBase db, int id) {
-            var prop = new Var<>() {
-                @Override
-                public Object orElseThrow() {
-                    Object o =  _get();
-                    if ( o == null )
-                        throw new NoSuchElementException("No value present");
-                    return o;
-                }
-
-                private Object _get() {
-                    Object value;
-                    StringBuilder select = new StringBuilder();
-                    select.append("SELECT ");
-                    select.append(ModelField.this.getName());
-                    select.append(" FROM ");
-                    select.append(_tableNameFromClass(ModelField.this.ownerModelClass));
-                    select.append(" WHERE id = ?");
-                    Map<String, List<Object>> result = db._query(select.toString(), Collections.singletonList(id));
-                    if (result.isEmpty())
-                        throw new IllegalStateException("No result for query: '" + select + "' with id: " + id );
-                    else {
-                        List<Object> values = result.get(ModelField.this.getName());
-                        if (values.isEmpty())
-                            throw new IllegalStateException("Failed to find table entry for id " + id);
-                        else if (values.size() > 1)
-                            throw new IllegalStateException("Found more than one table entry for id " + id);
-                        else
-                            value = values.get(0);
-                    }
-
-                    if ( !Model.class.isAssignableFrom(propertyValueType) )
-                        return value;
-                    else {
-                        // A foreign key to another model! We already have the id, so we can just create the model
-                        // and return it.
-                        // But first let's check if the object we found is not null and actually a number
-                        if ( value == null )
-                            throw new IllegalStateException("The foreign key value is null");
-                        else if ( !Number.class.isAssignableFrom(value.getClass()) )
-                            throw new IllegalStateException("The foreign key value is not a number");
-                        else {
-                            // We have a number, so we can find the model
-                            int foreignKeyId = ((Number) value).intValue();
-                            Class<? extends Model<?>> foreignKeyModelClass = (Class<? extends Model<?>>) propertyValueType;
-                            value = db.select((Class) foreignKeyModelClass, foreignKeyId);
-                            if ( value == null )
-                                throw new IllegalStateException("Failed to find model of type " + foreignKeyModelClass.getName() + " with id " + foreignKeyId);
-                            else
-                                return value;
-                        }
-                    }
-                }
-
-                @Override
-                public Var<Object> set(Object newItem) {
-                    if ( !(newItem instanceof Model<?>) ) {
-                        StringBuilder update = new StringBuilder();
-                        update.append("UPDATE ");
-                        update.append(_tableNameFromClass(ModelField.this.method.getDeclaringClass()));
-                        update.append(" SET ");
-                        update.append(ModelField.this.getName());
-                        update.append(" = ? WHERE id = ?");
-                        boolean success = db._update(update.toString(), Arrays.asList(newItem, id));
-                        if ( !success )
-                            throw new IllegalStateException("Failed to update table entry for id " + id);
-                    } else {
-                        // We have a model, so we need to update the foreign key
-                        Model<?> model = (Model<?>) newItem;
-                        StringBuilder update = new StringBuilder();
-                        update.append("UPDATE ");
-                        update.append(_tableNameFromClass(ModelField.this.ownerModelClass));
-                        update.append(" SET ");
-                        update.append(ModelField.this.getName());
-                        update.append(" = ? WHERE id = ?");
-                        boolean success = db._update(update.toString(), Arrays.asList(model.id().get(), id));
-                        if ( !success )
-                            throw new IllegalStateException("Failed to update table entry for id " + id);
-                    }
-                    return this;
-                }
-
-                @Override
-                public Var<Object> withId(String id) {
-                    throw new UnsupportedOperationException();
-                }
-
-                @Override
-                public Var<Object> onAct(Action<ValDelegate<Object>> action) { return this; }
-
-                @Override
-                public Var<Object> act() { return this; }
-
-                @Override
-                public Var<Object> act(Object newValue) { return set(newValue); }
-
-                @Override
-                public Object orElseNullable(Object other) {
-                    var o = _get();
-                    if ( o == null )
-                        return other;
-                    else
-                        return o;
-                }
-
-                @Override public boolean isPresent() { return orElseNull() != null; }
-
-                @Override
-                public <U> Val<U> viewAs(Class<U> type, Function<Object, U> mapper) {
-                    throw new UnsupportedOperationException();
-                }
-
-                @Override public String id() { return ""; }
-
-                @Override
-                public Class<Object> type() { return (Class<Object>) ModelField.this.propertyValueType; }
-
-                @Override
-                public Val<Object> onShow(Action<ValDelegate<Object>> displayAction) { return this; }
-
-                @Override public Val<Object> show() { return this; }
-
-                @Override public boolean allowsNull() { return true; }
-            };
+            var prop = new ModelProperty(db, id, this.getName(), _tableNameFromClass(ownerModelClass), propertyValueType);
 
             Class<?> propertyType = ModelField.this.propertyType;
-            // Let's create the proxy:
 
+            // Let's create the proxy:
             return  (Val<Object>) Proxy.newProxyInstance(
                     propertyType.getClassLoader(),
                     new Class[]{propertyType},
@@ -401,10 +414,6 @@ public class DataBase extends AbstractDataBase
                         return method.invoke(prop, args);
                     }
             );
-        }
-
-        public Vars<Object> asProperties(DataBase db, int id) {
-            throw new UnsupportedOperationException();
         }
 
         public Optional<String> asSqlColumn() {
@@ -444,6 +453,175 @@ public class DataBase extends AbstractDataBase
             } else
                 throw new IllegalStateException("Unknown field kind: " + this.kind);
         }
+
+        public Vals<Object> asProperties(DataBase db, int id) {
+            /*
+                Now this is interesting.
+                We have a list of properties represented in the form
+                of an intermediate table.
+                We know the name of the table, and we know the id of the
+                model to which the table/model field belong.
+                What we do not know is the ids of the models that are
+                referenced by the intermediate table.
+                So we need to query the table to find out.
+            */
+            ModelTable intermediateTable = getIntermediateTable().orElse(null);
+            // We expect it to exist:
+            if ( intermediateTable == null )
+                throw new IllegalStateException("The intermediate table does not exist");
+
+            // We need to find the name of the column that contains the ids of the models
+            // that are referenced by the intermediate table:
+            String otherTable = _tableNameFromClass(propertyValueType);
+            String otherTableIdColumn = "fk_" + otherTable + "_id";
+            String thisTableIdColumn = "fk_" + _tableNameFromClass(ownerModelClass) + "_id";
+            String query = "SELECT " + otherTableIdColumn + " FROM " + intermediateTable.getName() + " WHERE " + thisTableIdColumn + " = ?";
+
+            List<Object> param = Collections.singletonList(id);
+            Map<String, List<Object>> result = db._query(query, param);
+            // The result should contain a single column:
+            if ( result.size() != 1 )
+                throw new IllegalStateException("The result should contain a single column");
+            // The column should be named after the id column of the other table:
+            if ( !result.containsKey(otherTableIdColumn) )
+                throw new IllegalStateException("The column should be named after the id column of the other table");
+            // The column should contain a list of ids:
+            List<Object> found = result.get(otherTableIdColumn);
+            List<Integer> ids = new ArrayList<>(found.stream().map(o -> (Integer) o).toList());
+            Vars<Object> vars = new Vars<>() {
+
+                private Model<?> select(int id) {
+                    // We need to get the model from the database:
+                    Class<Model> propertyValueType = (Class<Model>) ModelField.this.propertyValueType;
+                    Model<?> model = db.select(propertyValueType, id);
+                    return model;
+                }
+
+                @Override
+                public Iterator<Object> iterator() {
+                    // We need to map the ids to the actual models:
+                    return ids.stream().map(id -> {
+                        // We need to get the model from the database:
+                        return (Object) select(id);
+                    }).iterator();
+                }
+
+                @Override
+                public Class<Object> type() { return (Class<Object>) ModelField.this.propertyValueType; }
+
+                @Override public int size() { return ids.size(); }
+
+                @Override
+                public Var<Object> at(int index) {
+                    return new ModelProperty(
+                            db,
+                            ids.get(index),
+                            "fk_" + otherTable + "_id",
+                            intermediateTable.getName(),
+                            propertyValueType
+                        );
+                }
+
+                @Override
+                public Vals<Object> onShow(Action<ValsDelegate<Object>> action) {
+                    return null;
+                }
+
+                @Override
+                public Vals<Object> show() {
+                    throw new UnsupportedOperationException("Not supported yet.");
+                }
+
+                @Override
+                public Vars<Object> removeAt(int index) {
+                    /*
+                        Basically all we need to do is delete a row from the intermediate table!
+                        Which row? The one that contains the id of the left model and the id of the
+                        model at the given index.
+                    */
+                    int leftId = id;
+                    int rightId = ids.get(index);
+                    String query = "DELETE FROM " + intermediateTable.getName() + " " +
+                                    "WHERE " + thisTableIdColumn + " = ? AND " + otherTableIdColumn + " = ?";
+                    List<Object> params = List.of(leftId, rightId);
+                    db._update(query, params);
+                    ids.remove(index);
+                    return this;
+                }
+
+                @Override
+                public Vars<Object> addAt(int index, Var<Object> var) {
+                    /*
+                        We need to insert a row into the intermediate table! Basic stuff...
+                    */
+                    int leftId = id;
+                    int rightId = (Integer) var.get();
+                    String query = "INSERT INTO " + intermediateTable.getName() + " " +
+                                    "(" + thisTableIdColumn + ", " + otherTableIdColumn + ") " +
+                                    "VALUES (?, ?)";
+                    List<Object> params = List.of(leftId, rightId);
+                    db._update(query, params);
+                    ids.add(index, rightId);
+                    return this;
+                }
+
+                @Override
+                public Vars<Object> setAt(int index, Var<Object> var) {
+                    /*
+                        This is a bit more complicated.
+                        We need to update the row in the intermediate table.
+                        More specifically, we need to update the id of the model that is referenced
+                        by the intermediate table.
+                    */
+                    int leftId = id;
+                    int rightId = (Integer) var.get();
+                    int oldRightId = ids.get(index);
+
+                    String update = "UPDATE " + intermediateTable.getName() +
+                                    " SET " + otherTableIdColumn +
+                                    " = ? WHERE id = ?";
+
+                    List<Object> params = List.of(rightId, oldRightId);
+                    db._update(update, params);
+                    ids.set(index, rightId);
+                    return this;
+                }
+
+                @Override
+                public Vars<Object> clear() {
+                    /*
+                        We need to delete all rows from the intermediate table that contain the id
+                        of the left model.
+                    */
+                    String query = "DELETE FROM " + intermediateTable.getName() + " WHERE " + thisTableIdColumn + " = ?";
+                    List<Object> params = List.of(id);
+                    db._update(query, params);
+                    ids.clear();
+                    return this;
+                }
+
+                @Override
+                public void sort(Comparator<Object> comparator) {
+                    throw new UnsupportedOperationException("Not supported yet."); // How to sort on a database?
+                }
+
+                @Override
+                public void makeDistinct() {
+                    throw new UnsupportedOperationException("Not supported yet."); // How to make distinct on a database?
+                }
+            };
+
+            // Let's create the proxy:
+            return  (Vals<Object>) Proxy.newProxyInstance(
+                    propertyType.getClassLoader(),
+                    new Class[]{propertyType},
+                    (proxy, method, args) -> {
+                        // We simply delegate to the property
+                        return method.invoke(vars, args);
+                    }
+            );
+        }
+
     }
 
     private static class BasicModelTable implements ModelTable
@@ -941,8 +1119,23 @@ public class DataBase extends AbstractDataBase
 
         // Now let's create the model
         ModelTable modelTable = _modelRegistry.getTable(model);
+        List<ModelField> fields = modelTable.getFields();
         List<Object> defaultValues = modelTable.getDefaultValues();
-        List<String> fieldNames    = modelTable.getFields().stream().map(ModelField::getName).collect(Collectors.toList());
+        List<String> fieldNames    = fields.stream().map(ModelField::getName).collect(Collectors.toList());
+        /*
+            Now there might be a problem here because some model fields might not actually exist
+            in the table explicitly. Namely, if the model references multiple other models
+            through a Vars or Vals field!
+            So we need to check for that and remove those fields from the list of fields
+        */
+        for ( int i = fields.size()-1; i >= 0; i-- ) {
+            ModelField field = fields.get(i);
+            if ( field.getKind() == FieldKind.INTERMEDIATE_TABLE ) {
+                fieldNames.remove(i);
+                defaultValues.remove(i);
+            }
+        }
+
         int idIndex = -1;
         for ( int i = 0; i < fieldNames.size(); i++ ) {
             if ( fieldNames.get(i).equals("id") ) {
@@ -956,13 +1149,26 @@ public class DataBase extends AbstractDataBase
             defaultValues.remove(idIndex);
             fieldNames.remove(idIndex);
         }
+        String tableName = _tableNameFromClass(model);
         String sql =
-                "INSERT INTO " + _tableNameFromClass(model) +
+                "INSERT INTO " + tableName +
                 " (" + String.join(", ", fieldNames) + ") " +
                 " VALUES (" + IntStream.range(0, fieldNames.size()).mapToObj(i -> " ? ").collect(Collectors.joining(",")) + ")";
         boolean success = _update(sql, defaultValues);
         if ( !success )
-            throw new IllegalArgumentException("Failed to create a new model of type '" + model.getName() + "'!");
+            throw new IllegalArgumentException(
+                    "Failed to create create a database entry for model '" + model.getName() + "' " +
+                    "using SQL code '" + sql + "' and default values [" +
+                        defaultValues.stream().map( o -> {
+                            if ( o == null )
+                                return "null";
+                            else if ( o instanceof String )
+                                return "\"" + o + "\"";
+                            else
+                                return o.toString();
+                        }).collect(Collectors.joining(", "))
+                    + "]!"
+            );
 
         // Now let's get the id of the model
         sql = "SELECT last_insert_rowid()";
