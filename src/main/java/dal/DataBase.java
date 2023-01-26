@@ -333,6 +333,10 @@ public class DataBase extends AbstractDataBase
             return propertyValueType;
         }
 
+        public Class<?> getPropType() {
+            return propertyType;
+        }
+
         public boolean isList() {
             return Vals.class.isAssignableFrom(propertyType);
         }
@@ -805,6 +809,14 @@ public class DataBase extends AbstractDataBase
             throw new IllegalArgumentException("No field with name " + name + " found!");
         }
 
+        default ModelField getField(Class<?> propertyType) {
+            for ( ModelField field : getFields() ) {
+                if ( field.getPropType().equals(propertyType) )
+                    return field;
+            }
+            throw new IllegalArgumentException("No field with type " + propertyType.getName() + " found!");
+        }
+
         List<Class<? extends Model<?>>> getReferencedModels();
 
         default Optional<Class<? extends Model<?>>> getModelInterface() { return Optional.empty(); }
@@ -1275,5 +1287,250 @@ public class DataBase extends AbstractDataBase
         boolean success = _update(sql, Collections.singletonList(id));
     }
 
+    interface Junction<M extends Model<M>> extends Get<M> {
+
+        <T> WhereField<M, T> and(Class<? extends Val<T>> field);
+
+        <T> WhereField<M, T> or(Class<? extends Val<T>> field);
+
+        default List<M> limit(int limit) {
+            return toList().subList(0, limit);
+        }
+
+        Get<M> orderAscendingBy(Class<? extends Val<?>> field);
+
+        Get<M> orderDescendingBy(Class<? extends Val<?>> field);
+
+    }
+
+    interface Get<M extends Model<M>> {
+
+        List<M> toList();
+
+    }
+
+    interface Where<M extends Model<M>> extends Get<M> {
+
+        <T> WhereField<M, T> where(Class<? extends Val<T>> field);
+
+    }
+
+    interface WhereField<M extends Model<M>, T> {
+
+            Junction<M> equal(T value);
+
+            Junction<M> notEqual(T value);
+
+            Junction<M> like(T value);
+
+            Junction<M> notLike(T value);
+
+            Junction<M> in(T... values);
+
+            Junction<M> notIn(T... values);
+
+            Junction<M> isNull();
+
+            Junction<M> isNotNull();
+
+            Junction<M> greaterThan(T value);
+
+            Junction<M> greaterThanOrEqual(T value);
+
+            Junction<M> lessThan(T value);
+
+            Junction<M> lessThanOrEqual(T value);
+
+    }
+
+    public <M extends Model<M>> Where<M> select(Class<M> model) {
+        StringBuilder sql = new StringBuilder();
+        sql.append("SELECT * FROM ").append(_tableNameFromClass(model)).append(" WHERE ");
+        ModelTable table = _modelRegistry.getTable(model);
+        List<Object> values = new ArrayList<>();
+        Junction[] junc = {null};
+        WhereField<M, Object> valueCollector = new WhereField<M, Object>() {
+            @Override
+            public Junction<M> equal(Object value) {
+                // First sql:
+                sql.append(" = ?");
+                // Then values:
+                values.add(value);
+                return junc[0];
+            }
+
+            @Override
+            public Junction<M> notEqual(Object value) {
+                // First sql:
+                sql.append(" != ?");
+                // Then values:
+                values.add(value);
+                return junc[0];
+            }
+
+            @Override
+            public Junction<M> like(Object value) {
+                // First sql:
+                sql.append(" LIKE ?");
+                // Then values:
+                values.add(value);
+                return junc[0];
+            }
+
+            @Override
+            public Junction<M> notLike(Object value) {
+                // First sql:
+                sql.append(" NOT LIKE ?");
+                // Then values:
+                values.add(value);
+                return junc[0];
+            }
+
+            @Override
+            public Junction<M> in(Object... objects) {
+                // First sql:
+                sql.append(" IN (");
+                for ( int i = 0; i < objects.length; i++ ) {
+                    sql.append("?");
+                    if ( i < objects.length-1 )
+                        sql.append(", ");
+                }
+                sql.append(")");
+                // Then values:
+                values.addAll(Arrays.asList(objects));
+                return junc[0];
+            }
+
+            @Override
+            public Junction<M> notIn(Object... objects) {
+                // First sql:
+                sql.append(" NOT IN (");
+                for ( int i = 0; i < objects.length; i++ ) {
+                    sql.append("?");
+                    if ( i < objects.length-1 )
+                        sql.append(", ");
+                }
+                sql.append(")");
+                // Then values:
+                values.addAll(Arrays.asList(objects));
+                return junc[0];
+            }
+
+            @Override
+            public Junction<M> isNull() {
+                // First sql:
+                sql.append(" IS NULL");
+                // Then values:
+                return junc[0];
+            }
+
+            @Override
+            public Junction<M> isNotNull() {
+                // First sql:
+                sql.append(" IS NOT NULL");
+                // Then values:
+                return junc[0];
+            }
+
+            @Override
+            public Junction<M> greaterThan(Object value) {
+                // First sql:
+                sql.append(" > ?");
+                // Then values:
+                values.add(value);
+                return junc[0];
+            }
+
+            @Override
+            public Junction<M> greaterThanOrEqual(Object value) {
+                // First sql:
+                sql.append(" >= ?");
+                // Then values:
+                values.add(value);
+                return junc[0];
+            }
+
+            @Override
+            public Junction<M> lessThan(Object value) {
+                // First sql:
+                sql.append(" < ?");
+                // Then values:
+                values.add(value);
+                return junc[0];
+            }
+
+            @Override
+            public Junction<M> lessThanOrEqual(Object value) {
+                // First sql:
+                sql.append(" <= ?");
+                // Then values:
+                values.add(value);
+                return junc[0];
+            }
+
+        };
+
+        junc[0] = new Junction<M>() {
+
+            @Override
+            public <T> WhereField<M, T> and(Class<? extends Val<T>> field) {
+                sql.append(" AND ");
+                sql.append(table.getField(field).getName());
+                return (WhereField<M, T>) valueCollector;
+            }
+
+            @Override
+            public <T> WhereField<M, T> or(Class<? extends Val<T>> field) {
+                sql.append(" OR ");
+                sql.append(table.getField(field).getName());
+                return (WhereField<M, T>) valueCollector;
+            }
+
+            @Override
+            public Get<M> orderAscendingBy(Class<? extends Val<?>> field) {
+                sql.append(" ORDER BY ");
+                sql.append(table.getField(field).getName());
+                sql.append(" ASC");
+                return this;
+            }
+
+            @Override
+            public Get<M> orderDescendingBy(Class<? extends Val<?>> field) {
+                sql.append(" ORDER BY ");
+                sql.append(table.getField(field).getName());
+                sql.append(" DESC");
+                return this;
+            }
+
+            @Override
+            public List<M> toList() {
+                Map<String, List<Object>> result = _query(sql.toString(), values);
+                List<Integer> ids = result.getOrDefault("id", Collections.emptyList())
+                                            .stream()
+                                            .map( o -> (int) o )
+                                            .toList();
+
+                // Now let's select them:
+                return ids.stream()
+                            .map( id -> select(model, id) )
+                            .toList();
+            }
+        };
+
+        return new Where<M>() {
+            @Override
+            public <T> WhereField<M, T> where(Class<? extends Val<T>> field) {
+                // First sql:
+                sql.append(table.getField(field).getName()).append(" ");
+                // Then values:
+                return (WhereField<M, T>) valueCollector;
+            }
+
+            @Override
+            public List<M> toList() {
+                return junc[0].toList();
+            }
+        };
+    }
 
 }
