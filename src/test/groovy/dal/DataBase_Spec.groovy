@@ -45,7 +45,7 @@ class DataBase_Spec extends Specification
             db.listOfAllTableNames() as Set == ["dal_models_Person_table", "dal_models_Address_table"] as Set
         and : 'The table code is as expected!'
             table1 == "CREATE TABLE dal_models_Person_table (id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT, fk_address_id INTEGER REFERENCES dal_models_Address_table(id), lastName TEXT NOT NULL, firstName TEXT NOT NULL)"
-            table2 == "CREATE TABLE dal_models_Address_table (id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT, country TEXT NOT NULL, postalCode TEXT NOT NULL, street TEXT NOT NULL, city TEXT NOT NULL)"
+            table2 == "CREATE TABLE dal_models_Address_table (id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT, country TEXT NOT NULL, street TEXT NOT NULL, postalCode TEXT NOT NULL, city TEXT NOT NULL)"
 
 
         when : 'We try to create a table that already exists...'
@@ -65,6 +65,40 @@ class DataBase_Spec extends Specification
         then :
             person.firstName().get() == "Jane"
             person.lastName().get() == "Doe"
+
+        when : 'We create and modify an address...'
+            var address = db.create(Address)
+            address.country().set("Germany")
+            address.postalCode().set("12345")
+            address.street().set("Main Street")
+            address.city().set("Berlin")
+        then :
+            address.country().get() == "Germany"
+            address.postalCode().get() == "12345"
+            address.street().get() == "Main Street"
+            address.city().get() == "Berlin"
+        when : 'We assign the address to Jane Doe...'
+            person.address().set(address)
+        then :
+            person.address().get() == address
+        and :
+            person.address().get().country().get() == "Germany"
+            person.address().get().postalCode().get() == "12345"
+            person.address().get().street().get() == "Main Street"
+            person.address().get().city().get() == "Berlin"
+        when : 'We manually update the address...'
+            db.execute("UPDATE dal_models_Address_table SET country = 'USA', postalCode = '54321', street = 'Main Street', city = 'New York' WHERE id = ${address.id().get()}")
+        then :
+            person.address().get().country().get() == "USA"
+            person.address().get().postalCode().get() == "54321"
+            person.address().get().street().get() == "Main Street"
+            person.address().get().city().get() == "New York"
+
+        when : 'We create a new person and assign the address to him...'
+            var person2 = db.create(Person)
+            person2.address().set(address)
+        then :
+            person2.address().get() == address
 
         cleanup:
             db.close()

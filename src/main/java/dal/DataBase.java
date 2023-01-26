@@ -39,7 +39,7 @@ public class DataBase extends AbstractDataBase
     private static class ModelField {
 
         private final Method method;
-        private final Class<? extends Model<?>> ownerClass;
+        private final Class<? extends Model<?>> ownerModelClass;
         private final Class<?> propertyValueType;
         private final Class<?> propertyType;
         private final FieldKind kind;
@@ -47,7 +47,7 @@ public class DataBase extends AbstractDataBase
 
         private ModelField(Method method, Class<? extends Model<?>> ownerClass, List<Class<? extends Model<?>>> otherModels) {
             this.method = method;
-            this.ownerClass = ownerClass;
+            this.ownerModelClass = ownerClass;
             this.propertyType = method.getReturnType();
             this.otherModels = Collections.unmodifiableList(otherModels);
 
@@ -190,6 +190,10 @@ public class DataBase extends AbstractDataBase
             return method.getName();
         }
 
+        public boolean isField(String name) {
+            return method.getName().equals(name);
+        }
+
         public Class<?> getType() {
             return propertyValueType;
         }
@@ -277,7 +281,7 @@ public class DataBase extends AbstractDataBase
                     select.append("SELECT ");
                     select.append(ModelField.this.getName());
                     select.append(" FROM ");
-                    select.append(_tableNameFromClass(ModelField.this.ownerClass));
+                    select.append(_tableNameFromClass(ModelField.this.ownerModelClass));
                     select.append(" WHERE id = ?");
                     Map<String, List<Object>> result = db._query(select.toString(), Collections.singletonList(id));
                     if (result.isEmpty())
@@ -317,9 +321,7 @@ public class DataBase extends AbstractDataBase
 
                 @Override
                 public Var<Object> set(Object newItem) {
-                    if ( newItem instanceof Model<?>) {
-                        throw new UnsupportedOperationException(); // TODO
-                    } else {
+                    if ( !(newItem instanceof Model<?>) ) {
                         StringBuilder update = new StringBuilder();
                         update.append("UPDATE ");
                         update.append(_tableNameFromClass(ModelField.this.method.getDeclaringClass()));
@@ -327,6 +329,18 @@ public class DataBase extends AbstractDataBase
                         update.append(ModelField.this.getName());
                         update.append(" = ? WHERE id = ?");
                         boolean success = db._update(update.toString(), Arrays.asList(newItem, id));
+                        if ( !success )
+                            throw new IllegalStateException("Failed to update table entry for id " + id);
+                    } else {
+                        // We have a model, so we need to update the foreign key
+                        Model<?> model = (Model<?>) newItem;
+                        StringBuilder update = new StringBuilder();
+                        update.append("UPDATE ");
+                        update.append(_tableNameFromClass(ModelField.this.ownerModelClass));
+                        update.append(" SET ");
+                        update.append(ModelField.this.getName());
+                        update.append(" = ? WHERE id = ?");
+                        boolean success = db._update(update.toString(), Arrays.asList(model.id().get(), id));
                         if ( !success )
                             throw new IllegalStateException("Failed to update table entry for id " + id);
                     }
@@ -580,7 +594,7 @@ public class DataBase extends AbstractDataBase
         List<ModelField> getFields();
         default ModelField getField(String name) {
             for ( ModelField field : getFields() ) {
-                if ( field.getName().equals(name) )
+                if ( field.isField(name) )
                     return field;
             }
             throw new IllegalArgumentException("No field with name " + name + " found!");
@@ -854,6 +868,23 @@ public class DataBase extends AbstractDataBase
         @Override
         public Object invoke(Object proxy, Method method, Object[] args) throws Throwable {
             String methodName = method.getName();
+
+            /*
+                First let's do the easy stuff: Equals and hashcode
+                They are easy because we can just use the id :)
+                Let's check:
+             */
+            if ( methodName.equals("equals") ) {
+                if ( args.length != 1 )
+                    throw new IllegalArgumentException("The equals method must have exactly one argument!");
+                if ( !Model.class.isAssignableFrom(args[0].getClass()) )
+                    return false;
+                return _id == ((Model<?>) args[0]).id().get();
+            }
+            if ( methodName.equals("hashCode") ) {
+                return _id;
+            }
+
             ModelField modelField = _modelTable.getField(methodName);
             if ( modelField == null )
                 throw new IllegalArgumentException("The model '" + _modelTable.getModelInterface().get().getName() + "' does not have a property named '" + methodName + "'!");
