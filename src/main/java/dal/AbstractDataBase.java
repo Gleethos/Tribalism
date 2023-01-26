@@ -354,7 +354,7 @@ public class AbstractDataBase {
      * SQL execution on connection!
      * @param sql
      */
-    protected boolean _execute( String sql, List<Object> values ){
+    protected boolean _update(String sql, List<Object> values ){
         Function<String, String> exceptionMessageCreator = (s)->{
             String[] parts = s.split(" \\? ");
             String joined = String.join(",",values.stream().map(v->"'"+v.toString()+"'").collect(Collectors.toList()));
@@ -621,7 +621,7 @@ public class AbstractDataBase {
 
     protected static String _fromJavaTypeToDBType(Class<?> type) {
         if ( type == Integer.class || type == int.class )
-            return "INT";
+            return "INTEGER";
         else if ( type == String.class)
             return "TEXT";
         else if ( type == Boolean.class || type == boolean.class )
@@ -652,6 +652,42 @@ public class AbstractDataBase {
             case "TINYINT" -> Byte.class;
             default -> throw new IllegalArgumentException("The type " + type + " is not supported");
         };
+    }
+
+
+    protected static boolean _isBasicDataType(Class<?> type) {
+        return
+                type.equals(String.class) ||
+                        type.equals(int.class) ||
+                        type.equals(boolean.class) ||
+                        type.equals(Integer.class) ||
+                        type.equals(Boolean.class) ||
+                        type.equals(Long.class) ||
+                        type.equals(long.class) ||
+                        type.equals(Double.class) ||
+                        type.equals(double.class) ||
+                        type.equals(Float.class) ||
+                        type.equals(float.class) ||
+                        type.equals(Short.class) ||
+                        type.equals(short.class) ||
+                        type.equals(Byte.class) ||
+                        type.equals(byte.class) ||
+                        type.equals(Character.class) ||
+                        type.equals(char.class);
+    }
+
+    protected static String _tableNameFromClass(Class<?> clazz) {
+        String tableName = clazz.getName();
+        // We replace the package dots with underscores:
+        // This is the name of the interface but where the '.' are replaced with '_'
+        tableName = tableName.replaceAll("\\.", "_");
+
+        // Let's use regex to check if the name is valid
+        if ( !tableName.matches("[a-zA-Z_][a-zA-Z0-9_]*") )
+            throw new IllegalArgumentException(
+                    "The name of the interface " + clazz.getName() + " is not a valid name for a table"
+            );
+        return tableName + "_table";
     }
 
 

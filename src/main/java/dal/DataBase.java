@@ -1,34 +1,19 @@
 package dal;
 
-import org.slf4j.Logger;
+import swingtree.api.mvvm.*;
 
 import java.io.File;
-import java.lang.reflect.Field;
-import java.lang.reflect.InvocationTargetException;
-import java.lang.reflect.ParameterizedType;
-import java.lang.reflect.Type;
+import java.lang.reflect.*;
 import java.util.*;
+import java.util.function.Function;
 
 /**
- *  This is a generic ORM mapper for SQLite databases
- *  which almost completely hides the database from the
- *  rest of the application.
- *  This also almost entirely avoids the usage of annotations
- *  by using reflection to get the information needed.
- *  So when creating a new table the name is based on the class name
- *  and the fields are based on the fields in the class.
- *  The only thing that needs to be done is to create a class
- *  with the fields that you want to be in the database.
- *  You also do not need to create an id field as this is done
- *  automatically (although it can be specified).
- *
+ *  This class constitutes both a representation of a database
+ *  and define an API which is in essence an interface based ORM.
  */
 public class DataBase extends AbstractDataBase
 {
-    Logger log = org.slf4j.LoggerFactory.getLogger(DataBase.class);
-
-    private final DataBaseRegistry _modelSummaries = new DataBaseRegistry();
-
+    private final ModelRegistry _modelRegistry = new ModelRegistry();
 
     DataBase(String location) {
         super(location, "", "");
@@ -38,42 +23,666 @@ public class DataBase extends AbstractDataBase
         super("jdbc:sqlite:"+new File("saves/dbs").getAbsolutePath(), "", "");
     }
 
-    private String _tableNameFromClass(Class<?> clazz) {
-        String tableName = clazz.getName();
-        // We replace the package dots with underscores:
-        tableName = tableName.replaceAll("\\.", "_");
-        return tableName + "_table";
+    public void execute(String sql) {
+        _execute(sql);
     }
 
-    private Optional<Class<?>> _classFromTableName(String tableName) {
-        try {
-            tableName = tableName.replace("_table", "");
-            tableName = tableName.replaceAll("_", ".");
-            return Optional.of(Class.forName(tableName));
-        } catch (ClassNotFoundException e) {
-            return Optional.empty();
+    private enum FieldKind {
+        ID,
+        VALUE,
+        FOREIGN_KEY,
+        INTERMEDIATE_TABLE
+    }
+
+    private static class ModelField {
+
+        private final Method method;
+        private final Class<?> propertyValueType;
+        private final Class<?> propertyType;
+        private final FieldKind kind;
+        private final List<Class<? extends Model<?>>> otherModels;
+
+        private ModelField(Method method, List<Class<? extends Model<?>>> otherModels) {
+            this.method = method;
+            this.propertyType = method.getReturnType();
+            this.otherModels = Collections.unmodifiableList(otherModels);
+
+            // First we check if the return type is a subclass of Val or Vals
+            boolean isVal = Val.class.isAssignableFrom(propertyType);
+            boolean isVals = Vals.class.isAssignableFrom(propertyType);
+
+            if ( !isVal && !isVals )
+                throw new IllegalArgumentException(
+                        "The return type of the method " + method.getName() + " is not a subclass of " +
+                        "either " + Val.class.getName() + " or " + Vals.class.getName() + "."
+                    );
+
+            // Great that is correct! But now we have another requirement:
+            /*
+                So a model interface might look something like this:
+                public interface Person extends Model<Person> {
+                    interface Name extends Var<String> {} // Val is a property type with getter and setter
+                    interface Age extends Var<Integer> {}
+                    interface Addresses extends Vars<Address> {} // Vars is a property type with getter and setter wrapping multiple values
+                    Name name();
+                    Age age();
+                }
+                Not only do we expect that the return type of the method is a subclass of Val...
+                ...we also expect it to be declared as an inner interface of the model interface!
+                This is because of readability and coherence and also
+                because we might need to be able to get the name of the field from the interface.
+
+                Ok, enough talk, let's check if the return type is declared as an inner interface of the model interface.
+            */
+            Class<?> declaringClass = method.getDeclaringClass();
+            Class<?> outerClassOfNestedClass = propertyType.getDeclaringClass();
+            if ( !declaringClass.equals(outerClassOfNestedClass) )
+                throw new IllegalArgumentException(
+                        "The return type of the method " + method.getName() + " is not declared as an inner interface of " + declaringClass.getName()
+                    );
+
+            // Now we can get the type of the value of the property
+            // This is a generic type parameter of the Val interface
+            // So in this example for "Name" it would be String
+            // and for "Age" it would be Integer:
+            /*
+                public interface Person extends Model<Person> {
+                    interface Name extends Val<String> {} // Val is a property type with getter and setter
+                    interface Age extends Val<Integer> {}
+                    Name name();
+                    Age age();
+                }
+             */
+            TypeVariable<?>[] typeParameters = propertyType.getTypeParameters();
+            if ( typeParameters.length != 0 )
+                throw new IllegalArgumentException(
+                        "The return type of the method " + method.getName() + " may not have generic parameters!"
+                    );
+            Type[] genericInterfaces = propertyType.getGenericInterfaces();
+            if ( genericInterfaces.length != 1 )
+                throw new IllegalArgumentException(
+                        "The return type of the method " + method.getName() + " must implement exactly one interface!"
+                    );
+
+            Type genericInterface = genericInterfaces[0];
+            Type[] actualTypeArguments = ((ParameterizedType) genericInterface).getActualTypeArguments();
+            propertyValueType = (Class<?>) actualTypeArguments[0];
+
+            // Now we need to determine the kind of the field, here are the possibilities:
+            /*
+                public interface Person extends Model<Person> {
+                    interface Address extends Var<Address> {}  // Kind: FOREIGN_KEY
+                    interface Name extends Var<String> {}      // Kind: VALUE
+                    interface Age extends Var<Integer> {}      // Kind: VALUE
+                    interface Children extends Vars<Person> {} // Kind: INTERMEDIATE_TABLE
+                }
+                // ... and ...
+                public interface Model<M> {
+                    interface Id extends Val<Integer> {} // Kind: ID
+                    Id id();
+                    ...
+                }
+             */
+
+            // First we check if the field is an ID field
+            if ( method.getName().equals("id") ) {
+                if ( !propertyType.equals(Model.Id.class) )
+                    throw new IllegalArgumentException(
+                            "The return type of the method " + method.getName() + " is not " + Model.Id.class.getName()
+                        );
+                kind = FieldKind.ID;
+            }
+            // Then we check if the field is a foreign key field
+            else if ( isVal ) {
+                if ( Model.class.isAssignableFrom(propertyValueType) ) {
+                    if ( otherModels.contains(propertyValueType) ) {
+                        kind = FieldKind.FOREIGN_KEY;
+                    }
+                    else
+                        throw new IllegalArgumentException(
+                                "The return type of the method " + method.getName() + " is a foreign key to a model " +
+                                "however the provided model type '"+propertyValueType.getName()+"' is not known " +
+                                "by the database!"
+                            );
+                }
+                else if (_isBasicDataType(propertyValueType)) {
+                    kind = FieldKind.VALUE;
+                }
+                else
+                    throw new IllegalArgumentException(
+                            "The return type of the method " + method.getName() + " is not a basic data type " +
+                            "and is not a foreign key to a model!"
+                        );
+            }
+            // Then we check if the field is an intermediate table field
+            else if ( isVals ) {
+                if ( otherModels.contains(propertyValueType) ) {
+                    kind = FieldKind.INTERMEDIATE_TABLE;
+                }
+                else {
+                    if ( _isBasicDataType(propertyValueType) )
+                        throw new IllegalArgumentException(
+                                "List of basic data types cannot be modelled as table fields."
+                            );
+                    else
+                        throw new IllegalArgumentException(
+                            "The type '"+propertyType.getName()+"' of the property returned by " +
+                            "method " + method.getName() + " is not a known model type."
+                        );
+                }
+            }
+            else
+                throw new IllegalArgumentException(
+                        "The return type of the method " + method.getName() + " is not a subclass " +
+                        "of " + Val.class.getName() + " or " + Vals.class.getName() + " with one type parameter"
+                    );
+
+
+        }
+
+        public String getName() {
+            return method.getName();
+        }
+
+        public Class<?> getType() {
+            return propertyValueType;
+        }
+
+        public boolean isList() {
+            return Vals.class.isAssignableFrom(propertyType);
+        }
+
+        public FieldKind getKind() {
+            return kind;
+        }
+
+        public boolean requiresIntermediateTable() {
+            return kind == FieldKind.INTERMEDIATE_TABLE;
+        }
+
+        public boolean isForeignKey() {
+            return kind == FieldKind.FOREIGN_KEY;
+        }
+
+        public String toTableFieldStatement() {
+            return getName() + " " + _fromJavaTypeToDBType(propertyValueType);
+        }
+
+        public Optional<ModelTable> getIntermediateTable() {
+            if ( requiresIntermediateTable() )
+                return Optional.of(new ModelTable(){
+                    @Override
+                    public String getName() { return ModelField.this.getName() + "_list_table"; }
+
+                    @Override
+                    public List<ModelField> getFields() { return Collections.emptyList(); }
+
+                    @Override
+                    public List<Class<? extends Model<?>>> getReferencedModels() {
+                        Class<?> thisTableClass = ModelField.this.method.getDeclaringClass();
+                        Class<?> otherTableClass = ModelField.this.propertyValueType;
+                        return Arrays.asList((Class<? extends Model<?>>) thisTableClass, (Class<? extends Model<?>>) otherTableClass);
+                    }
+
+                    @Override
+                    public String createTableStatement() {
+                        /*
+                            Simple:
+                            - id
+                            - foreign_key pointing to the model table of the model to which the list belongs
+                            - foreign_key pointing to the model of the property type of the list
+                         */
+                        Class<?> thisTableClass = ModelField.this.method.getDeclaringClass();
+                        Class<?> otherTableClass = ModelField.this.propertyValueType;
+                        String thisTable  = _tableNameFromClass(thisTableClass);
+                        String otherTable = _tableNameFromClass(otherTableClass);
+                           return "CREATE TABLE " + getName() + " (\n" +
+                                  "    id INTEGER PRIMARY KEY AUTOINCREMENT,\n" +
+                                  "    fk_" + thisTable + "_id INTEGER NOT NULL,\n" +
+                                  "    fk_" + otherTable + "_id INTEGER NOT NULL,\n" +
+                                  "    FOREIGN KEY (fk_" + thisTable + "_id) REFERENCES " + thisTable + "(id),\n" +
+                                  "    FOREIGN KEY (fk_" + otherTable + "_id) REFERENCES " + otherTable + "(id)\n" +
+                                  ");";
+                    }
+
+                });
+            else
+                return Optional.empty();
+        }
+
+        public Var<Object> asProperty(DataBase db, int id) {
+            return new Var<>() {
+                @Override
+                public Object orElseThrow() {
+                    if ( isEmpty() )
+                        throw new NoSuchElementException("No value present");
+
+                    Object value;
+                    StringBuilder select = new StringBuilder();
+                    select.append("SELECT ");
+                    select.append(ModelField.this.getName());
+                    select.append(" FROM ");
+                    select.append(_tableNameFromClass(ModelField.this.method.getDeclaringClass()));
+                    select.append(" WHERE id = ?");
+                    Map<String, List<Object>> result = db._query(select.toString(), Collections.singletonList(id));
+                    if (result.isEmpty())
+                        throw new IllegalStateException("No result for query: " + select);
+                    else {
+                        List<Object> values = result.get(ModelField.this.getName());
+                        if (values.isEmpty())
+                            throw new IllegalStateException("Failed to find table entry for id " + id);
+                        else if (values.size() > 1)
+                            throw new IllegalStateException("Found more than one table entry for id " + id);
+                        else
+                            value = values.get(0);
+                    }
+
+                    if ( !Model.class.isAssignableFrom(propertyValueType) )
+                        return value;
+                    else {
+                        // A foreign key to another model! We already have the id, so we can just create the model
+                        // and return it.
+                        // But first let's check if the object we found is not null and actually a number
+                        if ( value == null )
+                            throw new IllegalStateException("The foreign key value is null");
+                        else if ( !Number.class.isAssignableFrom(value.getClass()) )
+                            throw new IllegalStateException("The foreign key value is not a number");
+                        else {
+                            // We have a number, so we can find the model
+                            int foreignKeyId = ((Number) value).intValue();
+                            Class<? extends Model<?>> foreignKeyModelClass = (Class<? extends Model<?>>) propertyValueType;
+                            value = db.select((Class) foreignKeyModelClass, foreignKeyId);
+                            if ( value == null )
+                                throw new IllegalStateException("Failed to find model of type " + foreignKeyModelClass.getName() + " with id " + foreignKeyId);
+                            else
+                                return value;
+                        }
+                    }
+                }
+
+                @Override
+                public Var<Object> set(Object newItem) {
+                    if ( newItem instanceof Model<?>) {
+                        throw new UnsupportedOperationException(); // TODO
+                    } else {
+                        StringBuilder update = new StringBuilder();
+                        update.append("UPDATE ");
+                        update.append(_tableNameFromClass(ModelField.this.method.getDeclaringClass()));
+                        update.append(" SET ");
+                        update.append(ModelField.this.getName());
+                        update.append(" = ? WHERE id = ?");
+                        db._update(update.toString(), Arrays.asList(newItem, id));
+                    }
+                    return this;
+                }
+
+                @Override
+                public Var<Object> withId(String id) {
+                    throw new UnsupportedOperationException();
+                }
+
+                @Override
+                public Var<Object> onAct(Action<ValDelegate<Object>> action) { return this; }
+
+                @Override
+                public Var<Object> act() { return this; }
+
+                @Override
+                public Var<Object> act(Object newValue) { return set(newValue); }
+
+                @Override
+                public Object orElseNullable(Object other) {
+                    if ( isEmpty() )
+                        return other;
+                    else
+                        return get();
+                }
+
+                @Override public boolean isPresent() { return orElseNull() != null; }
+
+                @Override
+                public <U> Val<U> viewAs(Class<U> type, Function<Object, U> mapper) {
+                    throw new UnsupportedOperationException();
+                }
+
+                @Override public String id() { return ""; }
+
+                @Override
+                public Class<Object> type() { return (Class<Object>) ModelField.this.propertyValueType; }
+
+                @Override
+                public Val<Object> onShow(Action<ValDelegate<Object>> displayAction) { return this; }
+
+                @Override public Val<Object> show() { return this; }
+
+                @Override public boolean allowsNull() { return true; }
+            };
+        }
+
+        public Vars<Object> asProperties(DataBase db, int id) {
+            throw new UnsupportedOperationException();
+        }
+
+        public Optional<String> asSqlColumn() {
+            String name = getName();
+            String properties = " NOT NULL";
+            if ( name.equals("id") )
+                properties += " PRIMARY KEY AUTOINCREMENT";
+
+            if ( !Model.class.isAssignableFrom(propertyValueType) )
+                return Optional.of(getName() + " " + _fromJavaTypeToDBType(propertyValueType) + properties);
+            else if ( this.kind == FieldKind.FOREIGN_KEY ) {
+                String otherTable = _tableNameFromClass(propertyValueType);
+                return Optional.of("fk_" + otherTable + "_id INTEGER" + properties + " REFERENCES " + otherTable + "(id)");
+            } else if ( this.kind == FieldKind.INTERMEDIATE_TABLE ) {
+                return Optional.empty(); // The field is not a column in the table, but a table itself
+            } else
+                throw new IllegalStateException("Unknown field kind: " + this.kind);
         }
     }
 
-    public List<Class<?>> getTables() {
-        List<String> tableNames = this.listOfAllTableNames();
-        List<Class<?>> classes = new ArrayList<>();
-        for (String tableName : tableNames) {
-            Optional<Class<?>> clazz = this._classFromTableName(tableName);
-            if (clazz.isPresent()) {
-                classes.add(clazz.get());
+    private static class BasicModelTable implements ModelTable
+    {
+        private final ModelField[] fields;
+        private final Class<? extends Model<?>> modelInterface;
+
+        private BasicModelTable(Class<? extends Model<?>> modelInterface, List<Class<? extends Model<?>>> otherModels) {
+            // We expect something like this:
+            /*
+                public interface Address extends Model<Address> {
+                    interface Id extends Val<Integer> {} // Optional! But has to be immutable!
+                    interface Street extends Var<String> {}
+                    interface Number extends Var<Integer> {}
+                    interface ZipCode extends Var<Integer> {}
+                    interface City extends Var<String> {}
+                    Street street();
+                    Number number();
+                    ZipCode zipCode();
+                    City city();
+                }
+                // Note: Var is mutable and Val is immutable (only get but no set)
+            */
+            // First we need to check if the interface is a subclass of Model
+            if ( !Model.class.isAssignableFrom(modelInterface) )
+                throw new IllegalArgumentException(
+                        "The interface " + modelInterface.getName() + " is not a subclass of " + Model.class.getName()
+                    );
+            // Now we check if the the first type parameter of the Model interface is the same as the interface itself
+            // We need to find the extends clause of the interface
+            if ( !Model.class.equals(modelInterface) ) {
+                Type[] interfaces = modelInterface.getGenericInterfaces();
+                if (interfaces.length != 1)
+                    throw new IllegalArgumentException(
+                            "The interface " + modelInterface.getName() + " has more than one extends clause"
+                        );
+                Type[] typeParameters = ((ParameterizedType) interfaces[0]).getActualTypeArguments();
+                if (typeParameters.length != 1)
+                    throw new IllegalArgumentException(
+                            "The interface " + modelInterface.getName() + " is not a subclass of " + Model.class.getName() + " with one type parameter"
+                    );
+
+                if ( !modelInterface.equals(typeParameters[0]) )
+                    throw new IllegalArgumentException(
+                            "The first type parameter of the interface " + modelInterface.getName() + " is not the same as the interface itself"
+                    );
             }
-            else {
-                log.warn("Could not find class for table name: " + tableName);
+            // Now we can get the fields
+            Method[] methods = modelInterface.getMethods();
+            List<ModelField> fields = new ArrayList<>();
+            for ( Method method : methods ) {
+                Method[] allowedFields = Model.class.getMethods();
+                if ( !Arrays.asList(allowedFields).contains(method) ) {
+                    // We do not allow methods with parameters
+                    if ( method.getParameterCount() != 0 ) {
+                        throw new IllegalArgumentException(
+                                "The method '" + method.getName() + "(..)' of the interface " + modelInterface.getName() + " has parameters" +
+                                        "which is not allowed!"
+                        );
+                    }
+                    // We do not allow methods with a return type of void
+                    if (method.getReturnType().equals(Void.TYPE))
+                        throw new IllegalArgumentException(
+                                "The method " + method.getName() + " of the interface " + modelInterface.getName() + " has a return type of void"
+                        );
+                    // The method is not allowed to be called "id" because that is reserved for the id field:
+                    if ( method.getDeclaringClass().equals(modelInterface) && method.getName().equals("id") )
+                        throw new IllegalArgumentException(
+                            "The method " + method.getName() + " of the interface " + modelInterface.getName() + " is not allowed to be called \"id\", " +
+                            "because that is field is already present!"
+                            );
+                    fields.add(new ModelField(method, otherModels));
+                }
             }
+            // Now we add the id field
+            Class<Model> modelClass = Model.class;
+            try {
+                Method idMethod = modelClass.getMethod("id");
+                fields.add(new ModelField(idMethod, otherModels));
+            } catch (NoSuchMethodException | SecurityException e) {
+                throw new RuntimeException(e);
+            }
+
+            this.fields = fields.toArray(new ModelField[0]);
+            this.modelInterface = modelInterface;
         }
-        return classes;
+
+        @Override
+        public String getName() {
+            return _tableNameFromClass(modelInterface);
+        }
+
+        @Override
+        public List<ModelField> getFields() {
+            return Arrays.asList(fields);
+        }
+
+        @Override
+        public List<Class<? extends Model<?>>> getReferencedModels() {
+            List<Class<? extends Model<?>>> referencedModels = new ArrayList<>();
+            for ( ModelField field : fields ) {
+                if ( field.isForeignKey() ) {
+                    referencedModels.add((Class<? extends Model<?>>) field.getType());
+                }
+            }
+            return referencedModels;
+        }
+
+        @Override
+        public Optional<Class<? extends Model<?>>> getModelInterface() { return Optional.of(modelInterface); }
+
+        @Override
+        public String createTableStatement() {
+            StringBuilder sb = new StringBuilder();
+            sb.append("CREATE TABLE IF NOT EXISTS ");
+            sb.append(getName());
+            sb.append(" (");
+            for ( ModelField field : fields )
+                field.asSqlColumn().ifPresent( col -> {
+                    sb.append(col);
+                    sb.append(", ");
+                });
+
+            sb.delete(sb.length() - 2, sb.length());
+            sb.append(");");
+            return sb.toString();
+        }
+
     }
+
+    interface ModelTable {
+
+        String getName();
+
+        List<ModelField> getFields();
+        default ModelField getField(String name) {
+            for ( ModelField field : getFields() ) {
+                if ( field.getName().equals(name) )
+                    return field;
+            }
+            throw new IllegalArgumentException("No field with name " + name + " found!");
+        }
+
+        List<Class<? extends Model<?>>> getReferencedModels();
+
+        default Optional<Class<? extends Model<?>>> getModelInterface() { return Optional.empty(); }
+
+        String createTableStatement();
+
+    }
+
+    private static class ModelRegistry
+    {
+        private final Map<String, ModelTable> modelTables = new LinkedHashMap<>();
+
+        public ModelRegistry() {}
+
+        public void addTables(List<Class<? extends Model<?>>> modelInterfaces) {
+
+            Set<Class<? extends Model<?>>> distinct = new HashSet<>();
+            for ( var modelTable : modelTables.values() )
+                modelTable.getModelInterface().ifPresent( modelInterface -> distinct.add(modelInterface) );
+
+            distinct.addAll(modelInterfaces);
+            modelInterfaces = new ArrayList<>(distinct);
+
+            Map<Class<? extends Model<?>>, ModelTable> newModelTables = new LinkedHashMap<>();
+            for ( Class<? extends Model<?>> modelInterface : modelInterfaces ) {
+                ModelTable modelTable = new BasicModelTable(modelInterface, modelInterfaces);
+                newModelTables.put(modelInterface, modelTable);
+                modelTable.getFields().forEach(
+                        f -> f.getIntermediateTable().ifPresent(
+                                t -> newModelTables.put((Class<? extends Model<?>>) f.getType(), t)
+                        )
+                );
+            }
+            /*
+                Now we need to check if there are any circular references
+                We do this by checking if there are any cycles in the graph of the model tables
+             */
+            for ( ModelTable modelTable : newModelTables.values() ) {
+                Set<ModelTable> visited = new HashSet<>();
+                Set<ModelTable> currentPath = new HashSet<>();
+                if ( _hasCycle(modelTable, visited, currentPath, newModelTables) )
+                    throw new IllegalArgumentException(
+                            "The model " + modelTable.getName() + " has a circular reference!"
+                    );
+            }
+
+            /*
+                Now we need to determine the order in which we create the tables
+                We will do this by creating a map between all models as keys and their references
+                as values.
+                If they are referencing themselves we treat it as no reference.
+                We will then fill a list with the models that have no references
+                and then remove them from the map and repeat the process until the map is empty.
+            */
+            List<Class<?>> sortedModels = new ArrayList<>();
+            Map<Class<?>, List<Class<?>>> modelReferences = new HashMap<>();
+            List<ModelTable> intermediateTables = new ArrayList<>();
+
+            for ( ModelTable modelTable : newModelTables.values() ) {
+                List<Class<? extends Model<?>>> referencedModels = modelTable.getReferencedModels();
+                List<Class<?>> references = new ArrayList<>();
+                for ( Class<? extends Model<?>> referencedModel : referencedModels ) {
+                    if ( !referencedModel.equals(modelTable.getModelInterface().orElse(null)) ) {
+                        references.add(referencedModel);
+                    }
+                }
+                modelTable.getModelInterface().ifPresent( m -> modelReferences.put(m, references) );
+                // If it is not present then it is an intermediate table and we do not need to add it to the map
+                // because it is not referenced by any other table, so it can be created at the end.
+                if ( modelTable.getModelInterface().isEmpty() ) {
+                    intermediateTables.add(modelTable);
+                }
+            }
+
+            while ( !modelReferences.isEmpty() ) {
+                List<Class<?>> modelsWithoutReferences = new ArrayList<>();
+                for ( Map.Entry<Class<?>, List<Class<?>>> entry : modelReferences.entrySet() ) {
+                    if ( entry.getValue().isEmpty() ) {
+                        modelsWithoutReferences.add(entry.getKey());
+                    }
+                }
+                if ( modelsWithoutReferences.isEmpty() ) {
+                    throw new IllegalArgumentException(
+                            "There are circular references in the model interfaces!"
+                    );
+                }
+                for ( Class<?> modelWithoutReference : modelsWithoutReferences ) {
+                    modelReferences.remove(modelWithoutReference);
+                    sortedModels.add(modelWithoutReference);
+                }
+                for ( Map.Entry<Class<?>, List<Class<?>>> entry : modelReferences.entrySet() ) {
+                    entry.getValue().removeAll(modelsWithoutReferences);
+                }
+            }
+
+            for ( Class<?> model : sortedModels ) {
+                ModelTable modelTable = newModelTables.get(model);
+                modelTables.put(modelTable.getName(), modelTable);
+            }
+
+            // Now we need to add intermediate tables
+            for ( ModelTable modelTable : intermediateTables ) {
+                modelTables.put(modelTable.getName(), modelTable);
+            }
+            // We are done!
+        }
+
+        private boolean _hasCycle(
+                ModelTable modelTable,
+                Set<ModelTable> visited,
+                Set<ModelTable> currentPath,
+                Map<Class<? extends Model<?>>, ModelTable> newModelTables
+        ) {
+            if ( visited.contains(modelTable) )
+                return false;
+            if ( currentPath.contains(modelTable) )
+                return true;
+            currentPath.add(modelTable);
+            for ( Class<? extends Model<?>> referencedModel : modelTable.getReferencedModels() ) {
+                if ( _hasCycle(newModelTables.get(referencedModel), visited, currentPath, newModelTables) )
+                    return true;
+            }
+            currentPath.remove(modelTable);
+            visited.add(modelTable);
+            return false;
+        }
+
+        public List<ModelTable> getTables() {
+            return new ArrayList<>(modelTables.values());
+        }
+
+        public List<String> getCreateTableStatements() {
+            List<String> statements = new ArrayList<>();
+            for ( ModelTable modelTable : modelTables.values() ) {
+                statements.add(modelTable.createTableStatement());
+            }
+            return statements;
+        }
+
+        public boolean hasTable(String tableName) {
+            return modelTables.containsKey(tableName);
+        }
+
+        public ModelTable getTable(String tableName) {
+            return modelTables.get(tableName);
+        }
+
+        public boolean hasTable(Class<? extends Model<?>> modelInterface) {
+            return modelTables.values().stream().anyMatch( t -> t.getModelInterface().isPresent() && t.getModelInterface().get().equals(modelInterface) );
+        }
+
+        public ModelTable getTable(Class<? extends Model<?>> modelInterface) {
+            return modelTables.values().stream().filter( t -> t.getModelInterface().isPresent() && t.getModelInterface().get().equals(modelInterface) ).findFirst().orElse(null);
+        }
+    }
+
 
     public void dropTablesFor(
-            Class<?>... models
+            Class<? extends Model<?>>... models
     ) {
-        for (Class<?> model : models)
+        for (Class<? extends Model<?>> model : models)
             _dropTableIfExists(model);
     }
 
@@ -81,17 +690,17 @@ public class DataBase extends AbstractDataBase
         _dropAllTables();
     }
 
-    private void _createTableIfNotExists( Class<?> model ) {
+    private void _createTableIfNotExists( Class<? extends Model<?>> model ) {
         if ( !doesTableExist(_tableNameFromClass(model)) )
-            createTable(model);
+            _modelRegistry.addTables(Collections.singletonList((Class<? extends Model<?>>) model));
     }
 
-    private void _dropTableIfExists(Class<?> model) {
+    private void _dropTableIfExists(Class<? extends Model<?>> model) {
         if (doesTableExist(_tableNameFromClass(model)))
             dropTable(model);
     }
 
-    public void dropTable( Class<?> model ) {
+    public void dropTable( Class<? extends Model<?>> model ) {
         String tableName = _tableNameFromClass(model);
         _execute("DROP TABLE IF EXISTS " + tableName);
 
@@ -104,558 +713,13 @@ public class DataBase extends AbstractDataBase
         }
     }
 
-    public void insert( Object model ) {
-        String tableName = _tableNameFromClass(model.getClass());
-        var fields = model.getClass().getDeclaredFields();
-        StringBuilder sql = new StringBuilder();
-        sql.append("INSERT INTO ");
-        sql.append(tableName);
-        sql.append(" (");
-        for (var f : fields) {
-            if (f.getName().equals("id")) {
-                try {
-                    // if it is null ot 0 then it is not set
-                    if (f.get(model) == null || f.getInt(model) == 0)
-                        continue;
-                    else
-                        throw new IllegalArgumentException(
-                            "Cannot insert an object with an id already set"
-                        );
-                } catch (IllegalAccessException e) {
-                    e.printStackTrace();
-                }
-            }
-            sql.append(f.getName());
-            sql.append(", ");
-        }
-        // remove the last comma and space
-        sql.delete(sql.length() - 2, sql.length());
-        sql.append(") VALUES (");
-        for (var f : fields) {
-            if (f.getName().equals("id"))
-                continue;
-            sql.append("?, ");
-        }
-        // remove the last comma and space
-        sql.delete(sql.length() - 2, sql.length());
-        sql.append(");");
-        _execute(sql.toString(), model);
-    }
-
-    /**
-     *  Note that you can only update a model if it has an id set!
-     *
-     * @param model
-     */
-    public void update( Object model, String... fields ) {
-        String tableName = _tableNameFromClass(model.getClass());
-        StringBuilder sql = new StringBuilder();
-        sql.append("UPDATE ");
-        sql.append(tableName);
-        sql.append(" SET ");
-        for (String field : fields) {
-            sql.append(field);
-            sql.append(" = ?, ");
-        }
-        // remove the last comma and space
-        sql.delete(sql.length() - 2, sql.length());
-        sql.append(" WHERE id = ?;");
-        _execute(sql.toString(), model);
-    }
-
-    /**
-     *  Note that you can only update a model if it has an id set!
-     *
-     * @param model
-     */
-    public void update( Object model ) {
-        List<String> fieldNames = new ArrayList<>();
-        var fields = model.getClass().getDeclaredFields();
-        for (var f : fields) {
-            if (f.getName().equals("id"))
-                continue;
-            fieldNames.add(f.getName());
-        }
-        update(model, fieldNames.toArray(new String[0]));
-    }
-
-
-
-    private void _execute( String sql, Object model ) {
-        var field = model.getClass().getDeclaredFields();
-        List<Object> values = new ArrayList<>();
-        for (var f : field) {
-            if (f.getName().equals("id"))
-                continue;
-            f.setAccessible(true);
-            try {
-                values.add(f.get(model));
-            } catch (IllegalAccessException e) {
-                e.printStackTrace();
-            }
-        }
-        _execute(sql, values);
-    }
-
-    public <T> Optional<T> get( Class<T> model, int id ) {
-        if ( !_modelSummaries.contains(model) )
-            throw new IllegalArgumentException("Model '" + model.getName() + "' does not exist in database as table.");
-
-        String tableName = _tableNameFromClass(model);
-        String sql = "SELECT * FROM " + tableName + " WHERE id = ?;";
-
-        // The keys are column names and the values are the values of the columns
-        Map<String, List<Object>> result = _query(sql, List.of(id));
-
-        if (result.isEmpty())
-            return Optional.empty();
-
-        // There should only be one row, if there are more or less then something is wrong
-        if (result.get("id").size() != 1)
-            throw new IllegalStateException(
-                    "Failed to get a single row from the database for model type '" + model.getName() + "' with id '" + id + "'."
-                );
-
-        return Optional.ofNullable(_fromMapToModel(0, model, result));
-    }
-
-    private <T> T _fromMapToModel( int row, Class<T> model, Map<String, List<Object>> result ) {
-        try {
-            T instance = model.getConstructor().newInstance();
-            var fields = model.getDeclaredFields();
-            for ( var f : fields ) {
-                f.setAccessible(true);
-                if (f.getName().equals("id")) {
-                    f.set(instance, result.get("id").get(row));
-                }
-                else {
-                    /*
-                        Ok, so usually the value we get from the database is a simple primitive type
-                        like an int or a String. But sometimes it is a more complex type like a
-                        reference to another model, or even a list or set of models. So we need to
-                        check the type of the field and then handle it accordingly.
-                     */
-                    if ( _isBasicDataType( f.getType() ) )
-                        f.set(instance, result.get(f.getName()).get(row));
-                    else if ( _modelSummaries.contains( f.getType() ) ) {
-                        String fieldName = "fk_" + f.getName() + "_id";
-                        int id = (int) result.get(fieldName).get(row);
-                        // Now we have to load the model from the database
-                        Object m = get(f.getType(), id).orElseThrow();
-                        f.set(instance, m);
-                    }
-                    else if ( _isListOrSet( f.getType() ) ) {
-                        // We need to get the type of the list or set
-                        Type type = f.getGenericType();
-                        if (type instanceof ParameterizedType) {
-                            ParameterizedType pType = (ParameterizedType) type;
-                            Type[] fieldArgTypes = pType.getActualTypeArguments();
-                            if (fieldArgTypes.length != 1)
-                                throw new IllegalArgumentException("List or Set field '" + f.getName() + "' in model '" + model.getName() + "' has more than one type argument.");
-                            Class<?> fieldArgType = (Class<?>) fieldArgTypes[0];
-                            if ( _modelSummaries.contains( fieldArgType ) ) {
-                                /*
-                                    Ok, so we have a list or set of models.
-                                    The problem is that in our database we don't actually store a
-                                    list or set of models, but instead the models we are referencing here
-                                    each have a foreign key to this model which is simply named after this field
-                                    variable name. So we need to get the name of the foreign key column
-                                    and then query the database for all the models that have a foreign key
-                                    that matches this model's id.
-                                 */
-                                String fkColumnName = "fk_" + f.getName() + "_id";
-                                String sql = "SELECT * FROM " + _tableNameFromClass(fieldArgType) + " WHERE " + fkColumnName + " = ?;";
-                                int thisId = (int) result.get("id").get(row);
-                                Map<String, List<Object>> queryResult = _query(sql, List.of(thisId));
-                                if (queryResult.isEmpty()) {
-                                    // We set an empty list or set
-                                    if ( List.class.isAssignableFrom( f.getType() ) )
-                                        f.set(instance, new ArrayList<>());
-                                    else
-                                        f.set(instance, new HashSet<>());
-                                }
-                                else {
-                                    // We set a list or set with the models we got from the database
-                                    if ( List.class.isAssignableFrom( f.getType() ) ) {
-                                        List<Object> list = new ArrayList<>();
-                                        for (int i = 0; i < queryResult.get("id").size(); i++) {
-                                            list.add(_fromMapToModel(i, fieldArgType, queryResult));
-                                        }
-                                        f.set(instance, list);
-                                    }
-                                    else {
-                                        Set<Object> set = new HashSet<>();
-                                        for (int i = 0; i < queryResult.get("id").size(); i++) {
-                                            set.add(_fromMapToModel(i, fieldArgType, queryResult));
-                                        }
-                                        f.set(instance, set);
-                                    }
-                                }
-                            }
-                            else
-                                throw new IllegalArgumentException("List or Set field '" + f.getName() + "' in model '" + model.getName() + "' has a type argument that is not a model.");
-                        }
-                        else
-                            throw new IllegalArgumentException("List or Set field '" + f.getName() + "' in model '" + model.getName() + "' has no type arguments.");
-                    }
-                    else
-                        throw new IllegalArgumentException("Field '" + f.getName() + "' in model '" + model.getName() + "' has an unsupported type.");
-                }
-            }
-            return instance;
-        } catch (InstantiationException | IllegalAccessException | InvocationTargetException | NoSuchMethodException e) {
-            e.printStackTrace();
-        }
-        return null;
-    }
-
-    private <T> List<T> _fromMapToListOfModels( Class<T> model, Map<String, List<Object>> result ) {
-        if ( result.isEmpty() )
-            return Collections.emptyList();
-        List<T> list = new ArrayList<>();
-        for (int i = 0; i < result.get("id").size(); i++) {
-            list.add(_fromMapToModel(i, model, result));
-        }
-        return list;
-    }
-
-    public <T> List<T> selectAll(Class<T> model) {
-        String tableName = _tableNameFromClass(model);
-        String sql = "SELECT * FROM " + tableName + ";";
-        Map<String, List<Object>> result = _query(sql);
-        return _fromMapToListOfModels(model, result);
-    }
-
-    class ModelSummary {
-
-        private final Class<?> modelType;
-        private final String tableName;
-        private final List<Class<?>> allForeignRefs = new ArrayList<>(); // Basically foreign keys referencing "id"
-
-        private final List<Class<?>> specifiedForeignRefs = new ArrayList<>(); // Basically foreign keys referenced by "id"
-        private final List<Field> specifiedForeignRefsFields = new ArrayList<>();
-
-        private final List<Class<?>> oneToManyModelRefs = new ArrayList<>(); // One to many foreign keys referencing "id", basically a list of models
-        private final List<Field> oneToManyRefFields = new ArrayList<>(); // The fields that are one to many foreign keys
-
-
-        // This is the above but received from the other side of the relationship:
-        private final List<Field> receivedOneToManyRefFields = new ArrayList<>(); // The fields that are one to many foreign keys
-
-
-        public ModelSummary(Class<?> modelType, List<Class<?>> otherModels) {
-            this.modelType = modelType;
-            this.tableName = _tableNameFromClass(modelType);
-            var fields = modelType.getDeclaredFields();
-            for (var f : fields) {
-                var type = f.getType();
-                // First let's check if it is a list:
-                if (type.equals(List.class)) {
-                    // Now we need to get the type of the list
-                    var genericType = f.getGenericType();
-                    if (genericType instanceof ParameterizedType) {
-                        var parameterizedType = (ParameterizedType) genericType;
-                        var actualTypeArguments = parameterizedType.getActualTypeArguments();
-                        if (actualTypeArguments.length == 1) {
-                            var actualTypeArgument = actualTypeArguments[0];
-                            if (actualTypeArgument instanceof Class) {
-                                var actualTypeArgumentClass = (Class<?>) actualTypeArgument;
-                                if (otherModels.contains(actualTypeArgumentClass)) {
-                                    oneToManyModelRefs.add(actualTypeArgumentClass);
-                                    oneToManyRefFields.add(f);
-                                }
-                                else {
-                                    if ( _isBasicDataType(actualTypeArgumentClass) )
-                                        throw new IllegalArgumentException(
-                                             "The type argument of the list field '" + f.getName() + "' in model '" + modelType.getName() + "' is a " +
-                                             "list of basic data types which cannot be persisted as column entries in a database! " +
-                                             "Only lists of models can be persisted in a database."
-                                        );
-                                    else
-                                        throw new IllegalArgumentException("The type of the list is not a model");
-                                }
-                            }
-                            else
-                                throw new IllegalStateException("The type of the list is not a class");
-                        }
-                        else
-                            throw new IllegalStateException("We only support one generic type argument for lists");
-                    }
-                    else
-                        throw new IllegalStateException("The type of the list is not a class");
-                }
-                else if (otherModels.contains(type)) {
-                    allForeignRefs.add(type);
-                    specifiedForeignRefs.add(type);
-                    specifiedForeignRefsFields.add(f);
-                }
-                else if (_isBasicDataType(type)) {
-                    // Do nothing, this will be a regular column entry
-                }
-                else {
-                    throw new IllegalArgumentException("Unknown type: " + type + "! Cannot persist unknown types!");
-                }
-            }
-        }
-
-        public List<Class<?>> getAllForeignReferences() {
-            return allForeignRefs;
-        }
-
-        public List<Class<?>> getSpecifiedForeignRefs() {
-            return Collections.unmodifiableList(specifiedForeignRefs);
-        }
-
-        public List<Field> getSpecifiedForeignRefsFields() {
-            return Collections.unmodifiableList(specifiedForeignRefsFields);
-        }
-
-        public List<Class<?>> getOneToManyModelRefs() {
-            return Collections.unmodifiableList(oneToManyModelRefs);
-        }
-
-        public List<Field> getReceivedOneToManyRefFields() {
-            return receivedOneToManyRefFields;
-        }
-
-        public List<Field> getOneToManyRefFields() {
-            return Collections.unmodifiableList(oneToManyRefFields);
-        }
-
-        public String getTableName() {
-            return tableName;
-        }
-
-        public Class<?> getModelType() {
-            return modelType;
-        }
-
-    }
-
-    private static boolean _isBasicDataType(Class<?> type) {
-        return
-                type.equals(String.class) ||
-                type.equals(int.class) ||
-                type.equals(boolean.class) ||
-                type.equals(Integer.class) ||
-                type.equals(Boolean.class) ||
-                type.equals(Long.class) ||
-                type.equals(long.class) ||
-                type.equals(Double.class) ||
-                type.equals(double.class) ||
-                type.equals(Float.class) ||
-                type.equals(float.class) ||
-                type.equals(Short.class) ||
-                type.equals(short.class) ||
-                type.equals(Byte.class) ||
-                type.equals(byte.class) ||
-                type.equals(Character.class) ||
-                type.equals(char.class);
-    }
-
-    private boolean _isListOrSet(Class<?> type) {
-        return type.equals(List.class) || type.equals(Set.class);
-    }
-
     public void createTablesFor(
-            Class<?>... models
+            Class<? extends Model<?>>... models
     ) {
-        /*
-            So we could just do:
-            for (Class<?> model : models)
-                _createTableIfNotExists(model);
-
-            But the classes we get above might have certain relationships with each other
-            and we want to make sure that the tables are created in the correct order
-            as well as resolve any foreign keys.
-            So let's say we have a class called User and a class called Post
-            and User has a list of Posts
-            then we want to make sure that the Post table is created first
-            and then the User table is created second
-            and that the foreign key is set up correctly, meaning that the Post table
-            has a column called fk_user_id that is a foreign key referencing the User id (primary key).
-            On the other hand, when a model type has a single field referencing another model type
-            then the former type should have a foreign key referencing the latter type.
-            So if User has a reference to Address, then we want to make sure that the Address table is created first
-            as well as give the User table a foreign key to Address.
-
-            Enough talk, let's get to work!
-            How do we solve this?
-            Here some ruff outline:
-            1. Create a ModelSummary objects that keep track of the interdependencies between the models.
-            2. Store the ModelSummary in a hashmap where the key is the model type and the value is the ModelSummary.
-            3. Note which models are referenced by other models in the summary.
-            4. Create the tables in the correct order.
-         */
-
-        for ( Class<?> model : models ) {
-            _modelSummaries.put(model, new ModelSummary(model, Arrays.asList(models)));
+        _modelRegistry.addTables(Arrays.asList(models));
+        for ( String statement : _modelRegistry.getCreateTableStatements() ) {
+            _execute(statement);
         }
-
-        // Now we have a list of models to create and a hashmap of model summaries
-        // Before we create the tables, we need to revisit the stored model summaries and
-        // resolve the interdependencies between the models.
-        // The "1" in 1:n relationships is already resolved in the ModelSummary constructor,
-        // but the "n" in 1:n relationships is not, so we need to resolve that.
-
-        // First let's resolve the 1:n relationships
-        for ( Class<?> model : models ) {
-            var modelSummary = _modelSummaries.get(model);
-            for ( Class<?> oneOfManyModel : modelSummary.getOneToManyModelRefs() ) {
-                var oneOfMany = _modelSummaries.get(oneOfManyModel);
-                oneOfMany.getAllForeignReferences().add(model);
-                int index = modelSummary.getOneToManyModelRefs().indexOf(oneOfManyModel);
-                oneOfMany.getReceivedOneToManyRefFields().add(modelSummary.getOneToManyRefFields().get(index));
-            }
-        }
-
-        /*
-            Now we need to determine the order in which we create the tables
-            We will do this by creating a map between all models as keys and their references
-            as values.
-            If they are referencing themselves we treat it as no reference.
-            We will then fill a list with the models that have no references
-            and then remove them from the map and repeat the process until the map is empty.
-        */
-
-        List<Class<?>> sortedModels = new ArrayList<>();
-        Map<Class<?>, List<Class<?>>> modelReferences = new HashMap<>();
-        // First let's fill the map
-        for ( Class<?> model : models ) {
-            var modelSummary = _modelSummaries.get(model);
-            var references = new ArrayList<Class<?>>();
-            references.addAll(modelSummary.getAllForeignReferences());
-            // We don't want to reference ourselves because a table "knows about itself":
-            while ( references.contains(model) ) {
-                references.remove(model);
-            }
-            modelReferences.put(model, references);
-        }
-
-        // Now let's fill the list
-        while ( !modelReferences.isEmpty() ) {
-            var modelsWithoutReferences = new ArrayList<Class<?>>();
-            for ( Class<?> model : modelReferences.keySet() ) {
-                if ( modelReferences.get(model).isEmpty() )
-                    modelsWithoutReferences.add(model);
-            }
-            if ( modelsWithoutReferences.isEmpty() )
-                throw new IllegalArgumentException(
-                        "There is a circular reference between the " +
-                        "specified models '" + Arrays.toString(models) + "'."
-                    );
-            for ( Class<?> model : modelsWithoutReferences ) {
-                sortedModels.add(model);
-                modelReferences.remove(model);
-            }
-            for ( Class<?> model : modelReferences.keySet() ) {
-                modelReferences.get(model).removeAll(modelsWithoutReferences);
-            }
-        }
-
-        // Now we have a list of models sorted in the correct order
-        // Let's create the tables!
-
-        for ( Class<?> model : sortedModels ) {
-            _createTableIfNotExists(model);
-        }
-    }
-
-
-    public void createTable( Class<?> model ) {
-        _createTable(model);
-    }
-
-
-    private void _createTable( Class<?> model ) {
-        var modelSummary = _modelSummaries.get(model);
-        var tableName = modelSummary.getTableName();
-        var field = model.getDeclaredFields();
-        /*
-            We need to create a table with the following columns:
-            - id (primary key, auto increment)
-            - all the primitive fields in the model
-            - all the foreign keys (stored in the model summary)
-            We ignore
-            - Lists and Sets containing other models
-            We raise an exception if
-            - There is a field that is not a primitive type
-              and it is not a List or Set containing other models
-        */
-        var sql = new StringBuilder();
-        sql.append("CREATE TABLE IF NOT EXISTS ");
-        sql.append(tableName);
-        sql.append(" (");
-        sql.append("id INTEGER PRIMARY KEY AUTOINCREMENT"); // This is always the first column!
-        for ( var f : field ) {
-            var type = f.getType();
-            // Let's ignore the id field
-            if ( f.getName().equals("id") ) {
-                // We expect the id field to be an int
-                if ( !type.equals(int.class) )
-                    throw new IllegalArgumentException(
-                            "The id field of the provided model '" + model.getName() + "' is of " +
-                            "type '" + type.getName() + "', it must be an int!"
-                        );
-
-                continue;
-            }
-            if ( _isBasicDataType(type) ) {
-                sql.append(", ");
-                sql.append(f.getName());
-                sql.append(" ");
-                sql.append(_fromJavaTypeToDBType(type));
-            } else if ( type.equals(List.class) || type.equals(Set.class) ) {
-                // We ignore these
-                // But we also check that the type of the list/set is a model
-                var genericType = f.getGenericType();
-                if ( genericType instanceof ParameterizedType parameterizedType ) {
-                    var actualTypeArguments = parameterizedType.getActualTypeArguments();
-                    if ( actualTypeArguments.length != 1 )
-                        throw new IllegalArgumentException("Field '" + f.getName() + "' of model '" + model.getName() + "' must have exactly one type argument!");
-                    var typeArgument = actualTypeArguments[0];
-                    if ( !(typeArgument instanceof Class) )
-                        throw new IllegalArgumentException("Field '" + f.getName() + "' of model '" + model.getName() + "' must have a type argument that is a class!");
-                    var typeArgumentClass = (Class<?>) typeArgument;
-                    if ( !_modelSummaries.contains(typeArgumentClass) )
-                        throw new IllegalArgumentException(
-                                "Field '" + f.getName() + "' of model '" + model.getName() + "' must have a type argument that is a model! " +
-                                "Type argument '" + typeArgumentClass.getName() + "' is not a model!"
-                        );
-                } else {
-                    throw new IllegalArgumentException("Field '" + f.getName() + "' of model '" + model.getName() + "' must have a type argument!");
-                }
-            } else if ( model == type ) {
-                // A self reference! This is simple! a foreign key to the same table, but with a different name
-                // This will be built later
-            } else if ( _modelSummaries.contains(type) ) {
-                // This will be built later
-            } else {
-                // We raise an exception if it is not a primitive type
-                // and it is not a List or Set containing other models
-                throw new IllegalArgumentException(
-                        "The field '" + f.getName() + "' in the model '" + model.getName() + "' " +
-                        "is not a primitive type and it is not a List or Set containing other models!"
-                );
-            }
-        }
-        for ( var f : modelSummary.getSpecifiedForeignRefsFields() ) {
-            sql.append(", ");
-            sql.append("fk_");
-            sql.append(f.getName());
-            sql.append("_id");
-            sql.append(" INTEGER");
-        }
-        for ( var f : modelSummary.getReceivedOneToManyRefFields() ) {
-            sql.append(", ");
-            sql.append("fk_");
-            sql.append(f.getName());
-            sql.append("_id");
-            sql.append(" INTEGER");
-        }
-        sql.append(")");
-
-        _execute(sql.toString());
     }
 
     /**
@@ -664,11 +728,11 @@ public class DataBase extends AbstractDataBase
      * @param model The model type
      * @return The sql defining the table of the provided model type
      */
-    public String sqlCodeOfTable(Class<?> model) {
+    public String sqlCodeOfTable(Class<? extends Model<?>> model) {
         // We query the database for the sql code of the table
         var sql = new StringBuilder();
         sql.append("SELECT sql FROM sqlite_master WHERE type='table' AND name='");
-        sql.append(_modelSummaries.get(model).getTableName());
+        sql.append(_tableNameFromClass(model));
         sql.append("'");
         Map<String, List<Object>> result = _query(sql.toString());
         if ( result.isEmpty() )
@@ -677,6 +741,125 @@ public class DataBase extends AbstractDataBase
             throw new IllegalArgumentException("There are multiple tables for the model '" + model.getName() + "' in the database!");
         return (String) result.get("sql").get(0);
     }
+
+    public <T extends Model<T>> T select(Class<T> model, int id) {
+        // First let's verify that the model is indeed a model
+        if ( !Model.class.isAssignableFrom(model) )
+            throw new IllegalArgumentException("The provided class is not a model!");
+
+        // Now let's verify that the table exists
+        if ( !doesTableExist(_tableNameFromClass(model)) )
+            throw new IllegalArgumentException("The table for the model '" + model.getName() + "' does not exist!");
+
+        // Now let's verify that the id is valid
+        if ( id < 0 )
+            throw new IllegalArgumentException("The id must be a positive integer!");
+
+        /*
+            Now you might thing we simply do a single database query to get the model
+            and then that'ss it. But that is not the case.
+            This ORM is interface based, so we are free to implement the model in any way we want.
+            And what we want is dynamic models where calling the setter of a property updates
+            the database.
+            To achieve this we need to create a proxy object that will do that.
+            Let's do that now:
+        */
+        // Let's find the table for the model
+        ModelTable modelTable = _modelRegistry.getTable(model);
+
+        return  (T) Proxy.newProxyInstance(
+                        model.getClassLoader(),
+                        new Class[]{model},
+                        new ModelProxy<>(this, modelTable, id)
+                );
+    }
+
+    private static class ModelProxy<T extends Model<T>> implements InvocationHandler
+    {
+        private final DataBase _dataBase;
+        private final ModelTable _modelTable;
+        private final int _id;
+
+        public ModelProxy(DataBase db, ModelTable table, int id) {
+            _dataBase = db;
+            _modelTable = table;
+            _id = id;
+        }
+
+        @Override
+        public Object invoke(Object proxy, Method method, Object[] args) throws Throwable {
+            String methodName = method.getName();
+            ModelField modelField = _modelTable.getField(methodName);
+            if ( modelField == null )
+                throw new IllegalArgumentException("The model '" + _modelTable.getModelInterface().get().getName() + "' does not have a property named '" + methodName + "'!");
+            if ( args != null && args.length != 0 )
+                throw new IllegalArgumentException("The model '" + _modelTable.getModelInterface().get().getName() + "' does not have a setter for the property named '" + methodName + "'!");
+            if ( method.getReturnType() == void.class )
+                throw new IllegalArgumentException("The model '" + _modelTable.getModelInterface().get().getName() + "' does not have a setter for the property named '" + methodName + "'!");
+
+            // Now let's get the property value from the database
+            Object toBeReturned;
+
+            if ( Val.class.isAssignableFrom(method.getReturnType()) )
+                toBeReturned= modelField.asProperty(_dataBase, _id);
+            else if ( Vals.class.isAssignableFrom(method.getReturnType()) )
+                toBeReturned= modelField.asProperties(_dataBase, _id);
+            else
+                throw new IllegalArgumentException("The model '" + _modelTable.getModelInterface().get().getName() + "' does not have a property named '" + methodName + "'!");
+
+            // Now let's check if the property is of the correct type
+            if ( !method.getReturnType().isAssignableFrom(toBeReturned.getClass()) )
+                throw new IllegalArgumentException("Failed to create a proxy for the model '" + _modelTable.getModelInterface().get().getName() + "' because the property '" + methodName + "' is of type '" + toBeReturned.getClass().getName() + "' but the getter is of type '" + method.getReturnType().getName() + "'!");
+
+            return toBeReturned;
+        }
+    }
+
+    public <M extends Model<M>> List<M> selectAll(Class<M> models) {
+        // First we need to query the database for all the ids of the models
+        String tableName = _tableNameFromClass(models);
+        String sql = "SELECT id FROM " + tableName;
+        Map<String, List<Object>> result = _query(sql);
+        if ( result.isEmpty() )
+            throw new IllegalArgumentException("The model '" + models.getName() + "' does not have a table in the database!");
+        if ( result.size() > 1 )
+            throw new IllegalArgumentException("There are multiple tables for the model '" + models.getName() + "' in the database!");
+        List<Object> ids = result.get("id");
+
+        List<M> modelsList = new ArrayList<>();
+        for ( Object id : ids ) {
+            modelsList.add(select(models, (int) id));
+        }
+
+        return modelsList;
+    }
+
+    public <M extends Model<M>> M create(Class<M> model) {
+        // First let's verify that the model is indeed a model
+        if ( !Model.class.isAssignableFrom(model) )
+            throw new IllegalArgumentException("The provided class is not a model!");
+
+        // Now let's verify that the table exists
+        if ( !doesTableExist(_tableNameFromClass(model)) )
+            throw new IllegalArgumentException("The table for the model '" + model.getName() + "' does not exist!");
+
+        // Now let's create the model
+        ModelTable modelTable = _modelRegistry.getTable(model);
+        String sql = "INSERT INTO " + modelTable.getName() + " DEFAULT VALUES";
+        _execute(sql);
+
+        // Now let's get the id of the model
+        sql = "SELECT last_insert_rowid()";
+        Map<String, List<Object>> result = _query(sql);
+        if ( result.isEmpty() )
+            throw new IllegalArgumentException("The model '" + model.getName() + "' does not have a table in the database!");
+        if ( result.size() > 1 )
+            throw new IllegalArgumentException("There are multiple tables for the model '" + model.getName() + "' in the database!");
+        int id = (int) result.get("last_insert_rowid()").get(0);
+
+        return select(model, id);
+    }
+
 
 
 }
