@@ -1,6 +1,6 @@
 package dal.api;
 
-public interface WhereField<M extends Model<M>, T> {
+public interface Compare<M extends Model<M>, T> {
 
     Junction<M> equal(T value);
 

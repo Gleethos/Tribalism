@@ -4,18 +4,18 @@ import swingtree.api.mvvm.Val;
 
 import java.util.List;
 
-public interface Junction<M extends Model<M>> extends Get<M> {
+public interface Junction<M extends Model<M>> extends Query<M> {
 
-    <T> WhereField<M, T> and(Class<? extends Val<T>> field);
+    <T> Compare<M, T> and(Class<? extends Val<T>> field);
 
-    <T> WhereField<M, T> or(Class<? extends Val<T>> field);
+    <T> Compare<M, T> or(Class<? extends Val<T>> field);
 
     default List<M> limit(int limit) {
-        return toList().subList(0, limit);
+        return asList().subList(0, limit);
     }
 
-    Get<M> orderAscendingBy(Class<? extends Val<?>> field);
+    Query<M> orderAscendingBy(Class<? extends Val<?>> field);
 
-    Get<M> orderDescendingBy(Class<? extends Val<?>> field);
+    Query<M> orderDescendingBy(Class<? extends Val<?>> field);
 
 }

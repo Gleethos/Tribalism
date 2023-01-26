@@ -1,5 +1,6 @@
 package dal;
 
+import dal.api.DataBase;
 import org.json.JSONArray;
 import org.json.JSONException;
 import org.json.JSONObject;
@@ -14,7 +15,7 @@ import java.util.function.Consumer;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 
-class AbstractDataBase {
+abstract class AbstractDataBase implements DataBase {
 
     private final static Logger _LOG = LoggerFactory.getLogger(AbstractDataBase.class);
 
@@ -110,6 +111,7 @@ class AbstractDataBase {
     /**
      * Returns a list of all table names of a connection!
      */
+    @Override
     public List<String> listOfAllTableNames(){
         String sql = "SELECT name FROM sqlite_master WHERE type ='table' AND name NOT LIKE 'sqlite_%';";
         List<String> names = new ArrayList<>();

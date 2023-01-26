@@ -11,13 +11,13 @@ import java.util.function.Function;
 
 class ModelProperty implements Var<Object>
 {
-    private final DataBase _dataBase;
+    private final SQLiteDataBase _dataBase;
     private final int _id;
     private final String _fieldName;
     private final String _tableName;
     private final Class<?> _propertyValueType;
 
-    ModelProperty(DataBase dataBase, int id, String fieldName, String tableName, Class<?> propertyValueType) {
+    ModelProperty(SQLiteDataBase dataBase, int id, String fieldName, String tableName, Class<?> propertyValueType) {
         _dataBase = dataBase;
         _id = id;
         _fieldName = fieldName;

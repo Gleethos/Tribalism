@@ -1,5 +1,6 @@
 package dal
 
+import dal.api.DataBase
 import dal.models.Address
 import dal.models.Atom
 import dal.models.Person
@@ -25,7 +26,7 @@ class DataBase_Spec extends Specification
     def TEST_DB_FILE = TEST_DB_LOCATION + "my.db"
 
     def setup() {
-        def db = new DataBase(TEST_DB_FILE)
+        def db = DataBase.of(TEST_DB_FILE)
         db.dropAllTables()
         db.close()
     }
@@ -33,7 +34,7 @@ class DataBase_Spec extends Specification
     def 'We can create a "Person" and "Address" table.'() {
 
         given : 'We create a database instance for testing, the database will be opened in a test folder.'
-            def db = new DataBase(TEST_DB_FILE)
+            def db = DataBase.of(TEST_DB_FILE)
             db.dropAllTables()
         expect : 'Initially there are no tables in the database.'
             db.listOfAllTableNames() == []
@@ -112,7 +113,7 @@ class DataBase_Spec extends Specification
             This feature demonstrates how to create a table that references multiple other tables.
         """
         given : 'We create a database instance for testing, the database will be opened in a test folder.'
-            def db = new DataBase(TEST_DB_FILE)
+            def db = DataBase.of(TEST_DB_FILE)
             db.dropAllTables()
         expect : 'Initially there are no tables in the database.'
             db.listOfAllTableNames() == []
@@ -180,7 +181,7 @@ class DataBase_Spec extends Specification
             build database queries to select "Atoms" from the database.
         """
         given : 'We create a database instance for testing, the database will be opened in a test folder.'
-            def db = new DataBase(TEST_DB_FILE)
+            def db = DataBase.of(TEST_DB_FILE)
             db.dropAllTables()
         expect : 'Initially there are no tables in the database.'
             db.createTablesFor(Atom)
@@ -210,7 +211,7 @@ class DataBase_Spec extends Specification
             var atoms = db.select(Atom)
                                         .where(Atom.AtomicNumber)
                                         .greaterThan(2)
-                                        .toList()
+                                        .asList()
         then :
             atoms.size() == 3
             atoms[0] == atom3
@@ -223,7 +224,7 @@ class DataBase_Spec extends Specification
                         .greaterThan(2)
                         .and(Atom.Mass)
                         .lessThan(10)
-                        .toList()
+                        .asList()
         then :
             atoms.size() == 2
             atoms[0] == atom3
@@ -248,7 +249,7 @@ class DataBase_Spec extends Specification
                         .and(Atom.Mass)
                         .lessThan(10)
                         .orderDescendingBy(Atom.AtomicNumber)
-                        .toList()
+                        .asList()
         then :
             atoms.size() == 2
             atoms[0] == atom4

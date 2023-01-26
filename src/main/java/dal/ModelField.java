@@ -243,7 +243,7 @@ class ModelField {
             return Optional.empty();
     }
 
-    public Val<Object> asProperty(DataBase db, int id) {
+    public Val<Object> asProperty(SQLiteDataBase db, int id) {
         var prop = new ModelProperty(db, id, this.getName(), AbstractDataBase._tableNameFromClass(ownerModelClass), propertyValueType);
 
         Class<?> propertyType = ModelField.this.propertyType;
@@ -305,7 +305,7 @@ class ModelField {
             throw new IllegalStateException("Unknown field kind: " + this.kind);
     }
 
-    public Vals<Object> asProperties(DataBase db, int id) {
+    public Vals<Object> asProperties(SQLiteDataBase db, int id) {
         /*
             Now this is interesting.
             We have a list of properties represented in the form

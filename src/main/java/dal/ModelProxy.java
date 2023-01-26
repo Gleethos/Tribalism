@@ -8,11 +8,11 @@ import java.lang.reflect.InvocationHandler;
 import java.lang.reflect.Method;
 
 class ModelProxy<T extends Model<T>> implements InvocationHandler {
-    private final DataBase _dataBase;
+    private final SQLiteDataBase _dataBase;
     private final ModelTable _modelTable;
     private final int _id;
 
-    public ModelProxy(DataBase db, ModelTable table, int id) {
+    public ModelProxy(SQLiteDataBase db, ModelTable table, int id) {
         _dataBase = db;
         _modelTable = table;
         _id = id;

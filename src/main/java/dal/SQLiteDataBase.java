@@ -13,23 +13,24 @@ import java.util.stream.IntStream;
  *  This class constitutes both a representation of a database
  *  and define an API which is in essence an interface based ORM.
  */
-public class DataBase extends AbstractDataBase
-{
+public class SQLiteDataBase extends AbstractDataBase {
     private final ModelRegistry _modelRegistry = new ModelRegistry();
 
-    DataBase(String location) {
+    public SQLiteDataBase(String location) {
         super(location, "", "");
     }
 
-    DataBase() {
+    SQLiteDataBase() {
         super("jdbc:sqlite:"+new File("saves/dbs").getAbsolutePath(), "", "");
     }
 
+    @Override
     public void execute(String sql) {
         _execute(sql);
     }
 
 
+    @Override
     public void dropTablesFor(
             Class<? extends Model<?>>... models
     ) {
@@ -37,6 +38,7 @@ public class DataBase extends AbstractDataBase
             _dropTableIfExists(model);
     }
 
+    @Override
     public void dropAllTables() {
         _dropAllTables();
     }
@@ -51,7 +53,8 @@ public class DataBase extends AbstractDataBase
             dropTable(model);
     }
 
-    public void dropTable( Class<? extends Model<?>> model ) {
+    @Override
+    public void dropTable(Class<? extends Model<?>> model) {
         String tableName = _tableNameFromClass(model);
         _execute("DROP TABLE IF EXISTS " + tableName);
 
@@ -64,6 +67,7 @@ public class DataBase extends AbstractDataBase
         }
     }
 
+    @Override
     public void createTablesFor(
             Class<? extends Model<?>>... models
     ) {
@@ -79,6 +83,7 @@ public class DataBase extends AbstractDataBase
      * @param model The model type
      * @return The sql defining the table of the provided model type
      */
+    @Override
     public String sqlCodeOfTable(Class<? extends Model<?>> model) {
         // We query the database for the sql code of the table
         var sql = new StringBuilder();
@@ -93,6 +98,7 @@ public class DataBase extends AbstractDataBase
         return (String) result.get("sql").get(0);
     }
 
+    @Override
     public <T extends Model<T>> T select(Class<T> model, int id) {
         // First let's verify that the model is indeed a model
         if ( !Model.class.isAssignableFrom(model) )
@@ -125,6 +131,7 @@ public class DataBase extends AbstractDataBase
                 );
     }
 
+    @Override
     public <M extends Model<M>> List<M> selectAll(Class<M> models) {
         // First we need to query the database for all the ids of the models
         String tableName = _tableNameFromClass(models);
@@ -144,6 +151,7 @@ public class DataBase extends AbstractDataBase
         return modelsList;
     }
 
+    @Override
     public <M extends Model<M>> M create(Class<M> model) {
         // First let's verify that the model is indeed a model
         if ( !Model.class.isAssignableFrom(model) )
@@ -218,6 +226,7 @@ public class DataBase extends AbstractDataBase
         return select(model, id);
     }
 
+    @Override
     public <M extends Model<M>> void remove(M model) {
         Objects.requireNonNull(model, "The provided model is null!");
         Class<?> modelProxyClass = model.getClass();
@@ -235,13 +244,14 @@ public class DataBase extends AbstractDataBase
         boolean success = _update(sql, Collections.singletonList(id));
     }
 
+    @Override
     public <M extends Model<M>> Where<M> select(Class<M> model) {
         StringBuilder sql = new StringBuilder();
         sql.append("SELECT * FROM ").append(_tableNameFromClass(model)).append(" WHERE ");
         ModelTable table = _modelRegistry.getTable(model);
         List<Object> values = new ArrayList<>();
         Junction[] junc = {null};
-        WhereField<M, Object> valueCollector = new WhereField<M, Object>() {
+        Compare<M, Object> valueCollector = new Compare<M, Object>() {
             @Override
             public Junction<M> equal(Object value) {
                 // First sql:
@@ -365,21 +375,21 @@ public class DataBase extends AbstractDataBase
         junc[0] = new Junction<M>() {
 
             @Override
-            public <T> WhereField<M, T> and(Class<? extends Val<T>> field) {
+            public <T> Compare<M, T> and(Class<? extends Val<T>> field) {
                 sql.append(" AND ");
                 sql.append(table.getField(field).getName());
-                return (WhereField<M, T>) valueCollector;
+                return (Compare<M, T>) valueCollector;
             }
 
             @Override
-            public <T> WhereField<M, T> or(Class<? extends Val<T>> field) {
+            public <T> Compare<M, T> or(Class<? extends Val<T>> field) {
                 sql.append(" OR ");
                 sql.append(table.getField(field).getName());
-                return (WhereField<M, T>) valueCollector;
+                return (Compare<M, T>) valueCollector;
             }
 
             @Override
-            public Get<M> orderAscendingBy(Class<? extends Val<?>> field) {
+            public Query<M> orderAscendingBy(Class<? extends Val<?>> field) {
                 sql.append(" ORDER BY ");
                 sql.append(table.getField(field).getName());
                 sql.append(" ASC");
@@ -387,7 +397,7 @@ public class DataBase extends AbstractDataBase
             }
 
             @Override
-            public Get<M> orderDescendingBy(Class<? extends Val<?>> field) {
+            public Query<M> orderDescendingBy(Class<? extends Val<?>> field) {
                 sql.append(" ORDER BY ");
                 sql.append(table.getField(field).getName());
                 sql.append(" DESC");
@@ -395,7 +405,7 @@ public class DataBase extends AbstractDataBase
             }
 
             @Override
-            public List<M> toList() {
+            public List<M> asList() {
                 Map<String, List<Object>> result = _query(sql.toString(), values);
                 List<Integer> ids = result.getOrDefault("id", Collections.emptyList())
                                             .stream()
@@ -411,16 +421,16 @@ public class DataBase extends AbstractDataBase
 
         return new Where<M>() {
             @Override
-            public <T> WhereField<M, T> where(Class<? extends Val<T>> field) {
+            public <T> Compare<M, T> where(Class<? extends Val<T>> field) {
                 // First sql:
                 sql.append(table.getField(field).getName()).append(" ");
                 // Then values:
-                return (WhereField<M, T>) valueCollector;
+                return (Compare<M, T>) valueCollector;
             }
 
             @Override
-            public List<M> toList() {
-                return junc[0].toList();
+            public List<M> asList() {
+                return junc[0].asList();
             }
         };
     }
