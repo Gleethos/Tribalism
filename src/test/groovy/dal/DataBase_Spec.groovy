@@ -33,15 +33,46 @@ class DataBase_Spec extends Specification
         db.close()
     }
 
-    def 'We can create a "Person" and "Address" table.'() {
-
-        given : 'We create a database instance for testing, the database will be opened in a test folder.'
+    def 'We can create a "Person" and "Address" table.'()
+    {
+        reportInfo """
+            Given we have the following interface defining "Person"
+            ```
+                public interface Person extends Model<Person> 
+                {
+                    interface FirstName extends Var<String> {}
+                    interface LastName extends Var<String> {}
+                    interface Address extends Var<dal.models.Address> {}
+                    FirstName firstName();
+                    LastName lastName();
+                    Address address();
+                }
+            ```
+            ...and the following interface defining "Address"
+            ```
+                public interface Address extends Model<Address> 
+                {
+                    interface PostalCode extends Var<String> {}
+                    interface Street extends Var<String> {}
+                    interface City extends Var<String> {}
+                    interface Country extends Var<String> {}
+                    PostalCode postalCode();
+                    Street street();
+                    City city();
+                    Country country();
+                }
+            ```
+            Using the database API we can create a database table for each of these models
+            simply by passing the model class to database!
+            See for yourself:
+        """
+        given : 'A database instance, opened in a test folder.'
             def db = DataBase.of(TEST_DB_FILE)
-            db.dropAllTables()
+            db.dropAllTables() // just to be sure
         expect : 'Initially there are no tables in the database.'
             db.listOfAllTableNames() == []
 
-        when : 'We request a table creation for the model type in the database...'
+        when : 'We now request a table creation for the model type in the database...'
             db.createTablesFor(Person, Address)
             var table1 = db.sqlCodeOfTable(Person)
             var table2 = db.sqlCodeOfTable(Address)
@@ -51,7 +82,6 @@ class DataBase_Spec extends Specification
         and : 'The table code is as expected!'
             table1 == "CREATE TABLE dal_models_Person_table (id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT, fk_address_id INTEGER REFERENCES dal_models_Address_table(id), lastName TEXT NOT NULL, firstName TEXT NOT NULL)"
             table2 == "CREATE TABLE dal_models_Address_table (id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT, country TEXT NOT NULL, street TEXT NOT NULL, postalCode TEXT NOT NULL, city TEXT NOT NULL)"
-
 
         when : 'We try to create a table that already exists...'
             db.createTablesFor(Person)
@@ -113,8 +143,21 @@ class DataBase_Spec extends Specification
     {
         reportInfo """
             This feature demonstrates how to create a table that references multiple other tables.
+            It is based on the following example interface:
+            ```
+                public interface Workplace extends Model<Workplace> 
+                {
+                    interface Name extends Var<String> {}
+                    interface Location extends Var<Address> {}
+                    interface Employees extends Vars<Person> {}
+                    Name name();
+                    Location address();
+                    Employees employees();
+                }
+            ```
+            As you can see we use the `Vars` interface to define a list of `Person` objects.
         """
-        given : 'We create a database instance for testing, the database will be opened in a test folder.'
+        given : 'A database instance, opened in a test folder.'
             def db = DataBase.of(TEST_DB_FILE)
             db.dropAllTables()
         expect : 'Initially there are no tables in the database.'
@@ -134,7 +177,7 @@ class DataBase_Spec extends Specification
             workplace.address().set(address)
             workplace.employees().add(person)
             workplace.employees().add(person2)
-        then :
+        then : 'The workplace should have the correct address and employees.'
             workplace.address().get() == address
             workplace.employees().toSet() == [person, person2] as Set
 
@@ -175,6 +218,18 @@ class DataBase_Spec extends Specification
         reportInfo """
             In this feature you can see how to use the fluent query API of the database 
             build database queries to select "Atoms" from the database.
+            This is the `Atom` model we are going to use:
+            ```
+                public interface Atom extends Model<Atom> 
+                {
+                    interface Name extends Var<String> {}
+                    interface Mass extends Var<Double> {}
+                    interface AtomicNumber extends Var<Integer> {}
+                    Name name();
+                    Mass mass();
+                    AtomicNumber atomicNumber();
+                }
+            ```
         """
         given : 'We create a database instance for testing, the database will be opened in a test folder.'
             def db = DataBase.of(TEST_DB_FILE)
@@ -258,6 +313,17 @@ class DataBase_Spec extends Specification
             A model can have default methods, but if you declare a method, that is not a simple property getter,
             then the DataBase will not know what the implementation of this method should be,
             so it will throw an exception.
+            Here the model that demonstrates this:
+            ```
+                public interface InvalidModel extends Model<InvalidModel> 
+                {
+                    interface Name extends Var<String> {}
+                    Name name();
+                    boolean iAmInvalidBecauseIHaveNoImplementation();
+                }
+            ```
+            The model has a method that is not a property getter and has no implementation
+            and therefore the database cannot create a table for this model, it simply does not know what to do.
         """
         given : 'We create a database instance for testing, the database will be opened in a test folder.'
             def db = DataBase.of(TEST_DB_FILE)
@@ -270,6 +336,19 @@ class DataBase_Spec extends Specification
 
     def 'A model can have default method, which we can call without exceptions occurring.'()
     {
+        reportInfo """
+            Here we use the following model:
+            ```
+                public interface ModeWithDefaults extends Model<ModeWithDefaults> 
+                {
+                    interface Story extends Var<String> {}
+                    Story story();
+                    default boolean storyContains(String text) { return story().get().contains(text); }
+                }
+            ```
+            The model has a default method which we want to call.
+        """
+
         given : 'We create a database instance for testing, the database will be opened in a test folder.'
             def db = DataBase.of(TEST_DB_FILE)
             db.dropAllTables()
