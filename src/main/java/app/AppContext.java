@@ -18,7 +18,7 @@ public class AppContext
     private final Vars<UserContext> users = Vars.of(UserContext.class);
 
     public AppContext() {
-        this.db = DataBase.of("saves/sqlite.db");
+        this.db = DataBase.at("saves/sqlite.db");
         this.db.createTablesFor(
             Character.class,
             User.class,

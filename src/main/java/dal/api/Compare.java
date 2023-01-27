@@ -9,9 +9,9 @@ package dal.api;
  */
 public interface Compare<M extends Model<M>, T> {
 
-    Junction<M> equal(T value);
+    Junction<M> is(T value);
 
-    Junction<M> notEqual(T value);
+    Junction<M> isNot(T value);
 
     Junction<M> like(T value);
 

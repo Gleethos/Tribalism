@@ -174,7 +174,7 @@ public class SQLiteDataBase extends AbstractDataBase
     }
 
     @Override
-    public <M extends Model<M>> M create(Class<M> model) {
+    public <M extends Model<M>> M create( Class<M> model ) {
         // First let's verify that the model is indeed a model
         if ( !Model.class.isAssignableFrom(model) )
             throw new IllegalArgumentException("The provided class is not a model!");
@@ -317,7 +317,7 @@ public class SQLiteDataBase extends AbstractDataBase
         Junction[] junc = {null};
         Compare<M, Object> valueCollector = new Compare<M, Object>() {
             @Override
-            public Junction<M> equal(Object value) {
+            public Junction<M> is(Object value) {
                 // First sql:
                 sql.append(" = ?");
                 // Then values:
@@ -326,7 +326,7 @@ public class SQLiteDataBase extends AbstractDataBase
             }
 
             @Override
-            public Junction<M> notEqual(Object value) {
+            public Junction<M> isNot(Object value) {
                 // First sql:
                 sql.append(" != ?");
                 // Then values:

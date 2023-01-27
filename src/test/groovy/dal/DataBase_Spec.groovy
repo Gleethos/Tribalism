@@ -28,7 +28,7 @@ class DataBase_Spec extends Specification
     def TEST_DB_FILE = TEST_DB_LOCATION + "my.db"
 
     def setup() {
-        def db = DataBase.of(TEST_DB_FILE)
+        def db = DataBase.at(TEST_DB_FILE)
         db.dropAllTables()
         db.close()
     }
@@ -67,7 +67,7 @@ class DataBase_Spec extends Specification
             See for yourself:
         """
         given : 'A database instance, opened in a test folder.'
-            def db = DataBase.of(TEST_DB_FILE)
+            def db = DataBase.at(TEST_DB_FILE)
             db.dropAllTables() // just to be sure
         expect : 'Initially there are no tables in the database.'
             db.listOfAllTableNames() == []
@@ -158,7 +158,7 @@ class DataBase_Spec extends Specification
             As you can see we use the `Vars` interface to define a list of `Person` objects.
         """
         given : 'A database instance, opened in a test folder.'
-            def db = DataBase.of(TEST_DB_FILE)
+            def db = DataBase.at(TEST_DB_FILE)
             db.dropAllTables()
         expect : 'Initially there are no tables in the database.'
             db.listOfAllTableNames() == []
@@ -171,8 +171,8 @@ class DataBase_Spec extends Specification
 
         when : 'We create a new workplace with and address and 2 people working there.'
             var address = db.create(Address)
-            var person = db.create(Person)
-            var person2 = db.create(Person)
+            var person   = db.create(Person)
+            var person2  = db.create(Person)
             var workplace = db.create(Workplace)
             workplace.address().set(address)
             workplace.employees().add(person)
@@ -232,7 +232,7 @@ class DataBase_Spec extends Specification
             ```
         """
         given : 'We create a database instance for testing, the database will be opened in a test folder.'
-            def db = DataBase.of(TEST_DB_FILE)
+            def db = DataBase.at(TEST_DB_FILE)
             db.dropAllTables()
         expect : 'Initially there are no tables in the database.'
             db.createTablesFor(Atom)
@@ -326,7 +326,7 @@ class DataBase_Spec extends Specification
             and therefore the database cannot create a table for this model, it simply does not know what to do.
         """
         given : 'We create a database instance for testing, the database will be opened in a test folder.'
-            def db = DataBase.of(TEST_DB_FILE)
+            def db = DataBase.at(TEST_DB_FILE)
             db.dropAllTables()
         when : 'We create an invalid table'
             db.createTablesFor(InvalidModel)
@@ -350,7 +350,7 @@ class DataBase_Spec extends Specification
         """
 
         given : 'We create a database instance for testing, the database will be opened in a test folder.'
-            def db = DataBase.of(TEST_DB_FILE)
+            def db = DataBase.at(TEST_DB_FILE)
             db.dropAllTables()
         when : 'We create a test table'
             db.createTablesFor(ModeWithDefaults)
