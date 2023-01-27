@@ -1,6 +1,6 @@
 package dal.api;
 
-import dal.SQLiteDataBase;
+import dal.impl.SQLiteDataBase;
 
 import java.util.List;
 import java.util.Objects;

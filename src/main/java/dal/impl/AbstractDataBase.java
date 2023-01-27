@@ -1,4 +1,4 @@
-package dal;
+package dal.impl;
 
 import dal.api.DataBase;
 import org.json.JSONArray;
