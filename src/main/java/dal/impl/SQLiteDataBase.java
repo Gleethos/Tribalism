@@ -1,6 +1,7 @@
 package dal.impl;
 
 import dal.api.*;
+import org.slf4j.Logger;
 import swingtree.api.mvvm.*;
 
 import java.io.File;
@@ -13,7 +14,10 @@ import java.util.stream.IntStream;
  *  This class constitutes both a representation of a database
  *  and define an API which is in essence an interface based ORM.
  */
-public class SQLiteDataBase extends AbstractDataBase {
+public class SQLiteDataBase extends AbstractDataBase
+{
+    private final static Logger log = org.slf4j.LoggerFactory.getLogger(SQLiteDataBase.class);
+
     private final ModelRegistry _modelRegistry = new ModelRegistry();
 
     public SQLiteDataBase(String location) {
@@ -72,10 +76,24 @@ public class SQLiteDataBase extends AbstractDataBase {
             Class<? extends Model<?>>... models
     ) {
         _modelRegistry.addTables(Arrays.asList(models));
-        for ( String statement : _modelRegistry.getCreateTableStatements() ) {
+        for ( String statement : getCreateTableStatements() ) {
             _execute(statement);
         }
     }
+
+
+    private List<String> getCreateTableStatements() {
+        List<String> existingTables = listOfAllTableNames();
+        List<String> statements = new ArrayList<>();
+        for ( ModelTable modelTable : _modelRegistry.getTables() ) {
+            if ( !existingTables.contains(modelTable.getTableName()) )
+                statements.add(modelTable.createTableStatement());
+            else
+                log.info("Table " + modelTable.getTableName() + " already exists!");
+        }
+        return statements;
+    }
+
 
     /**
      *  This reads the sql defining the table of the provided model type.

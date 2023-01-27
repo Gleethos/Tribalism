@@ -14,7 +14,12 @@ class ModelRegistry
 
     public ModelRegistry() {}
 
-    public void addTables(List<Class<? extends Model<?>>> modelInterfaces) {
+    public void addTables(List<Class<? extends Model<?>>> modelInterfaces)
+    {
+        modelInterfaces = modelInterfaces
+                              .stream()
+                              .filter(m -> !modelTables.containsKey(SQLiteDataBase._tableNameFromClass(m)) ) // Filter out already added interfaces
+                              .collect(Collectors.toList());
 
         Set<Class<? extends Model<?>>> distinct = new HashSet<>();
         for (var modelTable : modelTables.values())
@@ -129,14 +134,6 @@ class ModelRegistry
 
     public List<ModelTable> getTables() {
         return new ArrayList<>(modelTables.values());
-    }
-
-    public List<String> getCreateTableStatements() {
-        List<String> statements = new ArrayList<>();
-        for (ModelTable modelTable : modelTables.values()) {
-            statements.add(modelTable.createTableStatement());
-        }
-        return statements;
     }
 
     public boolean hasTable(String tableName) {
