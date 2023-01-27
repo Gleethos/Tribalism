@@ -15,7 +15,7 @@ public class AppContext
     private final Vars<UserContext> users = Vars.of(UserContext.class);
 
     public AppContext() {
-        this.db = DataBase.of("saves/my.db");
+        this.db = DataBase.of("saves/sqlite.db");
     }
 
     public DataBase db() { return db; }

@@ -32,7 +32,15 @@ public class WebUserContext {
         } catch (ClassNotFoundException e) {
             e.printStackTrace();
         }
-        throw new IllegalArgumentException("id");
+        throw new IllegalArgumentException(
+                "Failed to find view model with id '" + id + "'!\n" +
+                "Available view models: " +
+                        _viewModels.keySet()
+                                .stream()
+                                .map(Class::getName)
+                                .reduce((a,b) -> a + ", " + b)
+                                .orElse("none")
+        );
     }
 
     private <T> void _put(VMID<T> id, T viewModel ) {

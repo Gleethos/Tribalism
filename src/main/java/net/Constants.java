@@ -17,6 +17,7 @@ public class Constants {
 
     // View model properties:
     public static String VM_ID = "vmId";
+    public static String CLASS_NAME = "className";
     public static String PROPS = "props";
     public static String METHOD_NAME = "name";
     public static String METHOD_ARG_NAME = "name";

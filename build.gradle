@@ -10,7 +10,7 @@ group 'org.gleethos'
 version '0.0.0'
 sourceCompatibility = '17'
 
-var REACT_SKIN_LOCATION = 'src/main/webapp/tribee-portal'
+var REACT_SKIN_LOCATION = 'src/main/web-portal'
 
 repositories {
     jcenter()
@@ -117,20 +117,33 @@ node {
     nodeProxySettings = ProxySettings.SMART
 }
 
+// Build the project locally
 task appNpmBuild(type: NpmTask) {
     description = "Builds production version of tribee-portal"
     workingDir = file("${project.projectDir}/$REACT_SKIN_LOCATION")
     args = ["run", "build"]
 }
 
-task copyWebApp(type: Copy) {
+// Copies the project to the service folder
+task copyWebAppToWebRoot(type: Copy) {
     from "$REACT_SKIN_LOCATION/build"
     into 'src/main/resources/.'
 }
 
+/*
+    Combines build and copy tasks!
+    Use this for rebuilding the react frontend
+    (rebuild the react app and copy the build folder to the resources folder)
+*/
+task buildWebApp(type: NpmTask) {
+    description = "Builds production version of tribee-portal"
+    dependsOn appNpmBuild
+    dependsOn copyWebAppToWebRoot
+}
+
 appNpmBuild.dependsOn npmInstall
-copyWebApp.dependsOn appNpmBuild
-compileJava.dependsOn copyWebApp
+copyWebAppToWebRoot.dependsOn appNpmBuild
+compileJava.dependsOn copyWebAppToWebRoot
 
 test {
     useJUnitPlatform()

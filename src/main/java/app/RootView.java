@@ -14,7 +14,7 @@ public class RootView extends javax.swing.JPanel {
         .add(GROW,
             tabbedPane()
             .add(tab("Server").add(vm.serverViewModel().createView()))
-            .add(tab("Content").add(vm.mainViewModel().createView()))
+            .add(tab("Content").add(vm.createMainViewModel().createView()))
         );
     }
 }

@@ -8,7 +8,6 @@ import javax.swing.*;
 
 public class LoginViewModel implements Viewable
 {
-
     private final AppContext context;
     private final ContentViewModel contentViewModel;
 
@@ -20,6 +19,7 @@ public class LoginViewModel implements Viewable
     private final Var<Boolean> loginButtonEnabled;
     private final Var<Boolean> allInputsDisabled;
     private final Var<Boolean> inputValid;
+
 
     public LoginViewModel(AppContext context, ContentViewModel contentViewModel) {
         this.context = context;

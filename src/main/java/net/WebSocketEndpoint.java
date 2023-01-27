@@ -1,6 +1,7 @@
 package net;
 
 import app.AppContext;
+import app.ContentViewModel;
 import binding.WebUserContext;
 import org.eclipse.jetty.websocket.servlet.WebSocketServlet;
 import org.eclipse.jetty.websocket.servlet.WebSocketServletFactory;
@@ -10,12 +11,12 @@ import java.util.concurrent.ConcurrentHashMap;
 
 public class WebSocketEndpoint extends WebSocketServlet {
 
-    private final AppContext context;
+    private final AppContext appContext;
 
     private final Map<String, WebUserContext> userContexts = new ConcurrentHashMap<>();
 
-    public WebSocketEndpoint(AppContext context) {
-        this.context = context;
+    public WebSocketEndpoint(AppContext appContext) {
+        this.appContext = appContext;
     }
 
     @Override
@@ -35,7 +36,8 @@ public class WebSocketEndpoint extends WebSocketServlet {
             WebUserContext userContext;
             if ( !userContexts.containsKey(session.getId()) ) {
                 userContext = new WebUserContext();
-                context.registerWebUserContext(userContext);
+                userContext.put(new ContentViewModel(appContext));
+                appContext.registerWebUserContext(userContext);
                 userContexts.put(session.getId(), userContext);
             }
             else

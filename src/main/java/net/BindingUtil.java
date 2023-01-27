@@ -238,6 +238,7 @@ public class BindingUtil {
 
         JSONObject result = new JSONObject();
         result.put(Constants.PROPS, json);
+        result.put(Constants.CLASS_NAME, vm.getClass().getName());
         result.put(Constants.VM_ID, webUserContext.vmIdOf(vm).toString());
         result.put("methods", _getMethodsForViewModel(vm));
         return result;

@@ -1,21 +1,23 @@
 package app;
 
+import java.util.Objects;
+
 public class RootViewModel {
 
+    private final AppContext context;
     private final ServerViewModel serverViewModel;
-    private final ContentViewModel contentViewModel;
 
     public RootViewModel(AppContext context) {
+        this.context = Objects.requireNonNull(context);
         this.serverViewModel = new ServerViewModel(context);
-        this.contentViewModel = new ContentViewModel(context);
     }
 
     public ServerViewModel serverViewModel() {
         return serverViewModel;
     }
 
-    public ContentViewModel mainViewModel() {
-        return contentViewModel;
+    public ContentViewModel createMainViewModel() {
+        return new ContentViewModel(context);
     }
 
 }
