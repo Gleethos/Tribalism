@@ -41,3 +41,6 @@ bin/
 
 ### Mac OS ###
 .DS_Store
+
+### We ignore the java resources folder, because it is regenerated as part of the build ###
+!**/src/main/**/java/resources/
