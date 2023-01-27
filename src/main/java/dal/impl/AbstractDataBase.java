@@ -104,6 +104,7 @@ abstract class AbstractDataBase implements DataBase {
         //_connection=null;
     }
 
+    @Override
     public void close(){
         _close();
     }

@@ -114,7 +114,7 @@ public class SQLiteDataBase extends AbstractDataBase {
 
         /*
             Now you might thing we simply do a single database query to get the model
-            and then that'ss it. But that is not the case.
+            and then that's it. But that is not the case.
             This ORM is interface based, so we are free to implement the model in any way we want.
             And what we want is dynamic models where calling the setter of a property updates
             the database.
@@ -124,10 +124,14 @@ public class SQLiteDataBase extends AbstractDataBase {
         // Let's find the table for the model
         ModelTable modelTable = _modelRegistry.getTable(model);
 
+        // Let's first see if the registry already contains a proxy
+
+        var proxy = new ModelProxy<>(this, modelTable, id);
+
         return  (T) Proxy.newProxyInstance(
                         model.getClassLoader(),
                         new Class[]{model},
-                        new ModelProxy<>(this, modelTable, id)
+                        proxy
                 );
     }
 
@@ -227,19 +231,61 @@ public class SQLiteDataBase extends AbstractDataBase {
     }
 
     @Override
-    public <M extends Model<M>> void delete(M model) {
-        Objects.requireNonNull(model, "The provided model is null!");
-        Class<?> modelProxyClass = model.getClass();
+    public <M extends Model<M>> void delete(M modelToBeRemoved) {
+        Objects.requireNonNull(modelToBeRemoved, "The provided model is null!");
+        Class<?> modelProxyClass = modelToBeRemoved.getClass();
         // Now we need to get the interface class defining the model
-        Class<?> modelInterfaceClass = null;
-        for ( Class<?> c : modelProxyClass.getInterfaces() ) {
-            if ( Model.class.isAssignableFrom(c) ) {
-                modelInterfaceClass = c;
-                break;
-            }
-        }
-        int id = model.id().get();
+        Class<?> modelInterfaceClass =
+                Arrays.stream(modelProxyClass.getInterfaces())
+                        .filter(Model.class::isAssignableFrom)
+                        .findFirst()
+                        .orElseThrow();
+
+        int id = modelToBeRemoved.id().get();
         String tableName = _tableNameFromClass(modelInterfaceClass);
+        // First we clean up usages of the model
+        // Now we need to find all the intermediate tables that reference this model
+        List<ModelTable> intermediateTables = _modelRegistry.getIntermediateTableInvolving((Class<? extends Model<?>>) modelInterfaceClass);
+        intermediateTables.forEach( intermTable -> {
+            String intermTableName = intermTable.getTableName();
+            Class<?> left = intermTable.getReferencedModels().get(0);
+            Class<?> right = intermTable.getReferencedModels().get(1);
+            String leftName = "fk_self_" + _tableNameFromClass(left) + "_id";
+            String rightName = "fk_" + _tableNameFromClass(right) + "_id";
+            // We need to find all entries where 'fk_..._id' is this 'id'
+            // Then we need to find all the referencing (containing "self") models and simply
+            // call the right property using reflection and tell it to remove the model...
+            var result = _query(
+                        "SELECT " + leftName + " " +
+                                "FROM " + intermTableName + " " +
+                                "WHERE " + rightName + " = ?",
+                                List.of(id)
+                );
+
+            if ( result.isEmpty() ) return;
+            List<Integer> refIds = result.get(leftName).stream().map( o -> (Integer) o ).distinct().toList();
+            refIds.forEach( refId -> {
+                var refModel = select((Class<Model>) left, refId);
+                String methodName = intermTableName.substring(0, intermTableName.length() - "_list_table".length());
+                Vars<Object> listOfModels = null;
+                // We need to find property and store it in the above variable
+                // Lets call the method:
+                try {
+                    Method m = refModel.getClass().getMethod(methodName);
+                    listOfModels = (Vars<Object>) m.invoke(refModel);
+                    listOfModels.remove(modelToBeRemoved);
+                } catch (NoSuchMethodException e) {
+                    throw new RuntimeException(e);
+                } catch (InvocationTargetException e) {
+                    throw new RuntimeException(e);
+                } catch (IllegalAccessException e) {
+                    throw new RuntimeException(e);
+                }
+            });
+        });
+        _modelRegistry.findModelProxy(tableName, id).ifPresent( proxy -> {
+            _modelRegistry.removeModelProxy(tableName, id);
+        });
         String sql = "DELETE FROM " + tableName + " WHERE id = ?";
         boolean success = _update(sql, Collections.singletonList(id));
     }

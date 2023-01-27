@@ -2,13 +2,17 @@ package dal.impl;
 
 import dal.api.Model;
 
+import java.lang.ref.WeakReference;
 import java.util.*;
+import java.util.stream.Collectors;
 
-class ModelRegistry {
+class ModelRegistry
+{
     private final Map<String, ModelTable> modelTables = new LinkedHashMap<>();
 
-    public ModelRegistry() {
-    }
+    private final Map<String, Map<Integer, WeakReference<ModelProxy<?>>>> modelProxies = new LinkedHashMap<>();
+
+    public ModelRegistry() {}
 
     public void addTables(List<Class<? extends Model<?>>> modelInterfaces) {
 
@@ -150,4 +154,52 @@ class ModelRegistry {
     public ModelTable getTable(Class<? extends Model<?>> modelInterface) {
         return modelTables.values().stream().filter(t -> t.getModelInterface().isPresent() && t.getModelInterface().get().equals(modelInterface)).findFirst().orElse(null);
     }
+
+    public List<ModelTable> getIntermediateTables() {
+        return modelTables.values().stream().filter(t -> t.getModelInterface().isEmpty()).collect(Collectors.toList());
+    }
+
+    public List<ModelTable> getIntermediateTableInvolving(Class<? extends Model<?>> modelInterface) {
+        return getIntermediateTables().stream().filter(t -> t.getReferencedModels().contains(modelInterface)).collect(Collectors.toList());
+    }
+
+    public Optional<ModelProxy<?>> findModelProxy(String tableName, int id) {
+        var proxies = this.modelProxies.get(tableName);
+        if (proxies == null) {
+            return Optional.empty();
+        }
+        var found = proxies.get(id);
+        if (found == null) {
+            return Optional.empty();
+        }
+        return Optional.ofNullable(found.get());
+    }
+
+    public void addModelProxy(ModelProxy<?> modelProxy) {
+        var proxies = this.modelProxies.computeIfAbsent(modelProxy.getTableName(), k -> new HashMap<>());
+        proxies.put(modelProxy.getId(), new WeakReference<>(modelProxy));
+    }
+
+    public void removeModelProxy(ModelProxy<?> modelProxy) {
+        var proxies = this.modelProxies.get(modelProxy.getTableName());
+        if (proxies == null) {
+            return;
+        }
+        proxies.remove(modelProxy.getId());
+        if (proxies.isEmpty()) {
+            this.modelProxies.remove(modelProxy.getTableName());
+        }
+    }
+
+    public void removeModelProxy(String tableName, int id ) {
+        var proxies = this.modelProxies.get(tableName);
+        if (proxies == null) {
+            return;
+        }
+        proxies.remove(id);
+        if (proxies.isEmpty()) {
+            this.modelProxies.remove(tableName);
+        }
+    }
+
 }

@@ -32,7 +32,7 @@ public class ModelProperties implements Vars<Object>
         // that are referenced by the intermediate table:
         this.otherTable = AbstractDataBase._tableNameFromClass(propertyValueType);
         this.otherTableIdColumn = "fk_" + otherTable + "_id";
-        this.thisTableIdColumn = "fk_" + AbstractDataBase._tableNameFromClass(ownerModelClass) + "_id";
+        this.thisTableIdColumn = "fk_self_" + AbstractDataBase._tableNameFromClass(ownerModelClass) + "_id";
         String query = "SELECT " + otherTableIdColumn + " FROM " + intermediateTable.getTableName() + " WHERE " + thisTableIdColumn + " = ?";
 
         List<Object> param = Collections.singletonList(id);

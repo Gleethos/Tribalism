@@ -36,4 +36,6 @@ public interface DataBase {
 
     <M extends Model<M>> Where<M> select( Class<M> model );
 
+    void close();
+
 }

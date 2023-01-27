@@ -237,9 +237,9 @@ final class TableField {
                     String otherTable = AbstractDataBase._tableNameFromClass(otherTableClass);
                     return "CREATE TABLE " + getTableName() + " (\n" +
                             "    id INTEGER PRIMARY KEY AUTOINCREMENT,\n" +
-                            "    fk_" + thisTable + "_id INTEGER NOT NULL,\n" +
+                            "    fk_self_" + thisTable + "_id INTEGER NOT NULL,\n" +
                             "    fk_" + otherTable + "_id INTEGER NOT NULL,\n" +
-                            "    FOREIGN KEY (fk_" + thisTable + "_id) REFERENCES " + thisTable + "(id),\n" +
+                            "    FOREIGN KEY (fk_self_" + thisTable + "_id) REFERENCES " + thisTable + "(id),\n" +
                             "    FOREIGN KEY (fk_" + otherTable + "_id) REFERENCES " + otherTable + "(id)\n" +
                             ");";
                 }

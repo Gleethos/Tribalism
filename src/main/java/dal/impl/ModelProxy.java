@@ -8,11 +8,15 @@ import java.lang.invoke.MethodHandles;
 import java.lang.invoke.MethodType;
 import java.lang.reflect.InvocationHandler;
 import java.lang.reflect.Method;
+import java.util.HashMap;
+import java.util.Map;
 
 class ModelProxy<T extends Model<T>> implements InvocationHandler {
     private final SQLiteDataBase _dataBase;
     private final ModelTable _modelTable;
     private final int _id;
+
+    private Map<String, Object> cachedPropertyProxies = new HashMap<>();
 
     public ModelProxy(SQLiteDataBase db, ModelTable table, int id) {
         _dataBase = db;
@@ -122,9 +126,9 @@ class ModelProxy<T extends Model<T>> implements InvocationHandler {
         Object toBeReturned;
 
         if (Val.class.isAssignableFrom(method.getReturnType()))
-            toBeReturned = tableField.asProperty(_dataBase, _id);
+            toBeReturned = cachedPropertyProxies.computeIfAbsent(methodName, n -> tableField.asProperty(_dataBase, _id));
         else if (Vals.class.isAssignableFrom(method.getReturnType()))
-            toBeReturned = tableField.asProperties(_dataBase, _id);
+            toBeReturned = cachedPropertyProxies.computeIfAbsent(methodName, n -> tableField.asProperties(_dataBase, _id));
         else
             throw new IllegalArgumentException("The model '" + _modelTable.getModelInterface().get().getName() + "' does not have a property named '" + methodName + "'!");
 
@@ -134,4 +138,13 @@ class ModelProxy<T extends Model<T>> implements InvocationHandler {
 
         return toBeReturned;
     }
+
+    public int getId() {
+        return _id;
+    }
+
+    public String getTableName() {
+        return _modelTable.getTableName();
+    }
+
 }

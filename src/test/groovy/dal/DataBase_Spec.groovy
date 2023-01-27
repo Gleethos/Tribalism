@@ -160,16 +160,10 @@ class DataBase_Spec extends Specification
                                             "Person[id=2, fk_address_id=Address[id=null, country=null, street=null, postalCode=null, city=null], lastName=\"\", firstName=\"Jane\"], ]" +
                                         "]"
 
-        //when :
-        //    db.remove(person2)
-        //then :
-        //    workplace.toString() == "Workplace[" +
-        //                                "id=1, " +
-        //                                "name=\"\", " +
-        //                                "fk_address_id=Address[id=1, country=\"\", street=\"\", postalCode=\"\", city=\"\"], " +
-        //                                "employees=[" +
-        //                                    "Person[id=1, fk_address_id=Address[id=null, country=null, street=null, postalCode=null, city=null], lastName=\"\", firstName=\"\"], " +
-        //                                "]"
+        when :
+            db.delete(person2)
+        then :
+            workplace.toString() == "Workplace[id=1, name=\"\", fk_address_id=Address[id=1, country=\"\", street=\"\", postalCode=\"\", city=\"\"], employees=[Person[id=1, fk_address_id=Address[id=null, country=null, street=null, postalCode=null, city=null], lastName=\"\", firstName=\"\"], ]]"
 
         cleanup:
             db.close()
