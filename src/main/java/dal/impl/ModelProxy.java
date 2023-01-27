@@ -4,6 +4,8 @@ import dal.api.Model;
 import swingtree.api.mvvm.Val;
 import swingtree.api.mvvm.Vals;
 
+import java.lang.invoke.MethodHandles;
+import java.lang.invoke.MethodType;
 import java.lang.reflect.InvocationHandler;
 import java.lang.reflect.Method;
 
@@ -84,12 +86,36 @@ class ModelProxy<T extends Model<T>> implements InvocationHandler {
             return sb.toString();
         }
 
+        if ( !_modelTable.hasField(methodName) ) {
+            /*
+                Ah, a method that is not a property! Let's check if it is a default method!
+            */
+            // First we expect there to be a model interface
+            Class<?> modelInterface = _modelTable.getModelInterface().orElseThrow();
+            // Then we expect the method to be declared in the model interface
+            Method modelInterfaceMethod = modelInterface.getDeclaredMethod(methodName, method.getParameterTypes());
+            // Then we expect the method to be a default method
+            if (!modelInterfaceMethod.isDefault())
+                throw new IllegalArgumentException("Method " + methodName + " is not a property and not a default method!");
+
+            // Perfect! Let's just call the method on the proxy!
+            return MethodHandles.lookup()
+                    .findSpecial(
+                        modelInterface,
+                        methodName,
+                        MethodType.methodType(method.getReturnType(), method.getParameterTypes()),
+                        modelInterface
+                    )
+                    .bindTo(proxy)
+                    .invokeWithArguments(args);
+        }
+
         TableField tableField = _modelTable.getField(methodName);
-        if (tableField == null)
+        if ( tableField == null )
             throw new IllegalArgumentException("The model '" + _modelTable.getModelInterface().get().getName() + "' does not have a property named '" + methodName + "'!");
-        if (args != null && args.length != 0)
+        if ( args != null && args.length != 0 )
             throw new IllegalArgumentException("The model '" + _modelTable.getModelInterface().get().getName() + "' does not have a setter for the property named '" + methodName + "'!");
-        if (method.getReturnType() == void.class)
+        if ( method.getReturnType() == void.class )
             throw new IllegalArgumentException("The model '" + _modelTable.getModelInterface().get().getName() + "' does not have a setter for the property named '" + methodName + "'!");
 
         // Now let's get the property value from the database

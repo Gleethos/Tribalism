@@ -59,8 +59,12 @@ class DefaultModelTable implements ModelTable
         Method[] methods = modelInterface.getMethods();
         List<TableField> fields = new ArrayList<>();
         for (Method method : methods) {
+            // First we check if it is a default method, which we can ignore
+            if (method.isDefault())
+                continue;
             Method[] allowedFields = Model.class.getMethods();
             if (!Arrays.asList(allowedFields).contains(method)) {
+                
                 // We do not allow methods with parameters
                 if (method.getParameterCount() != 0) {
                     throw new IllegalArgumentException(

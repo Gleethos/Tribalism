@@ -3,6 +3,8 @@ package dal
 import dal.api.DataBase
 import dal.models.Address
 import dal.models.Atom
+import dal.models.InvalidModel
+import dal.models.ModeWithDefaults
 import dal.models.Person
 import dal.models.Workplace
 import spock.lang.Narrative
@@ -256,5 +258,39 @@ class DataBase_Spec extends Specification
             atoms[1] == atom3
     }
 
+    def 'We cannot create a table for a model with a method that is not a property getter and has no implementation.'()
+    {
+        reportInfo """
+            A model can have default methods, but if you declare a method, that is not a simple property getter,
+            then the DataBase will not know what the implementation of this method should be,
+            so it will throw an exception.
+        """
+        given : 'We create a database instance for testing, the database will be opened in a test folder.'
+            def db = DataBase.of(TEST_DB_FILE)
+            db.dropAllTables()
+        when : 'We create an invalid table'
+            db.createTablesFor(InvalidModel)
+        then : 'The database will throw an exception, because a method is not a simple property getter.'
+            thrown(IllegalArgumentException)
+    }
+
+    def 'A model can have default method, which we can call without exceptions occurring.'()
+    {
+        given : 'We create a database instance for testing, the database will be opened in a test folder.'
+            def db = DataBase.of(TEST_DB_FILE)
+            db.dropAllTables()
+        when : 'We create a test table'
+            db.createTablesFor(ModeWithDefaults)
+        and :
+            var m = db.create(ModeWithDefaults)
+        then :
+            noExceptionThrown()
+
+        when : 'We add some text to the model...'
+            m.story().set("Once upon a time...")
+        then : 'We can use the default method to confirm certain things about the model.'
+            m.storyContains("upon")
+            !m.storyContains("uppon")
+    }
 
 }

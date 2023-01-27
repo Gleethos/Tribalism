@@ -19,6 +19,14 @@ interface ModelTable {
         throw new IllegalArgumentException("No field with name " + name + " found!");
     }
 
+    default boolean hasField(String name) {
+        for ( TableField field : getFields() ) {
+            if ( field.isField(name) )
+                return true;
+        }
+        return false;
+    }
+
     default TableField getField(Class<?> propertyType) {
         for (TableField field : getFields()) {
             if (field.getPropType().equals(propertyType))
