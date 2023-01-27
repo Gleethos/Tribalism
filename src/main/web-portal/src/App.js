@@ -1,6 +1,5 @@
 import logo from './logo.svg';
 import './App.css';
-import './mvvm/app.js';
 import { Var, Val, VM, Session, connect } from "./mvvm/backend-binder";
 
 function App() {
@@ -42,8 +41,14 @@ function App() {
             login.onclick = () => cvm.login();
         } else if ( cvm.class === 'app.RegisterViewModel' ) {
             // TODO: Implement the register page
+            // We make the main page empty:
+            document.getElementById("main-content").innerHTML = "<div>REGISTER PAGE</div>";
         }
       })
+
+      // If the user does not want to login, we can switch to the register page using the switch button
+      const switchButton = document.getElementById("switch-id");
+      switchButton.onclick = () => vm.showRegister();
 
     });
 
@@ -51,6 +56,7 @@ function App() {
     <div className="App">
       <header className="App-header">
         <title>Tribee Login</title>
+          <button id="switch-id">Switch</button>
       </header>
       <body>
       <div id="main-content" className="container-fluid">
