@@ -48,10 +48,28 @@ final class TableField {
         */
         Class<?> declaringClass = method.getDeclaringClass();
         Class<?> outerClassOfNestedClass = propertyType.getDeclaringClass();
-        if (!declaringClass.equals(outerClassOfNestedClass))
+        if (!declaringClass.equals(outerClassOfNestedClass)) {
+            if ( propertyType == Var.class || propertyType == Vars.class || propertyType == Val.class || propertyType == Vals.class )
+                throw new IllegalArgumentException(
+                        "Model '" + this.ownerModelClass.getName() + "' is invalid because the return type " +
+                        "of the method " + method.getName() + " is the generic property type " + propertyType.getName() + " " +
+                        "instead of a locally defined custom property type.\n" +
+                        "Please define a local property type inside '" + this.ownerModelClass.getName() + "' similar to " +
+                        "'interface MyProp extends "+propertyType.getSimpleName()+"<MyValue> {}' " +
+                        "and return that instead: 'public MyProp " + method.getName() + "();'.\n" +
+                        "This is important to allow for compile time query building on the database API."
+                    );
             throw new IllegalArgumentException(
-                    "The return type of the method " + method.getName() + " is not declared as an inner interface of " + declaringClass.getName()
-            );
+                    "Model '" + this.ownerModelClass.getName() + "' is invalid because return " +
+                    "type '" + propertyType.getName() + "' of " +
+                    "method '" + method.getName() + "' is not declared as an " +
+                    "inner interface of the provided interface '" + declaringClass.getName() + "'." +
+                    "Please define a local property type inside '" + this.ownerModelClass.getName() + "' similar to " +
+                    "'interface MyProp extends "+propertyType.getSimpleName()+"<MyValue> {}' " +
+                    "and return that instead: 'public MyProp " + method.getName() + "();'.\n" +
+                    "This is important to allow for compile time query building on the database API."
+                );
+        }
 
         // Now we can get the type of the value of the property
         // This is a generic type parameter of the Val interface

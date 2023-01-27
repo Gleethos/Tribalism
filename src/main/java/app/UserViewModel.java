@@ -1,5 +1,6 @@
 package app;
 
+import app.models.Character;
 import swingtree.api.mvvm.Vals;
 import swingtree.api.mvvm.Var;
 import swingtree.api.mvvm.Vars;

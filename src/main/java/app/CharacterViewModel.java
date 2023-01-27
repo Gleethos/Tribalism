@@ -1,11 +1,13 @@
 package app;
 
+import app.models.Character;
 import swingtree.api.mvvm.Var;
 
 import java.util.Optional;
 
 public class CharacterViewModel
 {
+    private final AppContext context;
     private final Var<String> forename;
     private final Var<String> surname;
     private final Var<String> role;
@@ -16,7 +18,8 @@ public class CharacterViewModel
     private final Var<String> image;
 
 
-    public CharacterViewModel() {
+    public CharacterViewModel(AppContext context) {
+        this.context = context;
         this.forename     = Var.of("").withId("forename");
         this.surname      = Var.of("").withId("surname");
         this.role         = Var.of("").withId("role");
@@ -31,16 +34,16 @@ public class CharacterViewModel
         if ( forename.get().isEmpty() || surname.get().isEmpty() ) {
             return Optional.empty();
         }
-        return Optional.of(new Character(
-            forename.get(),
-            surname.get(),
-            role.get(),
-            age.get(),
-            height.get(),
-            weight.get(),
-            description.get(),
-            image.get()
-        ));
+        var character = this.context.db().create(Character.class);
+        character.forename().set(forename.get());
+        character.surname().set(surname.get());
+        character.role().set(role.get());
+        character.age().set(age.get());
+        character.height().set(height.get());
+        character.weight().set(weight.get());
+        character.description().set(description.get());
+        character.image().set(image.get());
+        return Optional.of(character);
     }
 
 

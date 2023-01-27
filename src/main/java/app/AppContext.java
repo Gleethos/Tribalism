@@ -1,6 +1,9 @@
 package app;
 
+import app.models.Character;
+import app.models.GameMaster;
 import app.models.User;
+import app.models.World;
 import binding.WebUserContext;
 import dal.api.DataBase;
 import swingtree.api.mvvm.Vals;
@@ -16,6 +19,12 @@ public class AppContext
 
     public AppContext() {
         this.db = DataBase.of("saves/sqlite.db");
+        this.db.createTablesFor(
+            Character.class,
+            User.class,
+            GameMaster.class,
+            World.class
+        );
     }
 
     public DataBase db() { return db; }
