@@ -6,20 +6,18 @@ import swingtree.api.mvvm.*;
 import java.lang.reflect.*;
 import java.util.*;
 
-class ModelField {
+final class TableField {
 
-    private final Method method;
-    private final Class<? extends Model<?>> ownerModelClass;
-    private final Class<?> propertyValueType;
-    private final Class<?> propertyType;
+    private final Method method; // The method from the model class
+    private final Class<? extends Model<?>> ownerModelClass; // The model class
+    private final Class<?> propertyType; // The type of the property and return type of the method
+    private final Class<?> propertyValueType; // The type of the property value
     private final FieldKind kind;
-    private final List<Class<? extends Model<?>>> otherModels;
 
-    ModelField(Method method, Class<? extends Model<?>> ownerClass, List<Class<? extends Model<?>>> otherModels) {
+    TableField(Method method, Class<? extends Model<?>> ownerClass, List<Class<? extends Model<?>>> otherModels) {
         this.method = method;
         this.ownerModelClass = ownerClass;
         this.propertyType = method.getReturnType();
-        this.otherModels = Collections.unmodifiableList(otherModels);
 
         // First we check if the return type is a subclass of Val or Vals
         boolean isVal = Val.class.isAssignableFrom(propertyType);
@@ -191,19 +189,19 @@ class ModelField {
         if (requiresIntermediateTable())
             return Optional.of(new ModelTable() {
                 @Override
-                public String getName() {
-                    return ModelField.this.getName() + "_list_table";
+                public String getTableName() {
+                    return TableField.this.getName() + "_list_table";
                 }
 
                 @Override
-                public List<ModelField> getFields() {
+                public List<TableField> getFields() {
                     return Collections.emptyList();
                 }
 
                 @Override
                 public List<Class<? extends Model<?>>> getReferencedModels() {
-                    Class<?> thisTableClass = ModelField.this.method.getDeclaringClass();
-                    Class<?> otherTableClass = ModelField.this.propertyValueType;
+                    Class<?> thisTableClass = TableField.this.method.getDeclaringClass();
+                    Class<?> otherTableClass = TableField.this.propertyValueType;
                     return Arrays.asList((Class<? extends Model<?>>) thisTableClass, (Class<? extends Model<?>>) otherTableClass);
                 }
 
@@ -215,11 +213,11 @@ class ModelField {
                         - foreign_key pointing to the model table of the model to which the list belongs
                         - foreign_key pointing to the model of the property type of the list
                      */
-                    Class<?> thisTableClass = ModelField.this.method.getDeclaringClass();
-                    Class<?> otherTableClass = ModelField.this.propertyValueType;
+                    Class<?> thisTableClass = TableField.this.method.getDeclaringClass();
+                    Class<?> otherTableClass = TableField.this.propertyValueType;
                     String thisTable = AbstractDataBase._tableNameFromClass(thisTableClass);
                     String otherTable = AbstractDataBase._tableNameFromClass(otherTableClass);
-                    return "CREATE TABLE " + getName() + " (\n" +
+                    return "CREATE TABLE " + getTableName() + " (\n" +
                             "    id INTEGER PRIMARY KEY AUTOINCREMENT,\n" +
                             "    fk_" + thisTable + "_id INTEGER NOT NULL,\n" +
                             "    fk_" + otherTable + "_id INTEGER NOT NULL,\n" +
@@ -246,7 +244,7 @@ class ModelField {
     public Val<Object> asProperty(SQLiteDataBase db, int id) {
         var prop = new ModelProperty(db, id, this.getName(), AbstractDataBase._tableNameFromClass(ownerModelClass), propertyValueType);
 
-        Class<?> propertyType = ModelField.this.propertyType;
+        Class<?> propertyType = TableField.this.propertyType;
 
         // Let's check if the property is a Val
         boolean isVal = Val.class.isAssignableFrom(propertyType);
@@ -321,160 +319,8 @@ class ModelField {
         if (intermediateTable == null)
             throw new IllegalStateException("The intermediate table does not exist");
 
-        // We need to find the name of the column that contains the ids of the models
-        // that are referenced by the intermediate table:
-        String otherTable = AbstractDataBase._tableNameFromClass(propertyValueType);
-        String otherTableIdColumn = "fk_" + otherTable + "_id";
-        String thisTableIdColumn = "fk_" + AbstractDataBase._tableNameFromClass(ownerModelClass) + "_id";
-        String query = "SELECT " + otherTableIdColumn + " FROM " + intermediateTable.getName() + " WHERE " + thisTableIdColumn + " = ?";
 
-        List<Object> param = Collections.singletonList(id);
-        Map<String, List<Object>> result = db._query(query, param);
-        // The result should contain a single column:
-        //if ( result.size() != 1 )
-        //    throw new IllegalStateException("The result should contain a single column");
-
-        if (result.size() == 0)
-            result.put(otherTableIdColumn, new ArrayList<>());
-
-        // The column should be named after the id column of the other table:
-        if (!result.containsKey(otherTableIdColumn))
-            throw new IllegalStateException("The column should be named after the id column of the other table");
-        // The column should contain a list of ids:
-        List<Object> found = result.get(otherTableIdColumn);
-        List<Integer> ids = new ArrayList<>(found.stream().map(o -> (Integer) o).toList());
-        Vars<Object> vars = new Vars<>() {
-
-            private Model<?> select(int id) {
-                // We need to get the model from the database:
-                Class<Model> propertyValueType = (Class<Model>) ModelField.this.propertyValueType;
-                Model<?> model = db.select(propertyValueType, id);
-                return model;
-            }
-
-            @Override
-            public Iterator<Object> iterator() {
-                // We need to map the ids to the actual models:
-                return ids.stream().map(id -> {
-                    // We need to get the model from the database:
-                    return (Object) select(id);
-                }).iterator();
-            }
-
-            @Override
-            public Class<Object> type() {
-                return (Class<Object>) ModelField.this.propertyValueType;
-            }
-
-            @Override
-            public int size() {
-                return ids.size();
-            }
-
-            @Override
-            public Var<Object> at(int index) {
-                return new ModelProperty(
-                        db,
-                        ids.get(index),
-                        "fk_" + otherTable + "_id",
-                        intermediateTable.getName(),
-                        propertyValueType
-                );
-            }
-
-            @Override
-            public Vals<Object> onShow(Action<ValsDelegate<Object>> action) {
-                return null;
-            }
-
-            @Override
-            public Vals<Object> show() {
-                throw new UnsupportedOperationException("Not supported yet.");
-            }
-
-            @Override
-            public Vars<Object> removeAt(int index) {
-                /*
-                    Basically all we need to do is delete a row from the intermediate table!
-                    Which row? The one that contains the id of the left model and the id of the
-                    model at the given index.
-                */
-                int leftId = id;
-                int rightId = ids.get(index);
-                String query = "DELETE FROM " + intermediateTable.getName() + " " +
-                        "WHERE " + thisTableIdColumn + " = ? AND " + otherTableIdColumn + " = ?";
-                List<Object> params = List.of(leftId, rightId);
-                db._update(query, params);
-                ids.remove(index);
-                return this;
-            }
-
-            @Override
-            public Vars<Object> addAt(int index, Var<Object> var) {
-                // First let's verify the type:
-                if (!propertyValueType.isAssignableFrom(var.type()))
-                    throw new IllegalArgumentException("The type of the var is not the same as the type of the property");
-
-                /*
-                    We need to insert a row into the intermediate table! Basic stuff...
-                */
-                Object o = var.get();
-                int leftId = id;
-                int rightId = ((Model) o).id().get();
-                String query = "INSERT INTO " + intermediateTable.getName() + " " +
-                        "(" + thisTableIdColumn + ", " + otherTableIdColumn + ") " +
-                        "VALUES (?, ?)";
-                List<Object> params = List.of(leftId, rightId);
-                db._update(query, params);
-                ids.add(index, rightId);
-                return this;
-            }
-
-            @Override
-            public Vars<Object> setAt(int index, Var<Object> var) {
-                /*
-                    This is a bit more complicated.
-                    We need to update the row in the intermediate table.
-                    More specifically, we need to update the id of the model that is referenced
-                    by the intermediate table.
-                */
-                int leftId = id;
-                int rightId = (Integer) var.get();
-                int oldRightId = ids.get(index);
-
-                String update = "UPDATE " + intermediateTable.getName() +
-                        " SET " + otherTableIdColumn +
-                        " = ? WHERE id = ?";
-
-                List<Object> params = List.of(rightId, oldRightId);
-                db._update(update, params);
-                ids.set(index, rightId);
-                return this;
-            }
-
-            @Override
-            public Vars<Object> clear() {
-                /*
-                    We need to delete all rows from the intermediate table that contain the id
-                    of the left model.
-                */
-                String query = "DELETE FROM " + intermediateTable.getName() + " WHERE " + thisTableIdColumn + " = ?";
-                List<Object> params = List.of(id);
-                db._update(query, params);
-                ids.clear();
-                return this;
-            }
-
-            @Override
-            public void sort(Comparator<Object> comparator) {
-                throw new UnsupportedOperationException("Not supported yet."); // How to sort on a database?
-            }
-
-            @Override
-            public void makeDistinct() {
-                throw new UnsupportedOperationException("Not supported yet."); // How to make distinct on a database?
-            }
-        };
+        Vars<Object> vars = new ModelProperties(db, this.ownerModelClass, this.propertyValueType, intermediateTable, id);
 
         // Let's create the proxy:
         return (Vals<Object>) Proxy.newProxyInstance(

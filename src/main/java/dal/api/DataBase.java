@@ -24,16 +24,16 @@ public interface DataBase {
 
     void createTablesFor( Class<? extends Model<?>>... models );
 
-    String sqlCodeOfTable(Class<? extends Model<?>> model);
+    String sqlCodeOfTable( Class<? extends Model<?>> model );
 
-    <T extends Model<T>> T select(Class<T> model, int id);
+    <T extends Model<T>> T select( Class<T> model, int id );
 
-    <M extends Model<M>> List<M> selectAll(Class<M> models);
+    <M extends Model<M>> List<M> selectAll( Class<M> models );
 
-    <M extends Model<M>> M create(Class<M> model);
+    <M extends Model<M>> M create( Class<M> model );
 
-    <M extends Model<M>> void remove(M model);
+    <M extends Model<M>> void delete( M model );
 
-    <M extends Model<M>> Where<M> select(Class<M> model);
+    <M extends Model<M>> Where<M> select( Class<M> model );
 
 }

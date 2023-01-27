@@ -43,7 +43,7 @@ class ModelProxy<T extends Model<T>> implements InvocationHandler {
                 Let's not be lazy and actually build a string that contains all the properties!
              */
             StringBuilder sb = new StringBuilder();
-            sb.append(_modelTable.getModelInterface().map(Class::getSimpleName).orElse(_modelTable.getName()));
+            sb.append(_modelTable.getModelInterface().map(Class::getSimpleName).orElse(_modelTable.getTableName()));
             sb.append("[");
             for (var field : _modelTable.getFields()) {
                 if (!field.isList()) {
@@ -84,8 +84,8 @@ class ModelProxy<T extends Model<T>> implements InvocationHandler {
             return sb.toString();
         }
 
-        ModelField modelField = _modelTable.getField(methodName);
-        if (modelField == null)
+        TableField tableField = _modelTable.getField(methodName);
+        if (tableField == null)
             throw new IllegalArgumentException("The model '" + _modelTable.getModelInterface().get().getName() + "' does not have a property named '" + methodName + "'!");
         if (args != null && args.length != 0)
             throw new IllegalArgumentException("The model '" + _modelTable.getModelInterface().get().getName() + "' does not have a setter for the property named '" + methodName + "'!");
@@ -96,9 +96,9 @@ class ModelProxy<T extends Model<T>> implements InvocationHandler {
         Object toBeReturned;
 
         if (Val.class.isAssignableFrom(method.getReturnType()))
-            toBeReturned = modelField.asProperty(_dataBase, _id);
+            toBeReturned = tableField.asProperty(_dataBase, _id);
         else if (Vals.class.isAssignableFrom(method.getReturnType()))
-            toBeReturned = modelField.asProperties(_dataBase, _id);
+            toBeReturned = tableField.asProperties(_dataBase, _id);
         else
             throw new IllegalArgumentException("The model '" + _modelTable.getModelInterface().get().getName() + "' does not have a property named '" + methodName + "'!");
 

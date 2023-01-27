@@ -21,11 +21,11 @@ class ModelRegistry {
 
         Map<String, ModelTable> newModelTables = new LinkedHashMap<>();
         for (Class<? extends Model<?>> modelInterface : modelInterfaces) {
-            ModelTable modelTable = new BasicModelTable(modelInterface, modelInterfaces);
-            newModelTables.put(modelTable.getName(), modelTable);
+            ModelTable modelTable = new DefaultModelTable(modelInterface, modelInterfaces);
+            newModelTables.put(modelTable.getTableName(), modelTable);
             modelTable.getFields().forEach(
                     f -> f.getIntermediateTable().ifPresent(
-                            t -> newModelTables.put(t.getName(), t)
+                            t -> newModelTables.put(t.getTableName(), t)
                     )
             );
         }
@@ -38,7 +38,7 @@ class ModelRegistry {
             Set<ModelTable> currentPath = new HashSet<>();
             if (_hasCycle(modelTable, visited, currentPath, newModelTables))
                 throw new IllegalArgumentException(
-                        "The model " + modelTable.getName() + " has a circular reference!"
+                        "The model " + modelTable.getTableName() + " has a circular reference!"
                 );
         }
 
@@ -93,12 +93,12 @@ class ModelRegistry {
 
         for (Class<?> model : sortedModels) {
             ModelTable modelTable = newModelTables.get(AbstractDataBase._tableNameFromClass(model));
-            modelTables.put(modelTable.getName(), modelTable);
+            modelTables.put(modelTable.getTableName(), modelTable);
         }
 
         // Now we need to add intermediate tables
         for (ModelTable modelTable : intermediateTables) {
-            modelTables.put(modelTable.getName(), modelTable);
+            modelTables.put(modelTable.getTableName(), modelTable);
         }
         // We are done!
     }

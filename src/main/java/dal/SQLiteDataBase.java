@@ -163,9 +163,9 @@ public class SQLiteDataBase extends AbstractDataBase {
 
         // Now let's create the model
         ModelTable modelTable = _modelRegistry.getTable(model);
-        List<ModelField> fields = modelTable.getFields();
+        List<TableField> fields = modelTable.getFields();
         List<Object> defaultValues = modelTable.getDefaultValues();
-        List<String> fieldNames    = fields.stream().map(ModelField::getName).collect(Collectors.toList());
+        List<String> fieldNames    = fields.stream().map(TableField::getName).collect(Collectors.toList());
         /*
             Now there might be a problem here because some model fields might not actually exist
             in the table explicitly. Namely, if the model references multiple other models
@@ -173,7 +173,7 @@ public class SQLiteDataBase extends AbstractDataBase {
             So we need to check for that and remove those fields from the list of fields
         */
         for ( int i = fields.size()-1; i >= 0; i-- ) {
-            ModelField field = fields.get(i);
+            TableField field = fields.get(i);
             if ( field.getKind() == FieldKind.INTERMEDIATE_TABLE ) {
                 fieldNames.remove(i);
                 defaultValues.remove(i);
@@ -227,7 +227,7 @@ public class SQLiteDataBase extends AbstractDataBase {
     }
 
     @Override
-    public <M extends Model<M>> void remove(M model) {
+    public <M extends Model<M>> void delete(M model) {
         Objects.requireNonNull(model, "The provided model is null!");
         Class<?> modelProxyClass = model.getClass();
         // Now we need to get the interface class defining the model

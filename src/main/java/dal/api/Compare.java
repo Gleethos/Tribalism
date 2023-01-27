@@ -1,5 +1,12 @@
 package dal.api;
 
+/**
+ *   A step in the fluent query builder API of the {@link DataBase}
+ *   which defines the comparison of a previously defined field with a value.
+ *
+ * @param <M> The type of the model to query.
+ * @param <T> The type of the field to compare.
+ */
 public interface Compare<M extends Model<M>, T> {
 
     Junction<M> equal(T value);

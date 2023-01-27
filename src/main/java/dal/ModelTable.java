@@ -7,20 +7,20 @@ import java.util.Optional;
 
 interface ModelTable {
 
-    String getName();
+    String getTableName();
 
-    List<ModelField> getFields();
+    List<TableField> getFields();
 
-    default ModelField getField(String name) {
-        for (ModelField field : getFields()) {
+    default TableField getField(String name) {
+        for (TableField field : getFields()) {
             if (field.isField(name))
                 return field;
         }
         throw new IllegalArgumentException("No field with name " + name + " found!");
     }
 
-    default ModelField getField(Class<?> propertyType) {
-        for (ModelField field : getFields()) {
+    default TableField getField(Class<?> propertyType) {
+        for (TableField field : getFields()) {
             if (field.getPropType().equals(propertyType))
                 return field;
         }

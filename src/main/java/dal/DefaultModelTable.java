@@ -10,12 +10,12 @@ import java.util.Arrays;
 import java.util.List;
 import java.util.Optional;
 
-class BasicModelTable implements ModelTable
+class DefaultModelTable implements ModelTable
 {
-    private final ModelField[] fields;
+    private final TableField[] fields;
     private final Class<? extends Model<?>> modelInterface;
 
-    BasicModelTable(Class<? extends Model<?>> modelInterface, List<Class<? extends Model<?>>> otherModels) {
+    DefaultModelTable(Class<? extends Model<?>> modelInterface, List<Class<? extends Model<?>>> otherModels) {
         // We expect something like this:
         /*
             public interface Address extends Model<Address> {
@@ -57,7 +57,7 @@ class BasicModelTable implements ModelTable
         }
         // Now we can get the fields
         Method[] methods = modelInterface.getMethods();
-        List<ModelField> fields = new ArrayList<>();
+        List<TableField> fields = new ArrayList<>();
         for (Method method : methods) {
             Method[] allowedFields = Model.class.getMethods();
             if (!Arrays.asList(allowedFields).contains(method)) {
@@ -79,36 +79,36 @@ class BasicModelTable implements ModelTable
                             "The method " + method.getName() + " of the interface " + modelInterface.getName() + " is not allowed to be called \"id\", " +
                                     "because that is field is already present!"
                     );
-                fields.add(new ModelField(method, modelInterface, otherModels));
+                fields.add(new TableField(method, modelInterface, otherModels));
             }
         }
         // Now we add the id field
         Class<Model> modelClass = Model.class;
         try {
             Method idMethod = modelClass.getMethod("id");
-            fields.add(0, new ModelField(idMethod, modelInterface, otherModels));
+            fields.add(0, new TableField(idMethod, modelInterface, otherModels));
         } catch (NoSuchMethodException | SecurityException e) {
             throw new RuntimeException(e);
         }
 
-        this.fields = fields.toArray(new ModelField[0]);
+        this.fields = fields.toArray(new TableField[0]);
         this.modelInterface = modelInterface;
     }
 
     @Override
-    public String getName() {
+    public String getTableName() {
         return AbstractDataBase._tableNameFromClass(modelInterface);
     }
 
     @Override
-    public List<ModelField> getFields() {
+    public List<TableField> getFields() {
         return Arrays.asList(fields);
     }
 
     @Override
     public List<Class<? extends Model<?>>> getReferencedModels() {
         List<Class<? extends Model<?>>> referencedModels = new ArrayList<>();
-        for (ModelField field : fields) {
+        for (TableField field : fields) {
             if (field.isForeignKey()) {
                 referencedModels.add((Class<? extends Model<?>>) field.getType());
             }
@@ -125,9 +125,9 @@ class BasicModelTable implements ModelTable
     public String createTableStatement() {
         StringBuilder sb = new StringBuilder();
         sb.append("CREATE TABLE IF NOT EXISTS ");
-        sb.append(getName());
+        sb.append(getTableName());
         sb.append(" (");
-        for (ModelField field : fields)
+        for (TableField field : fields)
             field.asSqlColumn().ifPresent(col -> {
                 sb.append(col);
                 sb.append(", ");
@@ -141,7 +141,7 @@ class BasicModelTable implements ModelTable
     @Override
     public List<Object> getDefaultValues() {
         List<Object> defaultValues = new ArrayList<>();
-        for (ModelField field : fields) {
+        for (TableField field : fields) {
             if (field.isForeignKey()) {
                 defaultValues.add(null);
             } else {
