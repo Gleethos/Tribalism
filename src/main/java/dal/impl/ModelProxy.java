@@ -62,13 +62,14 @@ class ModelProxy<T extends Model<T>> implements InvocationHandler {
                     else
                         asString = o.toString();
 
-                    sb.append(field.getName());
+                    sb.append(field.getMethodName());
                     sb.append("=").append(asString);
                     sb.append(", ");
                 } else {
-                    sb.append(field.getName());
+                    sb.append(field.getMethodName());
                     sb.append("=[");
-                    for (Object o : field.asProperties(_dataBase, _id)) {
+                    Vals<Object> props = field.asProperties(_dataBase, _id);
+                    for ( Object o : props ) {
                         String asString;
                         if (o == null)
                             asString = "null";
@@ -80,6 +81,8 @@ class ModelProxy<T extends Model<T>> implements InvocationHandler {
                         sb.append(asString);
                         sb.append(", ");
                     }
+                    if ( props.size() > 0 )
+                        sb.delete(sb.length() - 2, sb.length());
                     sb.append("], ");
                 }
             }

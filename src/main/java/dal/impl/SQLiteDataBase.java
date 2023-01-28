@@ -440,9 +440,22 @@ public class SQLiteDataBase extends AbstractDataBase
         junc[0] = new Junction<M>() {
 
             @Override
+            public <T> Compare<M, T> and(Function<M, Val<T>> selector) {
+                var field = getTableField(selector, model);
+                sql.append(" AND ").append(field.getName()).append(" ");
+                return (Compare<M, T>) valueCollector;
+            }
+
+            @Override
+            public <T> Compare<M, T> or(Function<M, Val<T>> selector) {
+                var field = getTableField(selector, model);
+                sql.append(" OR ").append(field.getName()).append(" ");
+                return (Compare<M, T>) valueCollector;
+            }
+
+            @Override
             public <T> Compare<M, T> and(Class<? extends Val<T>> field) {
-                sql.append(" AND ");
-                sql.append(table.getField(field).getName());
+                sql.append(" AND ").append(table.getField(field).getName());
                 return (Compare<M, T>) valueCollector;
             }
 
@@ -497,16 +510,9 @@ public class SQLiteDataBase extends AbstractDataBase
             }
 
             @Override
-            public <T> Compare<M, T> where( Function<M, Val<T>> selector ) {
-                var propSelector = new PropertySelectionProxy(_modelRegistry.getTable(model));
-                selector.apply((M) Proxy.newProxyInstance(
-                                    model.getClassLoader(),
-                                    new Class<?>[]{model},
-                                    propSelector
-                                ));
-
-                var field = propSelector.getSelection().orElseThrow();
-
+            public <T> Compare<M, T> where( Function<M, Val<T>> selector )
+            {
+                var field = getTableField(selector, model);
                 // First sql:
                 sql.append(field.getName()).append(" ");
                 // Then values:
@@ -514,6 +520,21 @@ public class SQLiteDataBase extends AbstractDataBase
             }
 
         };
+    }
+
+    private <T, M extends Model<M>> TableField getTableField(
+            Function<M, Val<T>> selector,
+            Class<M> model
+    ) {
+        var propSelector = new PropertySelectionProxy(_modelRegistry.getTable(model));
+        selector.apply((M) Proxy.newProxyInstance(
+                model.getClassLoader(),
+                new Class<?>[]{model},
+                propSelector
+        ));
+
+        var field = propSelector.getSelection().orElseThrow();
+        return field;
     }
 
 }

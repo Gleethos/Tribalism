@@ -2,6 +2,7 @@ package dal.impl;
 
 import dal.api.Model;
 
+import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.lang.reflect.ParameterizedType;
 import java.lang.reflect.Type;
@@ -95,7 +96,25 @@ class DefaultModelTable implements ModelTable
             throw new RuntimeException(e);
         }
 
-        this.fields = fields.toArray(new TableField[0]);
+        // Before storing the fields as array in this objects let's first sort them,
+        // we do this because the methods we get through reflection are not sorted...
+        // What we want is simple: The id field should be the first field and the rest should be sorted alphabetically
+        // Additionally we want foreign keys to be last
+
+        // Now we sort the rest of the fields
+        List<TableField> sortedFields = new ArrayList<>(fields);
+
+        sortedFields.sort((field1, field2) -> {
+            var firstKind = field1.getKind();
+            var secondKind = field2.getKind();
+            // Same kind: Sort alphabetically
+            if (firstKind.equals(secondKind))
+                return field1.getName().compareTo(field2.getName());
+            // Now we have an order between the field kinds which is simply the order of the enums:
+            return firstKind.compareTo(secondKind);
+        });
+
+        this.fields = sortedFields.toArray(new TableField[0]);
         this.modelInterface = modelInterface;
     }
 

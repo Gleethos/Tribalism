@@ -12,5 +12,4 @@ public interface Food extends Model<Food>
     Var<Double> carbs();
     Var<Double> protein();
     Vars<Ingredient> ingredients();
-
 }

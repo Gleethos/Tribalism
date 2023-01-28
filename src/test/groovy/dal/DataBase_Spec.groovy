@@ -82,8 +82,8 @@ class DataBase_Spec extends Specification
         then : 'The database should now contain two tables.'
             db.listOfAllTableNames() as Set == ["dal_models_Person_table", "dal_models_Address_table"] as Set
         and : 'The table code is as expected!'
-            table1 == "CREATE TABLE dal_models_Person_table (id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT, fk_address_id INTEGER REFERENCES dal_models_Address_table(id), lastName TEXT NOT NULL, firstName TEXT NOT NULL)"
-            table2 == "CREATE TABLE dal_models_Address_table (id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT, country TEXT NOT NULL, street TEXT NOT NULL, postalCode TEXT NOT NULL, city TEXT NOT NULL)"
+            table1 == "CREATE TABLE dal_models_Person_table (id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT, firstName TEXT NOT NULL, lastName TEXT NOT NULL, fk_address_id INTEGER REFERENCES dal_models_Address_table(id))"
+            table2 == "CREATE TABLE dal_models_Address_table (id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT, city TEXT NOT NULL, country TEXT NOT NULL, postalCode TEXT NOT NULL, street TEXT NOT NULL)"
 
         when : 'We try to create a table that already exists...'
             db.createTablesFor(Person)
@@ -185,30 +185,31 @@ class DataBase_Spec extends Specification
 
         and :
             workplace.toString() == "Workplace[" +
-                                        "id=1, " +
-                                        "name=\"\", " +
-                                        "fk_address_id=Address[id=1, country=\"\", street=\"\", postalCode=\"\", city=\"\"], " +
+                                        "id=1, name=\"\", " +
+                                        "address=Address[id=1, city=\"\", country=\"\", postalCode=\"\", street=\"\"], " +
                                         "employees=[" +
-                                            "Person[id=1, fk_address_id=Address[id=null, country=null, street=null, postalCode=null, city=null], lastName=\"\", firstName=\"\"], " +
-                                            "Person[id=2, fk_address_id=Address[id=null, country=null, street=null, postalCode=null, city=null], lastName=\"\", firstName=\"\"], ]" +
-                                        "]"
+                                            "Person[id=1, firstName=\"\", lastName=\"\", address=Address[id=null, city=null, country=null, postalCode=null, street=null]], " +
+                                            "Person[id=2, firstName=\"\", lastName=\"\", address=Address[id=null, city=null, country=null, postalCode=null, street=null]]" +
+                                        "]]"
 
         when :
             person2.firstName().set("Jane")
         then :
             workplace.toString() == "Workplace[" +
-                                        "id=1, " +
-                                        "name=\"\", " +
-                                        "fk_address_id=Address[id=1, country=\"\", street=\"\", postalCode=\"\", city=\"\"], " +
+                                        "id=1, name=\"\", " +
+                                        "address=Address[id=1, city=\"\", country=\"\", postalCode=\"\", street=\"\"], " +
                                         "employees=[" +
-                                            "Person[id=1, fk_address_id=Address[id=null, country=null, street=null, postalCode=null, city=null], lastName=\"\", firstName=\"\"], " +
-                                            "Person[id=2, fk_address_id=Address[id=null, country=null, street=null, postalCode=null, city=null], lastName=\"\", firstName=\"Jane\"], ]" +
-                                        "]"
+                                            "Person[id=1, firstName=\"\", lastName=\"\", address=Address[id=null, city=null, country=null, postalCode=null, street=null]], " +
+                                            "Person[id=2, firstName=\"Jane\", lastName=\"\", address=Address[id=null, city=null, country=null, postalCode=null, street=null]]" +
+                                        "]]"
 
         when :
             db.delete(person2)
         then :
-            workplace.toString() == "Workplace[id=1, name=\"\", fk_address_id=Address[id=1, country=\"\", street=\"\", postalCode=\"\", city=\"\"], employees=[Person[id=1, fk_address_id=Address[id=null, country=null, street=null, postalCode=null, city=null], lastName=\"\", firstName=\"\"], ]]"
+            workplace.toString() == "Workplace[" +
+                                        "id=1, name=\"\", " +
+                                        "address=Address[id=1, city=\"\", country=\"\", postalCode=\"\", street=\"\"], " +
+                                        "employees=[Person[id=1, firstName=\"\", lastName=\"\", address=Address[id=null, city=null, country=null, postalCode=null, street=null]]]]"
 
         cleanup:
             db.close()
@@ -369,6 +370,63 @@ class DataBase_Spec extends Specification
     }
 
     def 'We can query "Foods" using their properties.'()
+    {
+        reportInfo """
+            Here we use the following model:
+            ```
+                public interface Food extends Model<Food>
+                {
+                    Var<String> name();
+                    Var<Double> calories();
+                    Var<Double> fat();
+                    Var<Double> carbs();
+                    Var<Double> protein();
+                    Vars<Ingredient> ingredients();
+                }
+            ```
+            As you can see, the model has a property called "ingredients" which is a list of "Ingredient" models
+            which is why we also need to create a table for the "Ingredient" model if we want to use the food model.
+            In this feature you can see how to create a database and add some foods to it to
+            then we query the database for foods with a certain amount of carbs and protein.
+        """
+        given : 'We create a database instance for testing, the database will be opened in a test folder.'
+            def db = DataBase.at(TEST_DB_FILE)
+            db.dropAllTables()
+        and : 'We create 2 test tables'
+            db.createTablesFor(Food, Ingredient)
+        and : 'We create some foods'
+            var food1 = db.create(Food)
+            food1.name().set("Chana Masala")
+            food1.carbs().set(50.0)
+            food1.protein().set(25.0)
+            var food2 = db.create(Food)
+            food2.name().set("Mochi")
+            food2.carbs().set(100.0)
+            food2.protein().set(10.0)
+            var food3 = db.create(Food)
+            food3.name().set("Saitan Steak")
+            food3.carbs().set(5.0)
+            food3.protein().set(70.0)
+        when : 'We select all foods as strings...'
+            var foods = db.selectAll(Food).asList().collect({it.toString()})
+        then :
+            foods[0] == "Food[id=1, calories=0.0, carbs=50.0, fat=0.0, name=\"Chana Masala\", protein=25.0, ingredients=[]]"
+            foods[1] == "Food[id=2, calories=0.0, carbs=100.0, fat=0.0, name=\"Mochi\", protein=10.0, ingredients=[]]"
+            foods[2] == "Food[id=3, calories=0.0, carbs=5.0, fat=0.0, name=\"Saitan Steak\", protein=70.0, ingredients=[]]"
+
+        when : 'We select all foods with more than 50 carbs and more than 20 protein...'
+            foods = db.select(Food)
+                            .where(Food::carbs)
+                            .greaterThanOrEqual(50)
+                            .and(Food::protein)
+                            .greaterThan(20)
+                            .asList()
+        then :
+            foods.size() == 1
+            foods[0] == food1
+    }
+
+    def 'We can query "Foods" and their "Ingredients" using their properties.'()
     {
         given : 'We create a database instance for testing, the database will be opened in a test folder.'
             def db = DataBase.at(TEST_DB_FILE)

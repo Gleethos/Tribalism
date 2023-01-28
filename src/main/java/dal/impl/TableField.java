@@ -165,6 +165,10 @@ final class TableField {
         return method.getName();
     }
 
+    public String getMethodName() {
+        return method.getName();
+    }
+
     public boolean isField(String name) {
         return method.getName().equals(name);
     }
