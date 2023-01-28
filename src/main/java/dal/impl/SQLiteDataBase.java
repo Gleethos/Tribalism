@@ -145,7 +145,7 @@ public class SQLiteDataBase extends AbstractDataBase
 
         // Let's first see if the registry already contains a proxy
 
-        var proxy = new ModelProxy<>(this, modelTable, id);
+        var proxy = new ModelProxy<>(this, modelTable, id, true);
 
         return  (T) Proxy.newProxyInstance(
                         model.getClassLoader(),

@@ -10,6 +10,6 @@ public interface Model<M> {
 
     Id id();
 
-    void batch(Consumer<M> transaction);
+    void commit( Consumer<M> transaction );
 
 }

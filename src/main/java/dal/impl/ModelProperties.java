@@ -15,18 +15,21 @@ public class ModelProperties implements Vars<Object>
     private final Class<?> propertyValueType;
     private final String otherTableIdColumn;
     private final String thisTableIdColumn;
+    private final boolean _isEager;
 
     public ModelProperties(
             SQLiteDataBase db,
             Class<?> ownerModelClass,
             Class<?> propertyValueType,
             ModelTable intermediateTable,
-            int id
+            int id,
+            boolean isEager
     ) {
         this.db = db;
         this.propertyValueType = propertyValueType;
         this.intermediateTable = intermediateTable;
         this.id = id;
+        _isEager = isEager;
 
         // We need to find the name of the column that contains the ids of the models
         // that are referenced by the intermediate table:
@@ -37,22 +40,19 @@ public class ModelProperties implements Vars<Object>
 
         List<Object> param = Collections.singletonList(id);
         Map<String, List<Object>> result = db._query(query, param);
-        // The result should contain a single column:
-        //if ( result.size() != 1 )
-        //    throw new IllegalStateException("The result should contain a single column");
 
-        if (result.size() == 0)
+        if ( result.size() == 0 )
             result.put(otherTableIdColumn, new ArrayList<>());
 
         // The column should be named after the id column of the other table:
-        if (!result.containsKey(otherTableIdColumn))
+        if ( !result.containsKey(otherTableIdColumn) )
             throw new IllegalStateException("The column should be named after the id column of the other table");
         // The column should contain a list of ids:
         List<Object> found = result.get(otherTableIdColumn);
         this.ids = new ArrayList<>(found.stream().map(o -> (Integer) o).toList());
     }
 
-    private Model<?> select(int id) {
+    private Model<?> _select( int id ) {
         // We need to get the model from the database:
         Class<Model> propertyValueType = (Class<Model>) this.propertyValueType;
         Model<?> model = db.select(propertyValueType, id);
@@ -64,7 +64,7 @@ public class ModelProperties implements Vars<Object>
         // We need to map the ids to the actual models:
         return ids.stream().map(id -> {
             // We need to get the model from the database:
-            return (Object) select(id);
+            return (Object) _select(id);
         }).iterator();
     }
 
@@ -80,13 +80,14 @@ public class ModelProperties implements Vars<Object>
                 ModelTable.INTER_RIGHT_FK_PREFIX + otherTable + ModelTable.INTER_FK_POSTFIX,
                 intermediateTable.getTableName(),
                 propertyValueType,
-                false
-        );
+                false,
+                _isEager
+            );
     }
 
     @Override
     public Vals<Object> onShow(Action<ValsDelegate<Object>> action) {
-        return null;
+        throw new UnsupportedOperationException("Not supported yet.");
     }
 
     @Override
@@ -95,7 +96,10 @@ public class ModelProperties implements Vars<Object>
     }
 
     @Override
-    public Vars<Object> removeAt(int index) {
+    public Vars<Object> removeAt(int index)
+    {
+        if ( !_isEager )
+            throw new UnsupportedOperationException("Transactional modification of lists (intermediate tables) is not supported yet.");
         /*
             Basically all we need to do is delete a row from the intermediate table!
             Which row? The one that contains the id of the left model and the id of the
@@ -112,9 +116,14 @@ public class ModelProperties implements Vars<Object>
     }
 
     @Override
-    public Vars<Object> addAt(int index, Var<Object> var) {
+    public Vars<Object> addAt( int index, Var<Object> var )
+    {
+        if ( !_isEager )
+            throw new UnsupportedOperationException("Transactional modification of lists (intermediate tables) is not supported yet.");
+
+        Objects.requireNonNull(var);
         // First let's verify the type:
-        if (!propertyValueType.isAssignableFrom(var.type()))
+        if ( !propertyValueType.isAssignableFrom(var.type()) )
             throw new IllegalArgumentException("The type of the var is not the same as the type of the property");
 
         /*
@@ -133,7 +142,12 @@ public class ModelProperties implements Vars<Object>
     }
 
     @Override
-    public Vars<Object> setAt(int index, Var<Object> var) {
+    public Vars<Object> setAt( int index, Var<Object> var )
+    {
+        if ( !_isEager )
+            throw new UnsupportedOperationException("Transactional modification of lists (intermediate tables) is not supported yet.");
+
+        Objects.requireNonNull(var);
         /*
             This is a bit more complicated.
             We need to update the row in the intermediate table.
@@ -155,7 +169,11 @@ public class ModelProperties implements Vars<Object>
     }
 
     @Override
-    public Vars<Object> clear() {
+    public Vars<Object> clear()
+    {
+        if ( !_isEager )
+            throw new UnsupportedOperationException("Transactional modification of lists (intermediate tables) is not supported yet.");
+
         /*
             We need to delete all rows from the intermediate table that contain the id
             of the left model.

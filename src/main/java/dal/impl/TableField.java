@@ -258,12 +258,13 @@ final class TableField {
             return Optional.empty();
     }
 
-    public Val<Object> asProperty(SQLiteDataBase db, int id) {
+    public ProxyRef<Val<Object>> asProperty( SQLiteDataBase db, int id, boolean eager ) {
         var prop = new ModelProperty(
                         db, id, this.getName(),
                         AbstractDataBase._tableNameFromClass(_ownerModelClass),
                         _propertyValueType,
-                        _allowNull
+                        _allowNull,
+                        eager
                     );
 
         Class<?> propertyType = _propertyType;
@@ -277,14 +278,16 @@ final class TableField {
             );
 
         // Let's create the proxy:
-        return (Val<Object>) Proxy.newProxyInstance(
-                propertyType.getClassLoader(),
-                new Class[]{propertyType},
-                (proxy, method, args) -> {
-                    // We simply delegate to the property
-                    return method.invoke(prop, args);
-                }
-        );
+        return new ProxyRef<>((Val<Object>) Proxy.newProxyInstance(
+                        propertyType.getClassLoader(),
+                        new Class[]{propertyType},
+                        (proxy, method, args) -> {
+                            // We simply delegate to the property
+                            return method.invoke(prop, args);
+                        }
+                    ),
+                    prop
+                );
     }
 
     public Optional<String> asSqlColumn() {
@@ -325,7 +328,7 @@ final class TableField {
             throw new IllegalStateException("Unknown field kind: " + _kind);
     }
 
-    public Vals<Object> asProperties(SQLiteDataBase db, int id) {
+    public ProxyRef<Vals<Object>> asProperties( SQLiteDataBase db, int id, boolean eager ) {
         /*
             Now this is interesting.
             We have a list of properties represented in the form
@@ -342,17 +345,19 @@ final class TableField {
             throw new IllegalStateException("The intermediate table does not exist");
 
 
-        Vars<Object> vars = new ModelProperties(db, _ownerModelClass, _propertyValueType, intermediateTable, id);
+        Vars<Object> vars = new ModelProperties(db, _ownerModelClass, _propertyValueType, intermediateTable, id, eager);
 
         // Let's create the proxy:
-        return (Vals<Object>) Proxy.newProxyInstance(
-                _propertyType.getClassLoader(),
-                new Class[]{_propertyType},
-                (proxy, method, args) -> {
-                    // We simply delegate to the property
-                    return method.invoke(vars, args);
-                }
-        );
+        return new ProxyRef<>((Vals<Object>) Proxy.newProxyInstance(
+                        _propertyType.getClassLoader(),
+                        new Class[]{_propertyType},
+                        (proxy, method, args) -> {
+                            // We simply delegate to the property
+                            return method.invoke(vars, args);
+                        }
+                    ),
+                    vars
+                );
     }
 
 }

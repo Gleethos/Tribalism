@@ -4,6 +4,7 @@ import dal.api.DataBase
 import dal.models.Address
 import dal.models.Atom
 import dal.models.Food
+import dal.models.Furniture
 import dal.models.Ingredient
 import dal.models.InvalidModel
 import dal.models.ModeWithDefaults
@@ -33,6 +34,176 @@ class DataBase_Spec extends Specification
         def db = DataBase.at(TEST_DB_FILE)
         db.dropAllTables()
         db.close()
+    }
+
+    def 'We can query "Foods" using their properties.'()
+    {
+        reportInfo """
+            Here we use the following model:
+            ```
+                public interface Food extends Model<Food>
+                {
+                    Var<String> name();
+                    Var<Double> calories();
+                    Var<Double> fat();
+                    Var<Double> carbs();
+                    Var<Double> protein();
+                    Vars<Ingredient> ingredients();
+                }
+            ```
+            As you can see, the model has a property called "ingredients" which is a list of "Ingredient" models
+            which is why we also need to create a table for the "Ingredient" model if we want to use the food model.
+            In this feature you can see how to create a database and add some foods to it to
+            then we query the database for foods with a certain amount of carbs and protein.
+        """
+        given : 'We create a database instance for testing, the database will be opened in a test folder.'
+            def db = DataBase.at(TEST_DB_FILE)
+            db.dropAllTables()
+        and : 'We create 2 test tables'
+            db.createTablesFor(Food, Ingredient)
+        and : 'We create some foods'
+            var food1 = db.create(Food)
+            food1.name().set("Chana Masala")
+            food1.carbs().set(50.0)
+            food1.protein().set(25.0)
+            var food2 = db.create(Food)
+            food2.name().set("Mochi")
+            food2.carbs().set(100.0)
+            food2.protein().set(10.0)
+            var food3 = db.create(Food)
+            food3.name().set("Saitan Steak")
+            food3.carbs().set(5.0)
+            food3.protein().set(70.0)
+        when : 'We select all foods as strings...'
+            var foods = db.selectAll(Food).asList().collect({it.toString()})
+        then :
+            foods[0] == "Food[id=1, calories=0.0, carbs=50.0, fat=0.0, name=\"Chana Masala\", protein=25.0, ingredients=[]]"
+            foods[1] == "Food[id=2, calories=0.0, carbs=100.0, fat=0.0, name=\"Mochi\", protein=10.0, ingredients=[]]"
+            foods[2] == "Food[id=3, calories=0.0, carbs=5.0, fat=0.0, name=\"Saitan Steak\", protein=70.0, ingredients=[]]"
+
+        when : 'We select all foods with more than 50 carbs and more than 20 protein...'
+            foods = db.select(Food)
+                            .where(Food::carbs)
+                            .greaterThanOrEqual(50)
+                            .and(Food::protein)
+                            .greaterThan(20)
+                            .asList()
+        then :
+            foods.size() == 1
+            foods[0] == food1
+    }
+
+    def 'We can query "Foods" and their "Ingredients" using their properties.'()
+    {
+        given : 'We create a database instance for testing, the database will be opened in a test folder.'
+            def db = DataBase.at(TEST_DB_FILE)
+            db.dropAllTables()
+        and : 'We create 2 test tables'
+            db.createTablesFor(Food, Ingredient)
+        and : 'We create some ingredients and foods'
+            var ingredient1 = db.create(Ingredient)
+            ingredient1.name().set("Chickpeas")
+            var ingredient2 = db.create(Ingredient)
+            ingredient2.name().set("Rice")
+            var ingredient3 = db.create(Ingredient)
+            ingredient3.name().set("Spices")
+            var ingredient4 = db.create(Ingredient)
+            ingredient4.name().set("Saitan")
+            var ingredient5 = db.create(Ingredient)
+            ingredient5.name().set("Beans")
+            var food1 = db.create(Food)
+            food1.name().set("Chana Masala")
+            food1.calories().set(100)
+            food1.ingredients().addAll(ingredient1, ingredient2, ingredient3)
+            var food2 = db.create(Food)
+            food2.name().set("Mochi")
+            food2.calories().set(200)
+            food2.ingredients().addAll(ingredient2, ingredient5)
+            var food3 = db.create(Food)
+            food3.name().set("Saitan Steak")
+            food3.calories().set(300)
+            food3.ingredients().addAll(ingredient3, ingredient4)
+        when : 'We query the database for foods with a certain name.'
+            var foods = db.select(Food)
+                            .where(Food::name).is("Chana Masala")
+                            .asList()
+        then : 'We can confirm that only 1 food was found.'
+            foods.size() == 1
+            foods[0] == food1
+
+        when : 'We query the database for foods with certain calories...'
+            foods = db.select(Food)
+                        .where(Food::calories).greaterThanOrEqual(200)
+                        .asList()
+        then : 'We can confirm that 2 foods were found.'
+            foods.size() == 2
+            foods[0] == food2
+            foods[1] == food3
+    }
+
+    def 'A model exposes the "commit" method for doing transactional model modification.'()
+    {
+        reportInfo """
+            By default any modification to the properties of a model will automatically be
+            committed to the database. However, if you want to do multiple modifications
+            to a model and then commit them all at once, you can use the "commit" method.
+            For this feature specification we will use the following model:
+            ```
+                public interface Furniture extends Model<Furniture> 
+                {
+                    Var<String> name();
+                    Var<String> material();
+                    Var<Double> price();
+                    Var<Integer> quantity();
+                    Var<String> category();
+                    Var<String> color();
+                }
+            ```
+            We will create a database and add some furniture to it, but in a transactional way.
+        """
+        given : 'We create a database instance for testing, the database will be opened in a test folder.'
+            def db = DataBase.at(TEST_DB_FILE)
+            db.dropAllTables()
+        and : 'We create a test table'
+            db.createTablesFor(Furniture)
+        and : 'We create some furniture'
+            var furniture = db.create(Furniture)
+        expect : 'By default all the fields are initialized to non-null default values.'
+            furniture.name().get() == ""
+            furniture.material().get() == ""
+            furniture.price().get() == 0.0
+            furniture.quantity().get() == 0
+            furniture.category().get() == ""
+            furniture.color().get() == ""
+        when : 'We modify the furniture in a transactional way.'
+            furniture.commit( asTable -> {
+                asTable.name().set("Chair")
+                asTable.material().set("Wood")
+                asTable.price().set(100.0)
+                asTable.quantity().set(10)
+                asTable.category().set("Seating")
+                asTable.color().set("Brown")
+                assert asTable.name().get() == "Chair"
+                assert asTable.material().get() == "Wood"
+                assert asTable.price().get() == 100.0
+                assert asTable.quantity().get() == 10
+                assert asTable.category().get() == "Seating"
+                assert asTable.color().get() == "Brown"
+                // But the original furniture object is not modified yet.
+                assert furniture.name().get() == ""
+                assert furniture.material().get() == ""
+                assert furniture.price().get() == 0.0
+                assert furniture.quantity().get() == 0
+                assert furniture.category().get() == ""
+                assert furniture.color().get() == ""
+            })
+        then : 'The original furniture object is now modified.'
+            furniture.name().get() == "Chair"
+            furniture.material().get() == "Wood"
+            furniture.price().get() == 100.0
+            furniture.quantity().get() == 10
+            furniture.category().get() == "Seating"
+            furniture.color().get() == "Brown"
     }
 
     def 'We can create a "Person" and "Address" table.'()
@@ -367,111 +538,6 @@ class DataBase_Spec extends Specification
         then : 'We can use the default method to confirm certain things about the model.'
             m.storyContains("upon")
             !m.storyContains("uppon")
-    }
-
-    def 'We can query "Foods" using their properties.'()
-    {
-        reportInfo """
-            Here we use the following model:
-            ```
-                public interface Food extends Model<Food>
-                {
-                    Var<String> name();
-                    Var<Double> calories();
-                    Var<Double> fat();
-                    Var<Double> carbs();
-                    Var<Double> protein();
-                    Vars<Ingredient> ingredients();
-                }
-            ```
-            As you can see, the model has a property called "ingredients" which is a list of "Ingredient" models
-            which is why we also need to create a table for the "Ingredient" model if we want to use the food model.
-            In this feature you can see how to create a database and add some foods to it to
-            then we query the database for foods with a certain amount of carbs and protein.
-        """
-        given : 'We create a database instance for testing, the database will be opened in a test folder.'
-            def db = DataBase.at(TEST_DB_FILE)
-            db.dropAllTables()
-        and : 'We create 2 test tables'
-            db.createTablesFor(Food, Ingredient)
-        and : 'We create some foods'
-            var food1 = db.create(Food)
-            food1.name().set("Chana Masala")
-            food1.carbs().set(50.0)
-            food1.protein().set(25.0)
-            var food2 = db.create(Food)
-            food2.name().set("Mochi")
-            food2.carbs().set(100.0)
-            food2.protein().set(10.0)
-            var food3 = db.create(Food)
-            food3.name().set("Saitan Steak")
-            food3.carbs().set(5.0)
-            food3.protein().set(70.0)
-        when : 'We select all foods as strings...'
-            var foods = db.selectAll(Food).asList().collect({it.toString()})
-        then :
-            foods[0] == "Food[id=1, calories=0.0, carbs=50.0, fat=0.0, name=\"Chana Masala\", protein=25.0, ingredients=[]]"
-            foods[1] == "Food[id=2, calories=0.0, carbs=100.0, fat=0.0, name=\"Mochi\", protein=10.0, ingredients=[]]"
-            foods[2] == "Food[id=3, calories=0.0, carbs=5.0, fat=0.0, name=\"Saitan Steak\", protein=70.0, ingredients=[]]"
-
-        when : 'We select all foods with more than 50 carbs and more than 20 protein...'
-            foods = db.select(Food)
-                            .where(Food::carbs)
-                            .greaterThanOrEqual(50)
-                            .and(Food::protein)
-                            .greaterThan(20)
-                            .asList()
-        then :
-            foods.size() == 1
-            foods[0] == food1
-    }
-
-    def 'We can query "Foods" and their "Ingredients" using their properties.'()
-    {
-        given : 'We create a database instance for testing, the database will be opened in a test folder.'
-            def db = DataBase.at(TEST_DB_FILE)
-            db.dropAllTables()
-        and : 'We create 2 test tables'
-            db.createTablesFor(Food, Ingredient)
-        and : 'We create some ingredients and foods'
-            var ingredient1 = db.create(Ingredient)
-            ingredient1.name().set("Chickpeas")
-            var ingredient2 = db.create(Ingredient)
-            ingredient2.name().set("Rice")
-            var ingredient3 = db.create(Ingredient)
-            ingredient3.name().set("Spices")
-            var ingredient4 = db.create(Ingredient)
-            ingredient4.name().set("Saitan")
-            var ingredient5 = db.create(Ingredient)
-            ingredient5.name().set("Beans")
-            var food1 = db.create(Food)
-            food1.name().set("Chana Masala")
-            food1.calories().set(100)
-            food1.ingredients().addAll(ingredient1, ingredient2, ingredient3)
-            var food2 = db.create(Food)
-            food2.name().set("Mochi")
-            food2.calories().set(200)
-            food2.ingredients().addAll(ingredient2, ingredient5)
-            var food3 = db.create(Food)
-            food3.name().set("Saitan Steak")
-            food3.calories().set(300)
-            food3.ingredients().addAll(ingredient3, ingredient4)
-        when : 'We query the database for foods with a certain name.'
-            var foods = db.select(Food)
-                            .where(Food::name).is("Chana Masala")
-                            .asList()
-        then : 'We can confirm that only 1 food was found.'
-            foods.size() == 1
-            foods[0] == food1
-
-        when : 'We query the database for foods with certain calories...'
-            foods = db.select(Food)
-                        .where(Food::calories).greaterThanOrEqual(200)
-                        .asList()
-        then : 'We can confirm that 2 foods were found.'
-            foods.size() == 2
-            foods[0] == food2
-            foods[1] == food3
     }
 
 }

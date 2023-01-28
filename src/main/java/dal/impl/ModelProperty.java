@@ -17,6 +17,9 @@ class ModelProperty implements Var<Object>
     private final String _tableName;
     private final Class<?> _propertyValueType;
     private final boolean _allowNull;
+    private final boolean _isEager;
+    private Object _value;
+    private boolean _wasSet = false;
 
     ModelProperty(
             SQLiteDataBase dataBase,
@@ -24,7 +27,8 @@ class ModelProperty implements Var<Object>
             String fieldName,
             String tableName,
             Class<?> propertyValueType,
-            boolean allowNull
+            boolean allowNull,
+            boolean isEager
     ) {
         _dataBase = dataBase;
         _id = id;
@@ -32,10 +36,14 @@ class ModelProperty implements Var<Object>
         _tableName = tableName;
         _propertyValueType = propertyValueType;
         _allowNull = allowNull;
+        _isEager = isEager;
     }
 
     @Override
-    public Object orElseNull() {
+    public Object orElseNull()
+    {
+        if ( _wasSet && !_isEager ) return _value;
+
         Object value;
         StringBuilder select = new StringBuilder();
         select.append("SELECT ").append(_fieldName)
@@ -79,7 +87,17 @@ class ModelProperty implements Var<Object>
     }
 
     @Override
-    public Var<Object> set(Object newItem) {
+    public Var<Object> set( Object newItem ) {
+        if ( _isEager )
+            _set(newItem);
+        else
+            _value = newItem;
+
+        _wasSet = true;
+        return this;
+    }
+
+    private void _set( Object newItem ) {
         if (!(newItem instanceof Model<?>)) {
             String update = "UPDATE " + _tableName +
                     " SET " + _fieldName +
@@ -97,16 +115,12 @@ class ModelProperty implements Var<Object>
             update.append(_fieldName);
             update.append(" = ? WHERE id = ?");
             boolean success = _dataBase._update(update.toString(), Arrays.asList(model.id().get(), _id));
-            if (!success)
+            if ( !success )
                 throw new IllegalStateException("Failed to update table entry for id " + _id);
         }
-        return this;
     }
 
-    @Override
-    public Var<Object> withId(String id) {
-        throw new UnsupportedOperationException();
-    }
+    @Override public Var<Object> withId(String id) { throw new UnsupportedOperationException(); }
 
     @Override
     public Var<Object> onAct(Action<ValDelegate<Object>> action) {
@@ -143,4 +157,10 @@ class ModelProperty implements Var<Object>
     }
 
     @Override public boolean allowsNull() { return _allowNull; }
+
+    public boolean wasSet() { return _wasSet; }
+
+    public Object getSetVal() { return _value; }
+
+    public String getFieldName() { return _fieldName; }
 }
