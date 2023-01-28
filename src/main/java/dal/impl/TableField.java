@@ -20,10 +20,12 @@ final class TableField {
         this.propertyType = method.getReturnType();
 
         // First we check if the return type is a subclass of Val or Vals
-        boolean isVal = Val.class.isAssignableFrom(propertyType);
-        boolean isVals = Vals.class.isAssignableFrom(propertyType);
+        boolean isSubTypeOfVal = Val.class.isAssignableFrom(propertyType);
+        boolean isSubTypeOfVals = Vals.class.isAssignableFrom(propertyType);
+        boolean isValOrVar  = propertyType == Val.class || propertyType == Var.class;
+        boolean isValsOrVars = propertyType == Vals.class || propertyType == Vars.class;
 
-        if (!isVal && !isVals)
+        if (!isSubTypeOfVal && !isSubTypeOfVals)
             throw new IllegalArgumentException(
                     "The return type of the method " + method.getName() + " is not a subclass of " +
                             "either " + Val.class.getName() + " or " + Vals.class.getName() + "."
@@ -34,70 +36,62 @@ final class TableField {
             So a model interface might look something like this:
             public interface Person extends Model<Person> {
                 interface Name extends Var<String> {} // Val is a property type with getter and setter
-                interface Age extends Var<Integer> {}
                 interface Addresses extends Vars<Address> {} // Vars is a property type with getter and setter wrapping multiple values
                 Name name();
-                Age age();
+                Var<Integer> age(); // Not declared as an inner interface of the model interface, which is okay
             }
-            Not only do we expect that the return type of the method is a subclass of Val...
-            ...we also expect it to be declared as an inner interface of the model interface!
+            We expect that the return type of the method is either equal to or a subclass of Val/Vals...
+            ...if it is a subclass we also expect it to be declared as an inner interface of the model interface!
             This is because of readability and coherence and also
-            because we might need to be able to get the name of the field from the interface.
+            because we might need to be able to get the name of the field from the interface in the query API!
 
-            Ok, enough talk, let's check if the return type is declared as an inner interface of the model interface.
-        */
-        Class<?> declaringClass = method.getDeclaringClass();
-        Class<?> outerClassOfNestedClass = propertyType.getDeclaringClass();
-        if (!declaringClass.equals(outerClassOfNestedClass)) {
-            if ( propertyType == Var.class || propertyType == Vars.class || propertyType == Val.class || propertyType == Vals.class )
-                throw new IllegalArgumentException(
-                        "Model '" + this.ownerModelClass.getName() + "' is invalid because the return type " +
-                        "of the method " + method.getName() + " is the generic property type " + propertyType.getName() + " " +
-                        "instead of a locally defined custom property type.\n" +
-                        "Please define a local property type inside '" + this.ownerModelClass.getName() + "' similar to " +
-                        "'interface MyProp extends "+propertyType.getSimpleName()+"<MyValue> {}' " +
-                        "and return that instead: 'public MyProp " + method.getName() + "();'.\n" +
-                        "This is important to allow for compile time query building on the database API."
-                    );
-            throw new IllegalArgumentException(
-                    "Model '" + this.ownerModelClass.getName() + "' is invalid because return " +
-                    "type '" + propertyType.getName() + "' of " +
-                    "method '" + method.getName() + "' is not declared as an " +
-                    "inner interface of the provided interface '" + declaringClass.getName() + "'." +
-                    "Please define a local property type inside '" + this.ownerModelClass.getName() + "' similar to " +
-                    "'interface MyProp extends "+propertyType.getSimpleName()+"<MyValue> {}' " +
-                    "and return that instead: 'public MyProp " + method.getName() + "();'.\n" +
-                    "This is important to allow for compile time query building on the database API."
-                );
-        }
+            The main goal here is to get the type of the value of the property
+            This is a generic type parameter of the Val interface
+            So in the example below for "Name" it would be String
+            and for method "age" it would be Integer:
 
-        // Now we can get the type of the value of the property
-        // This is a generic type parameter of the Val interface
-        // So in this example for "Name" it would be String
-        // and for "Age" it would be Integer:
-        /*
             public interface Person extends Model<Person> {
                 interface Name extends Val<String> {} // Val is a property type with getter and setter
-                interface Age extends Val<Integer> {}
                 Name name();
-                Age age();
+                Var<Integer> age(); // Not declared as an inner interface of the model interface, which is okay
             }
          */
-        TypeVariable<?>[] typeParameters = propertyType.getTypeParameters();
-        if (typeParameters.length != 0)
-            throw new IllegalArgumentException(
-                    "The return type of the method " + method.getName() + " may not have generic parameters!"
-            );
-        Type[] genericInterfaces = propertyType.getGenericInterfaces();
-        if (genericInterfaces.length != 1)
-            throw new IllegalArgumentException(
-                    "The return type of the method " + method.getName() + " must implement exactly one interface!"
-            );
+        if ( !isValOrVar && !isValsOrVars ) {
+            // It is a subclass of Val or Vals:
+            TypeVariable<?>[] typeParameters = propertyType.getTypeParameters();
+            if (typeParameters.length != 0)
+                throw new IllegalArgumentException(
+                        "The return type of the method " + method.getName() + " may not have generic parameters!"
+                );
+            Type[] genericInterfaces = propertyType.getGenericInterfaces();
+            if (genericInterfaces.length != 1)
+                throw new IllegalArgumentException(
+                        "The return type of the method " + method.getName() + " must implement exactly one interface!"
+                );
 
-        Type genericInterface = genericInterfaces[0];
-        Type[] actualTypeArguments = ((ParameterizedType) genericInterface).getActualTypeArguments();
-        propertyValueType = (Class<?>) actualTypeArguments[0];
-
+            Type genericInterface = genericInterfaces[0];
+            Type[] actualTypeArguments = ((ParameterizedType) genericInterface).getActualTypeArguments();
+            propertyValueType = (Class<?>) actualTypeArguments[0];
+        } else {
+            // The return type is Val<T>, Var<T>, Vals<T> or Vars<T> so we can get the type parameter T easily:
+            // However we can not get the declared type from Var,Val... it is a generic type...
+            // Instead, we get the type from the method parameter
+            var declaredReturnTypeGenericParam = method.getGenericReturnType();
+            if ( declaredReturnTypeGenericParam instanceof ParameterizedType ) {
+                var declaredReturnTypeGenericParamType = ((ParameterizedType) declaredReturnTypeGenericParam).getActualTypeArguments()[0];
+                if ( declaredReturnTypeGenericParamType instanceof Class<?> ) {
+                    propertyValueType = (Class<?>) declaredReturnTypeGenericParamType;
+                } else {
+                    throw new IllegalArgumentException(
+                            "The return type of the method " + method.getName() + " must be a class!"
+                        );
+                }
+            } else {
+                throw new IllegalArgumentException(
+                        "The return type of the method " + method.getName() + " must be a parameterized type!"
+                    );
+            }
+        }
         // Now we need to determine the kind of the field, here are the possibilities:
         /*
             public interface Person extends Model<Person> {
@@ -123,7 +117,7 @@ final class TableField {
             kind = FieldKind.ID;
         }
         // Then we check if the field is a foreign key field
-        else if (isVal) {
+        else if (isSubTypeOfVal) {
             if (Model.class.isAssignableFrom(propertyValueType)) {
                 if (otherModels.contains(propertyValueType)) {
                     kind = FieldKind.FOREIGN_KEY;
@@ -142,7 +136,7 @@ final class TableField {
                 );
         }
         // Then we check if the field is an intermediate table field
-        else if (isVals) {
+        else if (isSubTypeOfVals) {
             if (otherModels.contains(propertyValueType)) {
                 kind = FieldKind.INTERMEDIATE_TABLE;
             } else {

@@ -3,6 +3,8 @@ package dal
 import dal.api.DataBase
 import dal.models.Address
 import dal.models.Atom
+import dal.models.Food
+import dal.models.Ingredient
 import dal.models.InvalidModel
 import dal.models.ModeWithDefaults
 import dal.models.Person
@@ -364,6 +366,54 @@ class DataBase_Spec extends Specification
         then : 'We can use the default method to confirm certain things about the model.'
             m.storyContains("upon")
             !m.storyContains("uppon")
+    }
+
+    def 'We can query "Foods" using their properties.'()
+    {
+        given : 'We create a database instance for testing, the database will be opened in a test folder.'
+            def db = DataBase.at(TEST_DB_FILE)
+            db.dropAllTables()
+        and : 'We create 2 test tables'
+            db.createTablesFor(Food, Ingredient)
+        and : 'We create some ingredients and foods'
+            var ingredient1 = db.create(Ingredient)
+            ingredient1.name().set("Chickpeas")
+            var ingredient2 = db.create(Ingredient)
+            ingredient2.name().set("Rice")
+            var ingredient3 = db.create(Ingredient)
+            ingredient3.name().set("Spices")
+            var ingredient4 = db.create(Ingredient)
+            ingredient4.name().set("Saitan")
+            var ingredient5 = db.create(Ingredient)
+            ingredient5.name().set("Beans")
+            var food1 = db.create(Food)
+            food1.name().set("Chana Masala")
+            food1.calories().set(100)
+            food1.ingredients().addAll(ingredient1, ingredient2, ingredient3)
+            var food2 = db.create(Food)
+            food2.name().set("Mochi")
+            food2.calories().set(200)
+            food2.ingredients().addAll(ingredient2, ingredient5)
+            var food3 = db.create(Food)
+            food3.name().set("Saitan Steak")
+            food3.calories().set(300)
+            food3.ingredients().addAll(ingredient3, ingredient4)
+        when : 'We query the database for foods with a certain name.'
+            var foods = db.select(Food)
+                            .where(Food::name).is("Chana Masala")
+                            .asList()
+        then : 'We can confirm that only 1 food was found.'
+            foods.size() == 1
+            foods[0] == food1
+
+        when : 'We query the database for foods with certain calories...'
+            foods = db.select(Food)
+                        .where(Food::calories).greaterThanOrEqual(200)
+                        .asList()
+        then : 'We can confirm that 2 foods were found.'
+            foods.size() == 2
+            foods[0] == food2
+            foods[1] == food3
     }
 
 }

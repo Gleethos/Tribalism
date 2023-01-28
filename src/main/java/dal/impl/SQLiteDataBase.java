@@ -7,6 +7,7 @@ import swingtree.api.mvvm.*;
 import java.io.File;
 import java.lang.reflect.*;
 import java.util.*;
+import java.util.function.Function;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
@@ -484,6 +485,9 @@ public class SQLiteDataBase extends AbstractDataBase
         };
 
         return new Where<M>() {
+
+            @Override public List<M> asList() { return junc[0].asList(); }
+
             @Override
             public <T> Compare<M, T> where(Class<? extends Val<T>> field) {
                 // First sql:
@@ -493,9 +497,22 @@ public class SQLiteDataBase extends AbstractDataBase
             }
 
             @Override
-            public List<M> asList() {
-                return junc[0].asList();
+            public <T> Compare<M, T> where( Function<M, Val<T>> selector ) {
+                var propSelector = new PropertySelectionProxy(_modelRegistry.getTable(model));
+                selector.apply((M) Proxy.newProxyInstance(
+                                    model.getClassLoader(),
+                                    new Class<?>[]{model},
+                                    propSelector
+                                ));
+
+                var field = propSelector.getSelection().orElseThrow();
+
+                // First sql:
+                sql.append(field.getName()).append(" ");
+                // Then values:
+                return (Compare<M, T>) valueCollector;
             }
+
         };
     }
 
