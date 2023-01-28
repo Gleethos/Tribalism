@@ -1,12 +1,11 @@
 package app.models;
 
-import dal.api.Model;
 import swingtree.api.mvvm.Var;
 import swingtree.api.mvvm.Vars;
 
-public interface GameMaster extends Model<GameMaster>
+public interface Player
 {
     Var<User> identity();
-
-    Vars<World> worlds();
+    Var<World> world();
+    Vars<CharacterModel> characters();
 }

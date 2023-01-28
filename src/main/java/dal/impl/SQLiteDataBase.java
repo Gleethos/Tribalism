@@ -167,15 +167,15 @@ public class SQLiteDataBase extends AbstractDataBase
         List<Object> ids = result.get("id");
 
         List<M> modelsList = new ArrayList<>();
-        for ( Object id : ids ) {
+        for ( Object id : ids )
             modelsList.add(select(models, (int) id));
-        }
 
         return modelsList;
     }
 
     @Override
-    public <M extends Model<M>> M create( Class<M> model ) {
+    public <M extends Model<M>> M create( Class<M> model )
+    {
         // First let's verify that the model is indeed a model
         if ( !Model.class.isAssignableFrom(model) )
             throw new IllegalArgumentException("The provided class is not a model!");
@@ -185,8 +185,8 @@ public class SQLiteDataBase extends AbstractDataBase
             throw new IllegalArgumentException("The table for the model '" + model.getName() + "' does not exist!");
 
         // Now let's create the model
-        ModelTable modelTable = _modelRegistry.getTable(model);
-        List<TableField> fields = modelTable.getFields();
+        ModelTable modelTable      = _modelRegistry.getTable(model);
+        List<TableField> fields    = modelTable.getFields();
         List<Object> defaultValues = modelTable.getDefaultValues();
         List<String> fieldNames    = fields.stream().map(TableField::getName).collect(Collectors.toList());
         /*
@@ -484,7 +484,11 @@ public class SQLiteDataBase extends AbstractDataBase
 
             @Override
             public List<M> asList() {
-                Map<String, List<Object>> result = _query(sql.toString(), values);
+                String sqlString = sql.toString();
+                if ( sqlString.endsWith(" WHERE ") )
+                    sqlString = sqlString.substring(0, sqlString.length()-7);
+
+                Map<String, List<Object>> result = _query(sqlString, values);
                 List<Integer> ids = result.getOrDefault("id", Collections.emptyList())
                                             .stream()
                                             .map( o -> (int) o )

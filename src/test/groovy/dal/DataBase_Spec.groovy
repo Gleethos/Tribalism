@@ -2,6 +2,7 @@ package dal
 
 import dal.api.DataBase
 import dal.models.Address
+import dal.models.Animal
 import dal.models.Atom
 import dal.models.Food
 import dal.models.Furniture
@@ -9,6 +10,8 @@ import dal.models.Ingredient
 import dal.models.InvalidModel
 import dal.models.ModeWithDefaults
 import dal.models.Person
+import dal.models.Rabbit
+import dal.models.Raccoon
 import dal.models.Workplace
 import spock.lang.Narrative
 import spock.lang.Specification
@@ -538,6 +541,41 @@ class DataBase_Spec extends Specification
         then : 'We can use the default method to confirm certain things about the model.'
             m.storyContains("upon")
             !m.storyContains("uppon")
+    }
+
+    def 'Inheritance only works for "concrete" interface which have nor subtypes.'()
+    {
+        given : 'We create a database instance for testing, the database will be opened in a test folder.'
+            def db = DataBase.at(TEST_DB_FILE)
+            db.dropAllTables()
+        when : 'We try to create a table for a model is also a supertype of another model.'
+            db.createTablesFor(Animal)
+        then : 'The database will throw an exception, because a model cannot inherit from another model.'
+            thrown(IllegalArgumentException)
+
+        when : 'We try to create a table for a model that is a subtype of another model.'
+            db.createTablesFor(Rabbit, Raccoon)
+        then : 'The database will not throw an exception, because the models are not a supertypes of other models.'
+            noExceptionThrown()
+
+        when : 'We create a rabbit and a raccoon and store some data in them...'
+            var rabbit = db.create(Rabbit)
+            rabbit.name().set("Bugs Bunny")
+            rabbit.favouriteCarrot().set("The one with the most sugar")
+            var raccoon = db.create(Raccoon)
+            raccoon.name().set("Rocky")
+            raccoon.favouriteGarbage().set("The one with the most sugar")
+        then : 'We can select the 2 animals independently of each other.'
+            var rabbits = db.select(Rabbit).asList()
+            rabbits.size() == 1
+            rabbits[0] == rabbit
+            rabbits[0].name().get() == "Bugs Bunny"
+            rabbits[0].favouriteCarrot().get() == "The one with the most sugar"
+            var raccoons = db.select(Raccoon).asList()
+            raccoons.size() == 1
+            raccoons[0] == raccoon
+            raccoons[0].name().get() == "Rocky"
+            raccoons[0].favouriteGarbage().get() == "The one with the most sugar"
     }
 
 }

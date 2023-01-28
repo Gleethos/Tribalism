@@ -21,21 +21,21 @@ final class TableField {
         Class<? extends Model<?>> ownerClass,
         List<Class<? extends Model<?>>> otherModels
     ) {
-        _method = method;
+        _method          = method;
         _ownerModelClass = ownerClass;
-        _propertyType = method.getReturnType();
+        _propertyType    = method.getReturnType();
 
         // First we check if the return type is a subclass of Val or Vals
-        boolean isSubTypeOfVal = Val.class.isAssignableFrom(_propertyType);
+        boolean isSubTypeOfVal  = Val.class.isAssignableFrom(_propertyType);
         boolean isSubTypeOfVals = Vals.class.isAssignableFrom(_propertyType);
-        boolean isValOrVar  = _propertyType == Val.class || _propertyType == Var.class;
+        boolean isValOrVar   = _propertyType == Val.class  || _propertyType == Var.class;
         boolean isValsOrVars = _propertyType == Vals.class || _propertyType == Vars.class;
 
-        if (!isSubTypeOfVal && !isSubTypeOfVals)
+        if ( !isSubTypeOfVal && !isSubTypeOfVals )
             throw new IllegalArgumentException(
                     "The return type of the method " + method.getName() + " is not a subclass of " +
-                            "either " + Val.class.getName() + " or " + Vals.class.getName() + "."
-            );
+                    "either " + Val.class.getName() + " or " + Vals.class.getName() + "."
+                );
 
         // Great that is correct! But now we have another requirement:
         /*

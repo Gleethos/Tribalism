@@ -52,8 +52,9 @@ class DefaultModelTable implements ModelTable
 
             if (!modelInterface.equals(typeParameters[0]))
                 throw new IllegalArgumentException(
-                        "The first type parameter of the interface " + modelInterface.getName() + " is not the same as the interface itself"
-                );
+                        "The first type parameter of the interface " + modelInterface.getName() + " is +" +
+                        "not the same as the interface itself."
+                    );
         }
         // Now we can get the fields
         Method[] methods = modelInterface.getMethods();
