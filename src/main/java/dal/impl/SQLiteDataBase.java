@@ -269,8 +269,8 @@ public class SQLiteDataBase extends AbstractDataBase
             String intermTableName = intermTable.getTableName();
             Class<?> left = intermTable.getReferencedModels().get(0);
             Class<?> right = intermTable.getReferencedModels().get(1);
-            String leftName = "fk_self_" + _tableNameFromClass(left) + "_id";
-            String rightName = "fk_" + _tableNameFromClass(right) + "_id";
+            String leftName = ModelTable.INTER_LEFT_FK_PREFIX + _tableNameFromClass(left) + ModelTable.INTER_FK_POSTFIX;
+            String rightName = ModelTable.INTER_RIGHT_FK_PREFIX + _tableNameFromClass(right) + ModelTable.INTER_FK_POSTFIX;
             // We need to find all entries where 'fk_..._id' is this 'id'
             // Then we need to find all the referencing (containing "self") models and simply
             // call the right property using reflection and tell it to remove the model...
@@ -279,7 +279,7 @@ public class SQLiteDataBase extends AbstractDataBase
                                 "FROM " + intermTableName + " " +
                                 "WHERE " + rightName + " = ?",
                                 List.of(id)
-                );
+                            );
 
             if ( result.isEmpty() ) return;
             List<Integer> refIds = result.get(leftName).stream().map( o -> (Integer) o ).distinct().toList();

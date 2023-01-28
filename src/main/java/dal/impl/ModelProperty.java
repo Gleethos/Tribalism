@@ -16,24 +16,26 @@ class ModelProperty implements Var<Object>
     private final String _fieldName;
     private final String _tableName;
     private final Class<?> _propertyValueType;
+    private final boolean _allowNull;
 
-    ModelProperty(SQLiteDataBase dataBase, int id, String fieldName, String tableName, Class<?> propertyValueType) {
+    ModelProperty(
+            SQLiteDataBase dataBase,
+            int id,
+            String fieldName,
+            String tableName,
+            Class<?> propertyValueType,
+            boolean allowNull
+    ) {
         _dataBase = dataBase;
         _id = id;
         _fieldName = fieldName;
         _tableName = tableName;
         _propertyValueType = propertyValueType;
+        _allowNull = allowNull;
     }
 
     @Override
-    public Object orElseThrow() {
-        Object o = _get();
-        if (o == null)
-            throw new NoSuchElementException("No value present");
-        return o;
-    }
-
-    private Object _get() {
+    public Object orElseNull() {
         Object value;
         StringBuilder select = new StringBuilder();
         select.append("SELECT ").append(_fieldName)
@@ -122,33 +124,13 @@ class ModelProperty implements Var<Object>
     }
 
     @Override
-    public Object orElseNullable(Object other) {
-        var o = _get();
-        if (o == null)
-            return other;
-        else
-            return o;
-    }
-
-    @Override
-    public boolean isPresent() {
-        return orElseNull() != null;
-    }
-
-    @Override
     public <U> Val<U> viewAs(Class<U> type, Function<Object, U> mapper) {
         throw new UnsupportedOperationException();
     }
 
-    @Override
-    public String id() {
-        return "";
-    }
+    @Override public String id() { return Val.NO_ID; }
 
-    @Override
-    public Class<Object> type() {
-        return (Class<Object>) _propertyValueType;
-    }
+    @Override public Class<Object> type() { return (Class<Object>) _propertyValueType; }
 
     @Override
     public Val<Object> onShow(Action<ValDelegate<Object>> displayAction) {
@@ -160,8 +142,5 @@ class ModelProperty implements Var<Object>
         return this;
     }
 
-    @Override
-    public boolean allowsNull() {
-        return true;
-    }
+    @Override public boolean allowsNull() { return _allowNull; }
 }

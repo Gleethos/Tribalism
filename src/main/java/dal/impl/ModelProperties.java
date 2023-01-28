@@ -31,8 +31,8 @@ public class ModelProperties implements Vars<Object>
         // We need to find the name of the column that contains the ids of the models
         // that are referenced by the intermediate table:
         this.otherTable = AbstractDataBase._tableNameFromClass(propertyValueType);
-        this.otherTableIdColumn = "fk_" + otherTable + "_id";
-        this.thisTableIdColumn = "fk_self_" + AbstractDataBase._tableNameFromClass(ownerModelClass) + "_id";
+        this.otherTableIdColumn = ModelTable.INTER_RIGHT_FK_PREFIX + otherTable + ModelTable.INTER_FK_POSTFIX;
+        this.thisTableIdColumn = ModelTable.INTER_LEFT_FK_PREFIX + AbstractDataBase._tableNameFromClass(ownerModelClass) + ModelTable.INTER_FK_POSTFIX;
         String query = "SELECT " + otherTableIdColumn + " FROM " + intermediateTable.getTableName() + " WHERE " + thisTableIdColumn + " = ?";
 
         List<Object> param = Collections.singletonList(id);
@@ -77,9 +77,10 @@ public class ModelProperties implements Vars<Object>
         return new ModelProperty(
                 db,
                 ids.get(index),
-                "fk_" + otherTable + "_id",
+                ModelTable.INTER_RIGHT_FK_PREFIX + otherTable + ModelTable.INTER_FK_POSTFIX,
                 intermediateTable.getTableName(),
-                propertyValueType
+                propertyValueType,
+                false
         );
     }
 

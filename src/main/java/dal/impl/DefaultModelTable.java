@@ -2,7 +2,6 @@ package dal.impl;
 
 import dal.api.Model;
 
-import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.lang.reflect.ParameterizedType;
 import java.lang.reflect.Type;
@@ -172,11 +171,6 @@ class DefaultModelTable implements ModelTable
             }
         }
         return defaultValues;
-    }
-
-    @Override
-    public boolean isIntermediateTable() {
-        return false;
     }
 
 }

@@ -5,7 +5,15 @@ import dal.api.Model;
 import java.util.List;
 import java.util.Optional;
 
-interface ModelTable {
+interface ModelTable
+{
+    String INTER_TABLE_POSTFIX = "_list_table";
+    String INTER_LEFT_FK_PREFIX = "fk_self_";
+    String INTER_RIGHT_FK_PREFIX = "fk_";
+    String INTER_FK_POSTFIX = "_id";
+    String FK_POSTFIX = "_id";
+    String FK_PREFIX = "fk_";
+
 
     String getTableName();
 
@@ -45,5 +53,4 @@ interface ModelTable {
 
     List<Object> getDefaultValues();
 
-    boolean isIntermediateTable();
 }
