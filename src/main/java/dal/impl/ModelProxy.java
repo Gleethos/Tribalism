@@ -3,6 +3,7 @@ package dal.impl;
 import dal.api.Model;
 import swingtree.api.mvvm.Val;
 import swingtree.api.mvvm.Vals;
+import swingtree.api.mvvm.Var;
 
 import java.lang.invoke.MethodHandles;
 import java.lang.invoke.MethodType;
@@ -137,6 +138,35 @@ class ModelProxy<T extends Model<T>> implements InvocationHandler {
             // Now we need to commit the transaction
             nonEager.executeCommit();
             return null;
+        } else if ( methodName.equals("clone") ) {
+            Class<Model> modelInterface = (Class) _modelTable.getModelInterface().orElseThrow();
+            var clone = _dataBase.create(modelInterface);
+            var thisModel = _dataBase.select(modelInterface, _id);
+
+            // This is simple, we use reflection to get all the properties and copy them over
+            Method[] methods0 = clone.getClass().getMethods();
+            Method[] methods1 = thisModel.getClass().getMethods();
+            for ( int i = 0; i < methods0.length; i++ ) {
+                for ( int ii = 0; ii < methods1.length; ii++ ) {
+                    Method m0 = methods0[i];
+                    Method m1 = methods1[ii];
+                    System.out.println(m0.getName()+" "+m1.getName());
+                    if ( m0.getName().equals(m1.getName()) ) {
+                        if (!m0.getName().equals("id") && m0.getParameterCount() == 0) {
+                            // The return type of the method must be a subtype of Var:
+                            if (!Val.class.isAssignableFrom(m0.getReturnType()))
+                                continue;
+
+                            Var<Object> cloneProp = (Var<Object>) m0.invoke(clone);
+                            Var<Object> thisProp = (Var<Object>) m1.invoke(thisModel);
+
+                            // Now we need to call the set method on the clone and the get method on this
+                            cloneProp.set(thisProp.get());
+                        }
+                    }
+                }
+            }
+            return clone;
         }
 
         if ( !_modelTable.hasField(methodName) ) {

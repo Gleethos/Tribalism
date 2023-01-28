@@ -578,4 +578,30 @@ class DataBase_Spec extends Specification
             raccoons[0].favouriteGarbage().get() == "The one with the most sugar"
     }
 
+    def 'We can clone model instances and they will have the same data but different ids.'()
+    {
+        given : 'We create a database instance for testing, the database will be opened in a test folder.'
+            def db = DataBase.at(TEST_DB_FILE)
+            db.dropAllTables()
+        when : 'We create a test table'
+            db.createTablesFor(Address)
+        and : 'We create an instance...'
+            var address = db.create(Address)
+            address.street().set("Main Street")
+            address.city().set("New York")
+            address.country().set("USA")
+        then : 'The instance has an id.'
+            address.id().get() != null
+        and :
+            address.id().get() > 0
+        when : 'We clone the instance...'
+            var clone = address.clone()
+        then : 'The clone has a different id.'
+            clone.id().get() != address.id().get()
+        and : 'They share the same data.'
+            clone.street().get() == address.street().get()
+            clone.city().get() == address.city().get()
+            clone.country().get() == address.country().get()
+    }
+
 }

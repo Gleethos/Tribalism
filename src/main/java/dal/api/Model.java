@@ -12,4 +12,5 @@ public interface Model<M> {
 
     void commit( Consumer<M> transaction );
 
+    M clone();
 }
