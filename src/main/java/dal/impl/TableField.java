@@ -3,6 +3,8 @@ package dal.impl;
 import dal.api.Model;
 import swingtree.api.mvvm.*;
 
+import java.lang.invoke.MethodHandles;
+import java.lang.invoke.MethodType;
 import java.lang.reflect.*;
 import java.util.*;
 
@@ -123,15 +125,18 @@ final class TableField {
             _kind = FieldKind.ID;
         }
         // Then we check if the field is a foreign key field
-        else if (isSubTypeOfVal) {
+        else if ( isSubTypeOfVal ) {
             if (Model.class.isAssignableFrom(_propertyValueType)) {
                 if (otherModels.contains(_propertyValueType)) {
                     _kind = FieldKind.FOREIGN_KEY;
                 } else
                     throw new IllegalArgumentException(
-                            "The return type of the method " + method.getName() + " is a foreign key to a model " +
-                                    "however the provided model type '" + _propertyValueType.getName() + "' is not known " +
-                                    "by the database!"
+                        "Cannot establish table field for method '" + method.getName() + "()' for model '" + _ownerModelClass.getName() + "', \n" +
+                        "because the return type of " +
+                        "the method is a property referencing another model called '" + _propertyValueType.getName() + "', " +
+                        "which is however not known " +
+                        "by the database, please make sure that it is passed to the 'createTablesFor(..)' method alongside " +
+                        "all other model types!"
                     );
             } else if (AbstractDataBase._isBasicDataType(_propertyValueType)) {
                 _kind = FieldKind.VALUE;
@@ -282,6 +287,25 @@ final class TableField {
                         propertyType.getClassLoader(),
                         new Class[]{propertyType},
                         (proxy, method, args) -> {
+                            String methodName = method.getName();
+                            try {
+                                Method proxyTypeMethod = propertyType.getDeclaredMethod(methodName, method.getParameterTypes());
+                                // Then we expect the method to be a default method
+                                if (proxyTypeMethod.isDefault()) {
+                                    // A default method is a method that is defined in an interface, we can just call it
+                                    return MethodHandles.lookup()
+                                            .findSpecial(
+                                                    propertyType,
+                                                    methodName,
+                                                    MethodType.methodType(method.getReturnType(), method.getParameterTypes()),
+                                                    propertyType
+                                            )
+                                            .bindTo(proxy)
+                                            .invokeWithArguments(args);
+                                }
+                            } catch (Exception e) {
+                                // If we get here, it means that the method is not a default method
+                            }
                             // We simply delegate to the property
                             return method.invoke(prop, args);
                         }

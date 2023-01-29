@@ -12,8 +12,8 @@ import java.util.function.Function;
  *
  * @param <M> The type of the model to query.
  */
-public interface Junction<M extends Model<M>> extends Query<M> {
-
+public interface Junction<M extends Model<M>> extends Query<M>
+{
     <T> Compare<M, T> and( Function<M, Val<T>> selector );
 
     <T> Compare<M, T> or( Function<M, Val<T>> selector );
@@ -21,10 +21,6 @@ public interface Junction<M extends Model<M>> extends Query<M> {
     <T> Compare<M, T> and(Class<? extends Val<T>> field);
 
     <T> Compare<M, T> or(Class<? extends Val<T>> field);
-
-    default List<M> limit(int limit) { return asList().subList(0, limit); }
-
-    default M first() { return asList().get(0); }
 
     Query<M> orderAscendingBy(Class<? extends Val<?>> field);
 
