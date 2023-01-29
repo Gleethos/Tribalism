@@ -379,11 +379,14 @@ class DataBase_Spec extends Specification
 
         when :
             db.delete(person2)
-        then :
+        then : 'The property list of people will now only contain one person.'
+            workplace.employees().size() == 1
+            workplace.employees().toSet() == [person] as Set
             workplace.toString() == "Workplace[" +
                                         "id=1, name=\"\", " +
                                         "address=Address[id=1, city=\"\", country=\"\", postalCode=\"\", street=\"\"], " +
-                                        "employees=[Person[id=1, firstName=\"\", lastName=\"\", address=Address[id=null, city=null, country=null, postalCode=null, street=null]]]]"
+                                        "employees=[Person[id=1, firstName=\"\", lastName=\"\", address=Address[id=null, city=null, country=null, postalCode=null, street=null]]]" +
+                                    "]"
 
         cleanup:
             db.close()

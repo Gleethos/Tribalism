@@ -1,9 +1,7 @@
 package app;
 
+import app.models.*;
 import app.models.Character;
-import app.models.GameMaster;
-import app.models.User;
-import app.models.World;
 import binding.WebUserContext;
 import dal.api.DataBase;
 import swingtree.api.mvvm.Vals;
@@ -23,7 +21,9 @@ public class AppContext
             Character.class,
             User.class,
             GameMaster.class,
-            World.class
+            World.class,
+            Player.class,
+            CharacterModel.class
         );
     }
 

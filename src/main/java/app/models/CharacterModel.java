@@ -1,8 +1,9 @@
 package app.models;
 
+import dal.api.Model;
 import swingtree.api.mvvm.Var;
 
-public interface CharacterModel
+public interface CharacterModel extends Model<CharacterModel>
 {
     Var<String> forename();
     Var<String> surname();

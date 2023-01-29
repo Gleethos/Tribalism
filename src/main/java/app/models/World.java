@@ -4,16 +4,12 @@ import dal.api.Model;
 import swingtree.api.mvvm.Var;
 import swingtree.api.mvvm.Vars;
 
-public interface World extends Model<World> {
+public interface World extends Model<World>
+{
+    Var<String> name();
 
-    interface Name extends Var<String> {}
-    interface Characters extends Vars<Character> {}
-    interface NPCs extends Vars<Character> {}
+    Vars<Character> characters();
 
-    Name name();
-
-    Characters characters();
-
-    NPCs npcs();
+    Vars<Character> npcs();
 
 }
