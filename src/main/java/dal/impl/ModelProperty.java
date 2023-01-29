@@ -1,12 +1,10 @@
 package dal.impl;
 
 import dal.api.Model;
-import swingtree.api.mvvm.Action;
-import swingtree.api.mvvm.Val;
-import swingtree.api.mvvm.ValDelegate;
-import swingtree.api.mvvm.Var;
+import swingtree.api.mvvm.*;
 
 import java.util.*;
+import java.util.function.Consumer;
 import java.util.function.Function;
 
 class ModelProperty implements Var<Object>
@@ -20,6 +18,13 @@ class ModelProperty implements Var<Object>
     private final boolean _isEager;
     private Object _value;
     private boolean _wasSet = false;
+
+    // Observers:
+
+    private final List<Action<ValDelegate<Object>>> _showActions = new ArrayList<>();
+    private final List<Action<ValDelegate<Object>>> _actActions = new ArrayList<>();
+    private final List<Consumer<Object>> _viewers = new ArrayList<>(0);
+
 
     ModelProperty(
             SQLiteDataBase dataBase,
@@ -88,13 +93,23 @@ class ModelProperty implements Var<Object>
 
     @Override
     public Var<Object> set( Object newItem ) {
-        if ( _isEager )
-            _set(newItem);
-        else
-            _value = newItem;
-
-        _wasSet = true;
+        _setNonSilent(newItem);
         return this;
+    }
+
+    private void _setNonSilent( Object newItem ) {
+        Object oldValue;
+        if ( _isEager ) {
+            oldValue = orElseNull();
+            _set(newItem);
+        } else {
+            if ( _wasSet ) oldValue = _value;
+            else oldValue = orElseNull();
+            _value = newItem;
+        }
+        _wasSet = true;
+        if ( !Val.equals( oldValue, newItem ) )
+            show();
     }
 
     private void _set( Object newItem ) {
@@ -124,22 +139,42 @@ class ModelProperty implements Var<Object>
 
     @Override
     public Var<Object> onAct(Action<ValDelegate<Object>> action) {
+        _actActions.add(action);
         return this;
     }
 
     @Override
     public Var<Object> act() {
+        _triggerActions(_actActions);
+        _viewers.forEach( v -> v.accept(_value) );
         return this;
     }
 
     @Override
-    public Var<Object> act(Object newValue) {
-        return set(newValue);
+    public Var<Object> act(Object newItem) {
+        Object oldValue;
+        if ( _isEager ) {
+            oldValue = orElseNull();
+            _set(newItem);
+        } else {
+            if ( _wasSet ) oldValue = _value;
+            else oldValue = orElseNull();
+            _value = newItem;
+        }
+        _wasSet = true;
+        if ( !Val.equals( oldValue, newItem ) )
+            act();
+
+        return this;
     }
 
     @Override
     public <U> Val<U> viewAs(Class<U> type, Function<Object, U> mapper) {
-        throw new UnsupportedOperationException();
+        Var<U> var = mapTo(type, mapper);
+        // Now we register a live update listener to this property
+        this.onShowItem(v -> var.set( mapper.apply( v ) ));
+        _viewers.add( v -> var.act( mapper.apply( v ) ) );
+        return var;
     }
 
     @Override public String id() { return Val.NO_ID; }
@@ -148,15 +183,47 @@ class ModelProperty implements Var<Object>
 
     @Override
     public Val<Object> onShow(Action<ValDelegate<Object>> displayAction) {
+        _showActions.add(displayAction);
         return this;
     }
 
     @Override
     public Val<Object> show() {
+        _triggerActions(_showActions);
         return this;
     }
 
     @Override public boolean allowsNull() { return _allowNull; }
+
+
+    protected void _triggerActions(
+            List<Action<ValDelegate<Object>>> actions
+    ) {
+        List<Action<ValDelegate<Object>>> removableActions = new ArrayList<>();
+        for ( Action<ValDelegate<Object>> action : new ArrayList<>(actions) ) // We copy the list to avoid concurrent modification
+            try {
+                if ( action.canBeRemoved() )
+                    removableActions.add(action);
+                else {
+                    action.accept(_createDelegate());
+                }
+            } catch ( Exception e ) {
+                e.printStackTrace();
+            }
+        actions.removeAll(removableActions);
+    }
+
+    protected ValDelegate<Object> _createDelegate() {
+        return new ValDelegate<>() {
+            @Override public Val<Object> current() { return ModelProperty.this; }
+            @Override
+            public Val<Object> previous() {
+                return Val.ofNullable(type(), null);
+            }
+            @Override
+            public List<Val<Object>> history() { return List.of(); }
+        };
+    }
 
     public boolean wasSet() { return _wasSet; }
 

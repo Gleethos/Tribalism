@@ -305,7 +305,7 @@ final class TableField {
                         (proxy, method, args) -> {
                             String methodName = method.getName();
                             try {
-                                Method proxyTypeMethod = propertyType.getDeclaredMethod(methodName, method.getParameterTypes());
+                                Method proxyTypeMethod = propertyType.getMethod(methodName, method.getParameterTypes());
                                 // Then we expect the method to be a default method
                                 if (proxyTypeMethod.isDefault()) {
                                     // A default method is a method that is defined in an interface, we can just call it

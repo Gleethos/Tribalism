@@ -3,6 +3,8 @@ package dal
 import dal.api.DataBase
 import dal.models.Ingredient
 import spock.lang.Specification
+import swingtree.api.mvvm.Action
+import swingtree.api.mvvm.ValDelegate
 
 class DataBase_Model_Properties_Spec extends Specification
 {
@@ -64,6 +66,43 @@ class DataBase_Model_Properties_Spec extends Specification
             ingredient2.id().greaterThanOrEqual(2)
             ingredient3.id().greaterThanOrEqual(3)
             ingredient4.id().greaterThanOrEqual(4)
-    }    
+    }
+
+    def 'You can register listeners on model properties which get triggered when they are set.'()
+    {
+        reportInfo """
+            This feature specification not only demonstrates that the properties
+            of a model have a method for registering listener lambdas.
+            For this example, we will use the "Ingredients" model:
+            ```
+                public interface Ingredient extends Model<Ingredient> 
+                {
+                    Var<String> name();
+                    Var<Double> amount();
+                    Var<String> unit();
+                }
+            ```
+        """
+        given : 'We create a database instance for testing, the database will be opened in a test folder.'
+            def db = DataBase.at(TEST_DB_FILE)
+            db.dropAllTables()
+        and : 'We create the test table.'
+            db.createTablesFor(Ingredient)
+        and : 'A simple ingredient.'
+            Ingredient ingredient = db.create(Ingredient)
+        when : 'We register a listener on the name property.'
+            var listenerTrace = []
+            ingredient.name().onShowItem(new Action<String>() {
+                @Override
+                void accept(String delegate) {
+                    listenerTrace << delegate
+                }
+            })
+        and : 'We set the name property.'
+            ingredient.name().set("Tomato")
+        then : 'The listener should have been triggered.'
+            listenerTrace.size() == 1
+            listenerTrace[0] == "Tomato"
+    }
 
 }
