@@ -135,11 +135,27 @@ final class TableField {
                     );
             } else if (AbstractDataBase._isBasicDataType(_propertyValueType)) {
                 _kind = FieldKind.VALUE;
-            } else
-                throw new IllegalArgumentException(
-                        "The return type of the method " + method.getName() + " is not a basic data type " +
-                                "and is not a foreign key to a model!"
-                );
+            } else {
+                boolean propertyValueIsModel = Model.class.isAssignableFrom(_propertyValueType);
+                if ( !propertyValueIsModel )
+                    throw new IllegalArgumentException(
+                            "Failed to create table field '" + _method.getName() + "' for model '" + _ownerModelClass.getName() + "', because \n" +
+                            "the property value type '" + _propertyValueType.getName() + "' in declared method " +
+                            "'public " + _propertyType.getSimpleName() + "<" + _propertyValueType.getSimpleName() + "> " + method.getName() + "();' " +
+                            "is not a basic data type and is also not recognisable as another model! \n" +
+                            "If you want this declaration to work, make sure that '" + _propertyValueType.getName() + "' is a subtype of the '" + Model.class.getName() + "' interface " +
+                            "and also is passed to the the 'createTablesFor(Class<M>... models);' method."
+                        );
+                else // The user has simply not passed the interface class to the createTablesFor(Class<Model... models) method:
+                    throw new IllegalArgumentException(
+                            "Failed to create table field '" + _method.getName() + "' for model '" + _ownerModelClass.getName() + "', because \n" +
+                            "the property value type '" + _propertyValueType.getName() + "' in declared method " +
+                            "'public " + _propertyType.getSimpleName() + "<" + _propertyValueType.getSimpleName() + "> " + method.getName() + "();' " +
+                            "is a model type not known to the database! " +
+                            "If you want this declaration to work, make sure that you have passed the interface class of the model to the " +
+                            "createTablesFor(Class<M>... models); method!"
+                        );
+            }
         }
         // Then we check if the field is an intermediate table field
         else if (isSubTypeOfVals) {
