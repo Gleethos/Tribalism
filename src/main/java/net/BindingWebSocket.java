@@ -8,8 +8,8 @@ import org.eclipse.jetty.websocket.api.annotations.WebSocket;
 import org.json.JSONObject;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import swingtree.api.mvvm.Action;
-import swingtree.api.mvvm.ValDelegate;
+import sprouts.Action;
+import sprouts.Val;
 
 import javax.servlet.http.HttpSession;
 import java.lang.reflect.InvocationTargetException;
@@ -129,12 +129,12 @@ public class BindingWebSocket {
         vmJson.put(Constants.EVENT_PAYLOAD, BindingUtil.toJson(vm, webUserContext));
         BindingUtil.bind( vm, new Action<>() {
             @Override
-            public void accept(ValDelegate<Object> delegate) {
+            public void accept(Val<Object> val) {
                 try {
                     JSONObject update = new JSONObject();
                     update.put(Constants.EVENT_TYPE, Constants.RETURN_PROP);
                     update.put(Constants.EVENT_PAYLOAD,
-                            BindingUtil.jsonFromProperty(delegate.getCurrent(), webUserContext)
+                            BindingUtil.jsonFromProperty(val, webUserContext)
                                     .put(Constants.VM_ID, vmId)
                     );
                     _send(update);

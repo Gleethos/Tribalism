@@ -1,9 +1,9 @@
 package dal.impl;
 
 import dal.api.Model;
-import swingtree.api.mvvm.Val;
-import swingtree.api.mvvm.Vals;
-import swingtree.api.mvvm.Var;
+import sprouts.Val;
+import sprouts.Vals;
+import sprouts.Var;
 
 import java.lang.invoke.MethodHandles;
 import java.lang.invoke.MethodType;

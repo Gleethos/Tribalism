@@ -1,6 +1,6 @@
 package dal.models;
 
-import swingtree.api.mvvm.Var;
+import sprouts.Var;
 
 public interface Raccoon extends Animal<Raccoon>
 {

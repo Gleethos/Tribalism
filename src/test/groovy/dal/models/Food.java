@@ -1,8 +1,8 @@
 package dal.models;
 
 import dal.api.Model;
-import swingtree.api.mvvm.Var;
-import swingtree.api.mvvm.Vars;
+import sprouts.Var;
+import sprouts.Vars;
 
 public interface Food extends Model<Food>
 {

@@ -13,21 +13,24 @@ import dal.models.Person
 import dal.models.Rabbit
 import dal.models.Raccoon
 import dal.models.Workplace
+import groovy.transform.CompileDynamic
 import spock.lang.Narrative
 import spock.lang.Specification
 import spock.lang.Title
 
-@Title("The Tribalism Data Access Layer")
+@Title("Using Topsoil")
 @Narrative('''
        
-       This specification describes how the Data-Access-Layer, in short DAL, is supposed to behave.
-       More specifically this DAL is designed around the usage of MVVM properties and the
-       usage of the `Entity`and `Field` annotations.
-       The Data-Access-Layer is supposed to automatically convert 
+       This specification describes how the Topsoil ORM is supposed to behave.
+       More specifically this ORM is designed around the usage of Sprouts MVVM properties.
+       Topsoil will not only convert your 
        models (or even view models) into database tables, table entries
-       and then back into models.
+       and then back into models it also exposes a convenient API to 
+       query the database and to work with the data without having to
+       write any SQL code.
        
 ''')
+@CompileDynamic
 class DataBase_Spec extends Specification
 {
     def TEST_DB_LOCATION = "test_data/"

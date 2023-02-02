@@ -6,8 +6,8 @@ import org.eclipse.jetty.server.ServerConnector;
 import org.eclipse.jetty.servlet.DefaultServlet;
 import org.eclipse.jetty.servlet.ServletContextHandler;
 import org.eclipse.jetty.servlet.ServletHolder;
-import swingtree.api.mvvm.Val;
-import swingtree.api.mvvm.Var;
+import sprouts.Val;
+import sprouts.Var;
 
 import javax.swing.*;
 
@@ -30,7 +30,7 @@ public class ServerViewModel
         this.portIsValid = Var.of(true);
         this.portString = Var.of("8080").onAct( it -> {
             try {
-                port.set(Integer.parseInt(it.current().get()));
+                port.set(Integer.parseInt(it.get()));
                 portIsValid.set(true);
             } catch (NumberFormatException e) {
                 port.set(8080);

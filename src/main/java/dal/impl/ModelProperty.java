@@ -1,6 +1,9 @@
 package dal.impl;
 
 import dal.api.Model;
+import sprouts.Action;
+import sprouts.Val;
+import sprouts.Var;
 import swingtree.api.mvvm.*;
 
 import java.util.*;
@@ -21,8 +24,8 @@ class ModelProperty implements Var<Object>
 
     // Observers:
 
-    private final List<Action<ValDelegate<Object>>> _showActions = new ArrayList<>();
-    private final List<Action<ValDelegate<Object>>> _actActions = new ArrayList<>();
+    private final List<Action<Val<Object>>> _showActions = new ArrayList<>();
+    private final List<Action<Val<Object>>> _actActions = new ArrayList<>();
     private final List<Consumer<Object>> _viewers = new ArrayList<>(0);
 
 
@@ -109,7 +112,7 @@ class ModelProperty implements Var<Object>
         }
         _wasSet = true;
         if ( !Val.equals( oldValue, newItem ) )
-            show();
+            fireSet();
     }
 
     private void _set( Object newItem ) {
@@ -138,13 +141,13 @@ class ModelProperty implements Var<Object>
     @Override public Var<Object> withId(String id) { throw new UnsupportedOperationException(); }
 
     @Override
-    public Var<Object> onAct(Action<ValDelegate<Object>> action) {
+    public Var<Object> onAct( Action<Val<Object>> action ) {
         _actActions.add(action);
         return this;
     }
 
     @Override
-    public Var<Object> act() {
+    public Var<Object> fireAct() {
         _triggerActions(_actActions);
         _viewers.forEach( v -> v.accept(_value) );
         return this;
@@ -163,7 +166,7 @@ class ModelProperty implements Var<Object>
         }
         _wasSet = true;
         if ( !Val.equals( oldValue, newItem ) )
-            act();
+            fireAct();
 
         return this;
     }
@@ -172,7 +175,7 @@ class ModelProperty implements Var<Object>
     public <U> Val<U> viewAs(Class<U> type, Function<Object, U> mapper) {
         Var<U> var = mapTo(type, mapper);
         // Now we register a live update listener to this property
-        this.onShowItem(v -> var.set( mapper.apply( v ) ));
+        this.onSet( v -> var.set( mapper.apply( v.orElseNull() ) ));
         _viewers.add( v -> var.act( mapper.apply( v ) ) );
         return var;
     }
@@ -182,13 +185,13 @@ class ModelProperty implements Var<Object>
     @Override public Class<Object> type() { return (Class<Object>) _propertyValueType; }
 
     @Override
-    public Val<Object> onShow(Action<ValDelegate<Object>> displayAction) {
+    public Val<Object> onSet(Action<Val<Object>> displayAction) {
         _showActions.add(displayAction);
         return this;
     }
 
     @Override
-    public Val<Object> show() {
+    public Val<Object> fireSet() {
         _triggerActions(_showActions);
         return this;
     }
@@ -197,32 +200,20 @@ class ModelProperty implements Var<Object>
 
 
     protected void _triggerActions(
-            List<Action<ValDelegate<Object>>> actions
+            List<Action<Val<Object>>> actions
     ) {
-        List<Action<ValDelegate<Object>>> removableActions = new ArrayList<>();
-        for ( Action<ValDelegate<Object>> action : new ArrayList<>(actions) ) // We copy the list to avoid concurrent modification
+        List<Action<Val<Object>>> removableActions = new ArrayList<>();
+        for ( Action<Val<Object>> action : new ArrayList<>(actions) ) // We copy the list to avoid concurrent modification
             try {
                 if ( action.canBeRemoved() )
                     removableActions.add(action);
                 else {
-                    action.accept(_createDelegate());
+                    action.accept(ModelProperty.this);
                 }
             } catch ( Exception e ) {
                 e.printStackTrace();
             }
         actions.removeAll(removableActions);
-    }
-
-    protected ValDelegate<Object> _createDelegate() {
-        return new ValDelegate<>() {
-            @Override public Val<Object> current() { return ModelProperty.this; }
-            @Override
-            public Val<Object> previous() {
-                return Val.ofNullable(type(), null);
-            }
-            @Override
-            public List<Val<Object>> history() { return List.of(); }
-        };
     }
 
     public boolean wasSet() { return _wasSet; }

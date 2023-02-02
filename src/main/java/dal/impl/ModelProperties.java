@@ -1,7 +1,7 @@
 package dal.impl;
 
 import dal.api.Model;
-import swingtree.api.mvvm.*;
+import sprouts.*;
 
 import java.util.*;
 
@@ -86,12 +86,12 @@ public class ModelProperties implements Vars<Object>
     }
 
     @Override
-    public Vals<Object> onShow(Action<ValsDelegate<Object>> action) {
+    public Vals<Object> onChange(Action<ValsDelegate<Object>> action) {
         throw new UnsupportedOperationException("Not supported yet.");
     }
 
     @Override
-    public Vals<Object> show() {
+    public Vals<Object> fireChange() {
         throw new UnsupportedOperationException("Not supported yet.");
     }
 

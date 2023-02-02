@@ -3,7 +3,10 @@ package net;
 import binding.WebUserContext;
 import org.json.JSONArray;
 import org.json.JSONObject;
-import swingtree.api.mvvm.*;
+import sprouts.Action;
+import sprouts.Val;
+import sprouts.Var;
+import swingtree.api.mvvm.Viewable;
 
 import java.awt.*;
 import java.lang.reflect.InvocationTargetException;
@@ -27,7 +30,7 @@ public class BindingUtil {
             field.setAccessible(true);
             try {
                 var value = field.get(vm);
-                if ( value instanceof swingtree.api.mvvm.Val<?> val )
+                if ( value instanceof sprouts.Val<?> val )
                     properties.add((Val<Object>) val);
 
             } catch (IllegalAccessException e) {
@@ -226,9 +229,9 @@ public class BindingUtil {
 
     public static void bind(
             Object vm,
-            Action<ValDelegate<Object>> observer
+            Action<Val<Object>> observer
     ) {
-        BindingUtil.findPropertiesInViewModel(vm).forEach(p -> p.onShow(observer) );
+        BindingUtil.findPropertiesInViewModel(vm).forEach(p -> p.onSet(observer) );
     }
 
     public static JSONObject toJson(Object vm, WebUserContext webUserContext) {

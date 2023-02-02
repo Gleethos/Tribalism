@@ -1,6 +1,6 @@
 package dal.api;
 
-import swingtree.api.mvvm.Val;
+import sprouts.Val;
 
 import java.util.function.Consumer;
 

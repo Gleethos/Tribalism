@@ -1,7 +1,7 @@
 package app;
 
 import app.models.Character;
-import swingtree.api.mvvm.Var;
+import sprouts.Var;
 
 import java.util.Optional;
 

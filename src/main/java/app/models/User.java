@@ -1,7 +1,7 @@
 package app.models;
 
 import dal.api.Model;
-import swingtree.api.mvvm.Var;
+import sprouts.Var;
 
 public interface User extends Model<User>
 {

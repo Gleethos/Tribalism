@@ -2,10 +2,31 @@ package dal
 
 import dal.api.DataBase
 import dal.models.Ingredient
+import groovy.transform.CompileDynamic
+import spock.lang.Narrative
 import spock.lang.Specification
-import swingtree.api.mvvm.Action
-import swingtree.api.mvvm.ValDelegate
+import spock.lang.Title
+import sprouts.Action
+import sprouts.Val
 
+@Title("Working with Model Properties")
+@Narrative('''
+
+    The Topsoil ORM maps each database table column to a property on the model class.
+    This is has 2 important benefits:
+    
+    1. It makes it possible for Topsoil to automatically and eagerly read and write
+       the data from the database for the specific column a property represents.
+    2. It provides a greater API surface which can be used to add additional
+       functionality to the model class, more specifically: 
+       custom default methods on your properties.
+       (Check out the `Model.Id` property type as an example!)
+
+    This spec demonstrates how to use the model properties to add additional
+    functionality to your model classes.
+    
+''')
+@CompileDynamic
 class DataBase_Model_Properties_Spec extends Specification
 {
     def TEST_DB_LOCATION = "test_data/"
@@ -92,10 +113,10 @@ class DataBase_Model_Properties_Spec extends Specification
             Ingredient ingredient = db.create(Ingredient)
         when : 'We register a listener on the name property.'
             var listenerTrace = []
-            ingredient.name().onShowItem(new Action<String>() {
+            ingredient.name().onSet(new Action<Val<String>>() {
                 @Override
-                void accept(String delegate) {
-                    listenerTrace << delegate
+                void accept(Val<String> delegate) {
+                    listenerTrace << delegate.get()
                 }
             })
         and : 'We set the name property.'

@@ -1,12 +1,18 @@
 package dal.impl;
 
 import dal.api.Model;
-import swingtree.api.mvvm.*;
+import sprouts.Val;
+import sprouts.Vals;
+import sprouts.Var;
+import sprouts.Vars;
 
 import java.lang.invoke.MethodHandles;
 import java.lang.invoke.MethodType;
 import java.lang.reflect.*;
-import java.util.*;
+import java.util.Arrays;
+import java.util.Collections;
+import java.util.List;
+import java.util.Optional;
 
 final class TableField {
 
@@ -279,7 +285,7 @@ final class TableField {
             return Optional.empty();
     }
 
-    public ProxyRef<Val<Object>> asProperty( SQLiteDataBase db, int id, boolean eager ) {
+    public ProxyRef<Val<Object>> asProperty(SQLiteDataBase db, int id, boolean eager ) {
         var prop = new ModelProperty(
                         db, id, this.getName(),
                         AbstractDataBase._tableNameFromClass(_ownerModelClass),

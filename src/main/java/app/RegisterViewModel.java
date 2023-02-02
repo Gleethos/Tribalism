@@ -1,8 +1,8 @@
 package app;
 
 import app.models.User;
-import swingtree.api.mvvm.Val;
-import swingtree.api.mvvm.Var;
+import sprouts.Val;
+import sprouts.Var;
 import swingtree.api.mvvm.Viewable;
 
 import java.awt.*;
@@ -112,10 +112,10 @@ public class RegisterViewModel implements Viewable
 
     private void rebroadcast() {
         // We rebroadcast all properties:
-        username.show();
-        password.show();
-        feedbackColor.show();
-        feedback.show();
+        username.fireSet();
+        password.fireSet();
+        feedbackColor.fireSet();
+        feedback.fireSet();
         /*
             This method is COMPLETELY redundant when we have only one view.
             But if we had multiple views, we would need to rebroadcast all properties
