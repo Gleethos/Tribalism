@@ -2,6 +2,7 @@ import app.AppContext;
 import app.RootView;
 import app.RootViewModel;
 import com.formdev.flatlaf.FlatLightLaf;
+import swingtree.EventProcessor;
 import swingtree.UI;
 
 public class Main {
@@ -10,7 +11,10 @@ public class Main {
     {
         AppContext context = new AppContext();
         FlatLightLaf.setup();
-        UI.show(new RootView(new RootViewModel(context)));
+        UI.show(
+            UI.use(EventProcessor.DECOUPLED,
+            () -> new RootView(new RootViewModel(context)))
+        );
     }
 
 }

@@ -41,6 +41,7 @@ public class LoginView extends JPanel
                 panel(FILL_X.and(WRAP(1)))
                 .add(GROW_X,
                     button("Login").isEnabledIfNot(vm.allInputsDisabled())
+                    .onClick( it -> vm.login() )
                 )
             )
             .add(GROW_X.and(SPAN),

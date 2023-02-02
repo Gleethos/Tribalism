@@ -12,7 +12,7 @@ public class UserContext {
 
     public User user() { return user; }
 
-    public UserViewModel toViewModel() {
+    public UserViewModel getViewModel() {
         UserViewModel viewModel = new UserViewModel(this);
         return viewModel;
     }

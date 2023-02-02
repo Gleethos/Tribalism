@@ -31,6 +31,11 @@ public class ContentViewModel {
         content.set(new RegisterViewModel(context, this));
     }
 
+    public void login(UserContext userContext) {
+        content.set(userContext.getViewModel());
+    }
+
+
     public void showLogin() {
         content.set(new LoginViewModel(context, this));
     }

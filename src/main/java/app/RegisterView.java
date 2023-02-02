@@ -8,7 +8,7 @@ import static swingtree.UI.*;
 
 public class RegisterView extends JPanel
 {
-    public RegisterView(RegisterViewModel vm) {
+    public RegisterView( RegisterViewModel vm ) {
         of(this).withLayout(FILL)
         .add(GROW,
             panel("alignx center, aligny center, wrap 1")
@@ -34,6 +34,7 @@ public class RegisterView extends JPanel
                 panel(FILL_X.and(WRAP(1)))
                 .add(GROW_X,
                     button("Register").isEnabledIfNot(vm.allInputsDisabled())
+                    .onClick( it -> vm.register() )
                 )
             )
             .add(GROW_X.and(SPAN),

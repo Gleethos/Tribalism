@@ -36,11 +36,16 @@ public class AppContext
     }
 
     public boolean userExists(String username) {
-        return users.stream().anyMatch(u -> u.user().username().get().equals(username));
+        return db.select(User.class).where(User::username).is(username).asList().size() > 0;
     }
 
-    public Optional<User> getUser(String username) {
-        return users.stream().map( UserContext::user ).filter(u -> u.username().get().equals(username)).findFirst();
+    public Optional<User> loginUser(String username) {
+        User user = db.select(User.class).where(User::username).is(username).asList().get(0);
+        if (user != null) {
+            users.add(new UserContext(user));
+            return Optional.of(user);
+        }
+        return Optional.empty();
     }
 
     public void registerWebUserContext(WebUserContext userContext) {

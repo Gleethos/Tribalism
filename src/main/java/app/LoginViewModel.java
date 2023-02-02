@@ -68,10 +68,10 @@ public class LoginViewModel implements Viewable
     public void login() {
         allInputsDisabled.set(true);
         if ( context.userExists(username.get()) ) {
-            context.getUser(username.get()).ifPresent(user -> {
+            context.loginUser(username.get()).ifPresent(user -> {
                 if ( user.password().is(this.password) ) {
                     feedback.set("Login successful!");
-                    //context.login(username.get(), password.get(), this::onLoginResult);
+                    contentViewModel.login(new UserContext(user));
                 } else
                     feedback.set("Wrong password!");
             });

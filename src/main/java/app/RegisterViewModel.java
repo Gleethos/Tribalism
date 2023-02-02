@@ -6,12 +6,9 @@ import sprouts.Var;
 import swingtree.api.mvvm.Viewable;
 
 import java.awt.*;
-import java.util.Optional;
 
 public class RegisterViewModel implements Viewable
 {
-    public enum Gender { NOT_SELECTED, MALE, FEMALE, OTHER }
-
     private final AppContext context;
     private final ContentViewModel contentViewModel;
 
@@ -127,12 +124,19 @@ public class RegisterViewModel implements Viewable
         if ( validateAll() ) {
             allInputsDisabled.set(true);
             feedbackColor.set(Color.BLACK);
-            doRegistration();
             feedback.set("Registration successful!");
             feedbackColor.set(Color.GREEN);
-            var user = context.db().create(User.class);
-            user.username().set(username.get());
-            user.password().set(password.get());
+            try {
+                var user = context.db().create(User.class);
+                user.username().set(username.get());
+                user.password().set(password.get());
+                context.addUser(new UserContext(user));
+            } catch (Exception e) {
+                e.printStackTrace();
+                feedback.set("Registration failed! Cause: " + e.getMessage());
+                allInputsDisabled.set(false);
+                feedbackColor.set(Color.RED);
+            }
         } else {
             allInputsDisabled.set(false);
             feedback.set("Registration failed!");
@@ -142,21 +146,6 @@ public class RegisterViewModel implements Viewable
 
     public void switchToLogin() {
         this.contentViewModel.showLogin();
-    }
-
-    private void doRegistration() {
-        try {
-            feedback.set("...connecting to server...");
-            Thread.sleep(1000);
-            feedback.set("...sending data...");
-            Thread.sleep(1000);
-            feedback.set("...waiting for response...");
-            Thread.sleep(1000);
-            feedback.set("...processing response...");
-            Thread.sleep(1000);
-        } catch (InterruptedException e) {
-            e.printStackTrace();
-        }
     }
 
     public void reset() {

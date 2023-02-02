@@ -1,15 +1,17 @@
 package app;
 
 import app.models.Character;
+import app.models.UserView;
 import sprouts.Vals;
 import sprouts.Var;
 import sprouts.Vars;
+import swingtree.api.mvvm.Viewable;
 
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 
-public class UserViewModel {
+public class UserViewModel implements Viewable {
 
     private final UserContext user;
 
@@ -40,5 +42,14 @@ public class UserViewModel {
     public void safeModifications() {
         user.applyAndSaveNewUserName(username.get());
         user.applyAndSaveNewPassword(password.get());
+    }
+
+    @Override
+    public <V> V createView(Class<V> viewType) {
+        return (V) new UserView(this);
+    }
+
+    public Var<String> username() {
+        return username;
     }
 }

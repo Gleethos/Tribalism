@@ -27,7 +27,7 @@ dependencies {
     implementation 'org.eclipse.jetty:jetty-server:9.4.48.v20220622'
 
     implementation group: 'org.xerial', name: 'sqlite-jdbc', version: '3.36.0.3'
-    implementation group: 'io.github.globaltcad', name: 'swing-tree', version:'0.3.0'
+    implementation group: 'io.github.globaltcad', name: 'swing-tree', version:'17b3ecd'
     implementation group: 'io.github.globaltcad', name: 'sprouts', version:'0.0.0'
 
     //implementation 'org.apache.groovy:groovy:3.0.9'

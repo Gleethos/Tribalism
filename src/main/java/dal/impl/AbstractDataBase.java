@@ -74,19 +74,14 @@ abstract class AbstractDataBase implements DataBase {
         _connections.put(Thread.currentThread(), connection);
     }
 
-    /**
-     * This method commits on the current connection and
-     * also stores error information in the response if said
-     * attempt fails...
-     */
-    protected void _commit() {
-        try {
-            if(_connections.containsKey(Thread.currentThread()) && _connections.get(Thread.currentThread()) != null){
-                if(!_AUTOCOMMIT)_connections.get(Thread.currentThread()).commit();
-            }
-        } catch (SQLException e) {
-            e.printStackTrace();
+    private Connection _getConnection() {
+        Connection con = _connections.get(Thread.currentThread());
+        if ( con == null ) {
+            String threadName = Thread.currentThread().getName();
+            _LOG.error("No connection found for thread '{}'!", threadName);
+            throw new RuntimeException("No connection found for thread '"+threadName+"'!");
         }
+        return con;
     }
 
     /**
@@ -94,20 +89,15 @@ abstract class AbstractDataBase implements DataBase {
      */
     protected void _close(){
         try {
-            if(_connections.containsKey(Thread.currentThread()) && _connections.get(Thread.currentThread()) != null){
-                _connections.get(Thread.currentThread()).close();
-                _connections.put(Thread.currentThread(), null);
-            }
+            _getConnection().close();
+            _connections.put(Thread.currentThread(), null);
         } catch (SQLException e) {
-            e.printStackTrace();
+            throw new RuntimeException(e);
         }
-        //_connection=null;
     }
 
     @Override
-    public void close(){
-        _close();
-    }
+    public void close(){ _close(); }
 
     /**
      * Returns a list of all table names of a connection!
@@ -170,26 +160,12 @@ abstract class AbstractDataBase implements DataBase {
         return space;
     }
 
-    protected Map<String, List<String>> __attributesPropertiesTableOf(List<String> attributeList)
-    {
-        Map<String, List<String>> attributes = new HashMap<>();
-        for( String a : attributeList ){
-            String[] split = a.split(" ");
-            String key = split[0];
-            String[] value = new String[split.length-1];
-            System.arraycopy(split, 1, value, 0, value.length);
-            attributes.put(key, Arrays.asList(value));
-        }
-        return attributes;
-    }
-
-
     protected int _lastInsertID() {
         return (Integer)_query("SELECT last_insert_rowid()").get("last_insert_rowid()").get(0);
     }
 
     private PreparedStatement _newPreparedStatement(String sql, List<? extends Object> values) throws SQLException {
-        PreparedStatement pstmt = _connections.get(Thread.currentThread()).prepareStatement(sql);
+        PreparedStatement pstmt = _getConnection().prepareStatement(sql);
         if ( values != null ) {
             for(int i=0; i<values.size(); i++) pstmt.setObject(i + 1, values.get(i));
         }
@@ -231,7 +207,7 @@ abstract class AbstractDataBase implements DataBase {
             }
         } else {
             try {
-                Statement stmt = _connections.get(Thread.currentThread()).createStatement();
+                Statement stmt = _getConnection().createStatement();
                 try {
                     ResultSet rs = stmt.executeQuery(sql);// loop through the result set
                     if ( start != null && !rs.isClosed() )
@@ -338,7 +314,7 @@ abstract class AbstractDataBase implements DataBase {
      */
     protected void _execute(String sql) {
         if(sql.isBlank()) return;
-        Connection conn = _connections.get(Thread.currentThread());
+        Connection conn = _getConnection();
         try {
             Statement stmt = conn.createStatement();
             try {
@@ -357,14 +333,8 @@ abstract class AbstractDataBase implements DataBase {
      * SQL execution on connection!
      * @param sql
      */
-    protected boolean _update(String sql, List<? extends Object> values ){
-        Function<String, String> exceptionMessageCreator = (s)->{
-            String[] parts = s.split(" \\? ");
-            String joined = String.join(",",values.stream().map(v->"'"+v.toString()+"'").collect(Collectors.toList()));
-            return parts[0]+joined+parts[parts.length-1];
-        };
-
-        Connection conn = _connections.get(Thread.currentThread());
+    protected boolean _update( String sql, List<? extends Object> values ){
+        Connection conn = _getConnection();
         if ( values!=null ){
             try {
                 PreparedStatement pstmt = _newPreparedStatement(sql, values);
@@ -465,156 +435,6 @@ abstract class AbstractDataBase implements DataBase {
         rs.close();
         return json;
     }
-
-    protected JSONArray _toCRUD(ResultSet rs, String tableName, String[] tableNames) throws SQLException, JSONException
-    {
-        JSONArray json = new JSONArray();
-        ResultSetMetaData rsmd = rs.getMetaData();
-
-        String relationTable = null;
-
-        for(String t : tableNames){
-            String[] words = t.split("_");
-            boolean isRelationalTable = false;
-            boolean isRelevant = false;
-            for(String w : words) if(w.toLowerCase().contains("relation")) isRelationalTable = true;
-            for(String w : words) if(w.toLowerCase().contains(tableName)) isRelevant = true;
-            if (isRelationalTable && isRelevant && words.length==2) {
-                relationTable = t;
-            }
-        }
-
-        while(rs.next()) {
-            int numColumns = rsmd.getColumnCount();
-            JSONObject obj = new JSONObject();
-
-            for (int i=1; i<numColumns+1; i++)
-            {
-                String column_name = rsmd.getColumnName(i);
-
-                if(rsmd.getColumnType(i)==java.sql.Types.ARRAY){
-                    obj.put(column_name, rs.getArray(column_name));
-                }
-                else if(rsmd.getColumnType(i)==java.sql.Types.BIGINT){
-                    obj.put(column_name, rs.getInt(column_name));
-                }
-                else if(rsmd.getColumnType(i)==java.sql.Types.BOOLEAN){
-                    obj.put(column_name, rs.getBoolean(column_name));
-                }
-                else if(rsmd.getColumnType(i)==java.sql.Types.BLOB){
-                    obj.put(column_name, rs.getBlob(column_name));
-                }
-                else if(rsmd.getColumnType(i)==java.sql.Types.DOUBLE){
-                    obj.put(column_name, rs.getDouble(column_name));
-                }
-                else if(rsmd.getColumnType(i)==java.sql.Types.FLOAT){
-                    obj.put(column_name, rs.getFloat(column_name));
-                }
-                else if(rsmd.getColumnType(i)==java.sql.Types.INTEGER){
-                    obj.put(column_name, rs.getInt(column_name));
-                }
-                else if(rsmd.getColumnType(i)==java.sql.Types.NVARCHAR){
-                    obj.put(column_name, rs.getNString(column_name));
-                }
-                else if(rsmd.getColumnType(i)==java.sql.Types.VARCHAR){
-                    obj.put(column_name, rs.getString(column_name));
-                }
-                else if(rsmd.getColumnType(i)==java.sql.Types.TINYINT){
-                    obj.put(column_name, rs.getInt(column_name));
-                }
-                else if(rsmd.getColumnType(i)==java.sql.Types.SMALLINT){
-                    obj.put(column_name, rs.getInt(column_name));
-                }
-                else if(rsmd.getColumnType(i)==java.sql.Types.DATE){
-                    obj.put(column_name, rs.getDate(column_name));
-                }
-                else if(rsmd.getColumnType(i)==java.sql.Types.TIMESTAMP){
-                    obj.put(column_name, rs.getTimestamp(column_name));
-                }
-                else{
-                    obj.put(column_name, rs.getObject(column_name));
-                }
-                if(relationTable!=null && obj.get("id")!=null){
-                    Object id = obj.get("id");
-                    String sql = "SELECT * FROM "+relationTable+" rt "+" WHERE rt.child_tails_id = "+id.toString();
-                    final String targTable = relationTable;
-                    _for(sql, cs->{
-                        try {
-                            obj.put("children", _toCRUD(cs, targTable, tableNames));
-                        } catch (SQLException throwables) {
-                            throwables.printStackTrace();
-                        }
-                    }, null);
-
-                }
-            }
-            json.put(obj);
-        }
-        return json;
-    }
-
-    protected void _executeFile(String name){
-        String[] commands;
-        File file = (name.contains(":"))?new File(name):new File("storage/sql/", name);
-        int fileLength = (int) file.length();
-        try {
-            byte[] fileData = Util.readFileData(file, fileLength);
-            String query = new String(fileData);
-            commands = query.split("--<#SPLIT#>--");
-            for(String command : commands){
-                _execute(command);
-            }
-            _commit();
-
-        } catch (IOException e) {
-            e.printStackTrace();
-        }
-    }
-
-    class Util
-    {
-
-        public static byte[] readFileData(File file, int fileLength) throws IOException {
-            FileInputStream fileIn = null;
-            byte[] fileData = new byte[fileLength];
-            try {
-                fileIn = new FileInputStream(file);
-                fileIn.read(fileData);
-            } finally {
-                if (fileIn != null)
-                    fileIn.close();
-            }
-            return fileData;
-        }
-
-        /**
-         * Helper method which reads the file with the given name and returns
-         * the contents of this file as a String. Will exit the application
-         * if the file can not be read.
-         *
-         * @param path
-         * @return The contents of the file
-         */
-        public String readResource(String path){
-            InputStream stream = this.getClass().getClassLoader().getResourceAsStream(path);
-            try {
-                BufferedReader br = new BufferedReader(new InputStreamReader(stream));
-                StringBuffer sb = new StringBuffer();
-                String line = "";
-                while (line!=null) {
-                    line = br.readLine();
-                    if (line != null) sb.append(line).append("\n");
-                }
-                return sb.toString();
-            } catch (IOException e) {
-                e.printStackTrace();
-                System.exit(1);
-                return null;
-            }
-        }
-
-    }
-
 
     protected boolean doesTableExist(String tableName) {
         String command = "SELECT name FROM sqlite_master WHERE type='table' AND name=?";
