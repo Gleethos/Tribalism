@@ -3,11 +3,13 @@ package app.models;
 import app.DataBaseView;
 import dal.api.DataBase;
 import dal.impl.SQLiteDataBase;
+import sprouts.Event;
 import sprouts.Var;
 import sprouts.Vars;
 
 import javax.swing.*;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -20,8 +22,9 @@ public class DataBaseViewModel {
     private final Var<Integer> numberWorlds = Var.of(0);
     private final Var<Integer> numberGameMasters = Var.of(0);
     private final Var<String> sql = Var.of("");
-    private final Var<String> sqlResult = Var.of("");
+    private final Var<String> sqlFeedback = Var.of("");
     private final Vars<String> listOfTables = Vars.of(String.class);
+    private final Map<String, List<String>> resultData = new HashMap<>();
 
     public DataBaseViewModel(DataBase db) {
         this.db = db;
@@ -45,27 +48,28 @@ public class DataBaseViewModel {
     public Var<Integer> numberWorlds() { return numberWorlds; }
     public Var<Integer> numberGameMasters() { return numberGameMasters; }
     public Var<String> sql() { return sql; }
-    public Var<String> sqlResult() { return sqlResult; }
+    public Var<String> sqlFeedback() { return sqlFeedback; }
 
     public Vars<String> listOfTables() { return listOfTables; }
+    public Map<String, List<String>> resultData() { return resultData; }
 
     public void executeSql() {
+        resultData.clear();
         Map<String, List<String>> result = Collections.emptyMap();
         try {
             result = ((SQLiteDataBase) db).query(sql.get());
         } catch (Exception e) {
-            sqlResult.set(e.getMessage());
+            sqlFeedback.set("Error: \n" + e.getMessage());
+            return;
         }
-        StringBuilder sb = new StringBuilder();
-        for (String key : result.keySet()) {
-            sb.append(key).append(":\n");
-            for (String value : result.get(key)) {
-                sb.append(value).append("\n");
-            }
-            sb.append("\n");
-        }
-        sqlResult.set(sb.toString());
+        sqlFeedback.set("Success! \n" + result.size() + " rows returned.");
+        resultData.putAll(result);
+        onExecuteSql.fire();
     }
+
+    Event onExecuteSql = Event.of();
+
+    public Event sqlExecuted() { return onExecuteSql; }
 
     public JComponent createView() { return new DataBaseView(this); }
 

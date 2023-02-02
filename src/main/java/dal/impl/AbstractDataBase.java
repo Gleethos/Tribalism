@@ -7,13 +7,11 @@ import org.json.JSONObject;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.io.*;
+import java.io.File;
 import java.sql.Date;
 import java.sql.*;
 import java.util.*;
 import java.util.function.Consumer;
-import java.util.function.Function;
-import java.util.stream.Collectors;
 
 abstract class AbstractDataBase implements DataBase {
 
@@ -118,7 +116,7 @@ abstract class AbstractDataBase implements DataBase {
 
     protected Map<String, List<String>> _tablesSpace(){
         String sql = "SELECT * FROM sqlite_master WHERE type ='table' AND name NOT LIKE 'sqlite_%';";
-        Map<String, List<String>> space = new HashMap<>();
+        Map<String, List<String>> space = new LinkedHashMap<>();
         _for(sql, null, rs -> {
             try {
                 String sqlCode = rs.getString("sql")
@@ -220,10 +218,10 @@ abstract class AbstractDataBase implements DataBase {
                     }
                     rs.close();
                 } catch (SQLException e) {
-                    e.printStackTrace();
+                    throw new RuntimeException(e);
                 }
             } catch (SQLException e) {
-                e.printStackTrace();
+                throw new RuntimeException(e);
             }
         }
 
@@ -236,7 +234,7 @@ abstract class AbstractDataBase implements DataBase {
 
     protected Map<String, List<Object>> _query(String sql, List<Object> values){
 
-        Map<String, List<Object>> result = new HashMap<>();
+        Map<String, List<Object>> result = new LinkedHashMap<>();
         _for(
                 sql, values, // <=- Are used to build prepared statement when 'values' is not null!
                 rs -> {
