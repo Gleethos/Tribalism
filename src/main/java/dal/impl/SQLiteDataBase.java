@@ -546,4 +546,15 @@ public class SQLiteDataBase extends AbstractDataBase
         return field;
     }
 
+    public Map<String, List<String>> query(String sql) {
+        Map<String, List<Object>> result = _query(sql, Collections.emptyList());
+        return result.entrySet().stream()
+                .collect(Collectors.toMap(
+                        Map.Entry::getKey,
+                        e -> e.getValue().stream()
+                                .map(Object::toString)
+                                .toList()
+                    ));
+    }
+
 }

@@ -10,10 +10,11 @@ public class Main {
     public static void main( String... args )
     {
         AppContext context = new AppContext();
+        RootViewModel app = new RootViewModel(context);
         FlatLightLaf.setup();
         UI.show(
             UI.use(EventProcessor.DECOUPLED,
-            () -> new RootView(new RootViewModel(context)))
+            () -> new RootView(app))
         );
     }
 
