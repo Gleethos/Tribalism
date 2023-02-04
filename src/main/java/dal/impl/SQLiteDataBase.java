@@ -472,6 +472,24 @@ public class SQLiteDataBase extends AbstractDataBase
             }
 
             @Override
+            public <N extends Number> Query<M> orderAscendingBy( Function<M, Val<N>> selector ) {
+                var field = getTableField(selector, model);
+                sql.append(" ORDER BY ");
+                sql.append(field.getName());
+                sql.append(" ASC");
+                return this;
+            }
+
+            @Override
+            public <N extends Number> Query<M> orderDescendingBy(Function<M, Val<N>> selector) {
+                var field = getTableField(selector, model);
+                sql.append(" ORDER BY ");
+                sql.append(field.getName());
+                sql.append(" DESC");
+                return this;
+            }
+
+            @Override
             public Query<M> orderAscendingBy(Class<? extends Val<?>> field) {
                 sql.append(" ORDER BY ");
                 sql.append(table.getField(field).getName());
