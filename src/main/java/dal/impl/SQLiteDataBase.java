@@ -321,7 +321,7 @@ public class SQLiteDataBase extends AbstractDataBase
         ModelTable table = _modelRegistry.getTable(model);
         List<Object> values = new ArrayList<>();
         Junction[] junc = {null};
-        Compare<M, Object> valueCollector = new Compare<M, Object>() {
+        Compare<M, Object> valueCollector = new Compare<>() {
             @Override
             public Junction<M> is(Object value) {
                 // First sql:
@@ -362,9 +362,9 @@ public class SQLiteDataBase extends AbstractDataBase
             public Junction<M> in(Object... objects) {
                 // First sql:
                 sql.append(" IN (");
-                for ( int i = 0; i < objects.length; i++ ) {
+                for (int i = 0; i < objects.length; i++) {
                     sql.append("?");
-                    if ( i < objects.length-1 )
+                    if (i < objects.length - 1)
                         sql.append(", ");
                 }
                 sql.append(")");
@@ -377,9 +377,9 @@ public class SQLiteDataBase extends AbstractDataBase
             public Junction<M> notIn(Object... objects) {
                 // First sql:
                 sql.append(" NOT IN (");
-                for ( int i = 0; i < objects.length; i++ ) {
+                for (int i = 0; i < objects.length; i++) {
                     sql.append("?");
-                    if ( i < objects.length-1 )
+                    if (i < objects.length - 1)
                         sql.append(", ");
                 }
                 sql.append(")");
@@ -446,26 +446,26 @@ public class SQLiteDataBase extends AbstractDataBase
 
             @Override
             public <T> Compare<M, T> and(Function<M, Val<T>> selector) {
-                var field = getTableField(selector, model);
+                var field = _selectTableField(selector, model);
                 sql.append(" AND ").append(field.getName()).append(" ");
                 return (Compare<M, T>) valueCollector;
             }
 
             @Override
-            public <T> Compare<M, T> or(Function<M, Val<T>> selector) {
-                var field = getTableField(selector, model);
+            public <T> Compare<M, T> or( Function<M, Val<T>> selector ) {
+                var field = _selectTableField(selector, model);
                 sql.append(" OR ").append(field.getName()).append(" ");
                 return (Compare<M, T>) valueCollector;
             }
 
             @Override
-            public <T> Compare<M, T> and(Class<? extends Val<T>> field) {
+            public <T> Compare<M, T> and( Class<? extends Val<T>> field ) {
                 sql.append(" AND ").append(table.getField(field).getName());
                 return (Compare<M, T>) valueCollector;
             }
 
             @Override
-            public <T> Compare<M, T> or(Class<? extends Val<T>> field) {
+            public <T> Compare<M, T> or( Class<? extends Val<T>> field ) {
                 sql.append(" OR ");
                 sql.append(table.getField(field).getName());
                 return (Compare<M, T>) valueCollector;
@@ -473,7 +473,7 @@ public class SQLiteDataBase extends AbstractDataBase
 
             @Override
             public <N extends Number> Query<M> orderAscendingBy( Function<M, Val<N>> selector ) {
-                var field = getTableField(selector, model);
+                var field = _selectTableField(selector, model);
                 sql.append(" ORDER BY ");
                 sql.append(field.getName());
                 sql.append(" ASC");
@@ -481,8 +481,8 @@ public class SQLiteDataBase extends AbstractDataBase
             }
 
             @Override
-            public <N extends Number> Query<M> orderDescendingBy(Function<M, Val<N>> selector) {
-                var field = getTableField(selector, model);
+            public <N extends Number> Query<M> orderDescendingBy( Function<M, Val<N>> selector ) {
+                var field = _selectTableField(selector, model);
                 sql.append(" ORDER BY ");
                 sql.append(field.getName());
                 sql.append(" DESC");
@@ -490,7 +490,7 @@ public class SQLiteDataBase extends AbstractDataBase
             }
 
             @Override
-            public Query<M> orderAscendingBy(Class<? extends Val<?>> field) {
+            public Query<M> orderAscendingBy( Class<? extends Val<?>> field ) {
                 sql.append(" ORDER BY ");
                 sql.append(table.getField(field).getName());
                 sql.append(" ASC");
@@ -498,7 +498,7 @@ public class SQLiteDataBase extends AbstractDataBase
             }
 
             @Override
-            public Query<M> orderDescendingBy(Class<? extends Val<?>> field) {
+            public Query<M> orderDescendingBy( Class<? extends Val<?>> field ) {
                 sql.append(" ORDER BY ");
                 sql.append(table.getField(field).getName());
                 sql.append(" DESC");
@@ -524,12 +524,12 @@ public class SQLiteDataBase extends AbstractDataBase
             }
         };
 
-        return new Where<M>() {
-
+        return new Where<M>()
+        {
             @Override public List<M> asList() { return junc[0].asList(); }
 
             @Override
-            public <T> Compare<M, T> where(Class<? extends Val<T>> field) {
+            public <T> Compare<M, T> where( Class<? extends Val<T>> field ) {
                 // First sql:
                 sql.append(table.getField(field).getName()).append(" ");
                 // Then values:
@@ -539,29 +539,27 @@ public class SQLiteDataBase extends AbstractDataBase
             @Override
             public <T> Compare<M, T> where( Function<M, Val<T>> selector )
             {
-                var field = getTableField(selector, model);
+                var field = _selectTableField(selector, model);
                 // First sql:
                 sql.append(field.getName()).append(" ");
                 // Then values:
                 return (Compare<M, T>) valueCollector;
             }
-
         };
     }
 
-    private <T, M extends Model<M>> TableField getTableField(
-            Function<M, Val<T>> selector,
-            Class<M> model
+    private <T, M extends Model<M>> TableField _selectTableField(
+        Function<M, Val<T>> selector,
+        Class<M> model
     ) {
         var propSelector = new PropertySelectionProxy(_modelRegistry.getTable(model));
         selector.apply((M) Proxy.newProxyInstance(
-                model.getClassLoader(),
-                new Class<?>[]{model},
-                propSelector
-        ));
+                                model.getClassLoader(),
+                                new Class<?>[]{model},
+                                propSelector
+                            ));
 
-        var field = propSelector.getSelection().orElseThrow();
-        return field;
+        return propSelector.getSelection().orElseThrow();
     }
 
     public Map<String, List<String>> query(String sql) {
