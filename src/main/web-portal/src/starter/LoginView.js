@@ -1,44 +1,53 @@
+import React, { useState } from "react";
+import ReactDOM from 'react-dom';
 import logo from "../logo.svg";
 
-function LoginView(vm) {
-    // We do the binding when the page is loaded
-    //window.onload = () => {..} // This does not work in react
-    // But this:
-    setTimeout(() => {
-        console.log("LOADED!")
-        // Now let's load the view model into the view
-        // We attach a simple username password form with a terms of service checkbox
-        const username = document.getElementById("username-id");
-        //username.value = props.username.value;
-        vm.username().get( v => username.value = v );
-        username.onkeyup = (event) => vm.username().set(event.target.value);
+function LoginView({vm}) {
+    const [username, setUsername] = useState("");
+    const [password, setPassword] = useState("");
+    const [feedback, setFeedback] = useState("");
+    const [feedbackColor, setFeedbackColor] = useState("black");
 
-        const password = document.getElementById("password-id");
-        vm.password().get( v => password.value = v );
-        password.onkeyup = (event) => { vm.password().set(event.target.value); };
-
-        const feedback = document.getElementById("feedback-id");
+    console.log("LoginView: " + vm);
+    if ( vm ) {
+        vm.username().get( v => setUsername(v) );
+        vm.password().get( v => setPassword(v) );
         // We replace \n with br tags
-        vm.feedback().get( v => feedback.innerHTML = v.replace(/\\n/g, "<br>") );
-        vm.inputValid().get( v => feedback.style.color = v ? "green" : "red" );
-
-        const login = document.getElementById("login-id");
-        login.onclick = () => vm.login();
-    }, 1000);
+        vm.feedback().get( v => setFeedback(v.replace(/\\n/g, "<br>")) );
+        vm.inputValid().get( v => setFeedbackColor( v ? "green" : "red" ) );
+    }
     return (<div className="row">
-                <h1>Login Bro!</h1>
+                <h1>Login Survivor!</h1>
                 <div className="col-6">
-                    <label htmlFor="username-id">User</label><input id="username-id" type="text" placeholder="Username"></input>
+                    <label>User Name</label>
+                    <input // Now we use the react state
+                        type="text"
+                        placeholder="Username"
+                        value={username}
+                        onkeyup={event => vm.username().set(event.target.value)}
+                    >
+                    </input>
                 </div>
                 <div className="col-6">
-                    <label htmlFor="password-id">Password</label><input id="password-id" type="password" placeholder="Password"></input>
+                    <label>Password</label>
+                    <input // Now we use the react state
+                        type="password"
+                        placeholder="Password"
+                        value={password}
+                        onkeyup={event => vm.password().set(event.target.value)}
+                    >
+                    </input>
                 </div>
                 <div className="col-6">
-                    <button id="login-id">Register</button>
+                    <button onClick={() => vm.login()}>Login</button>
                 </div>
                 <br></br>
                 <div className="col-12">
-                    <label id="feedback-id" style={{width:90+'%', margin: 1+'em', padding:1+'em', border: 1+'px solid black'}}>?</label>
+                    <label
+                        style={{color: feedbackColor, width:90+'%', margin: 1+'em', padding:1+'em', border: 1+'px solid black'}}
+                        dangerouslySetInnerHTML={{__html: feedback}}
+                    >
+                    </label>
                 </div>
                 <div>
                     <img src={logo} className="App-logo" alt="logo" />
