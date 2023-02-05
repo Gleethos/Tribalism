@@ -1,6 +1,6 @@
 import React from 'react';
 import logo from '../logo.svg';
-import useLoginView from '../hooks/useLoginView.js';
+import useLoginView from '../hooks/useLoginView';
 
 function LoginView({ vm }) {
   const {
