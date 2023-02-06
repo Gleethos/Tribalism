@@ -18,19 +18,20 @@ function App() {
       const props = state.props; // The properties of the view model
       const methods = state.methods; // The methods of the view model
 
-      contentVM.content().get((vm) => {
-        console.log('Received content page: ' + vm.class);
+      if ( content === null )
+        contentVM.content().get((vm) => {
+          console.log('Received content page: ' + vm.class);
 
-        // Now let's check if the class is a login page
-        if (vm.class === 'app.LoginViewModel') {
-          // We set the content from the LoginView
-          setContent(<LoginView vm={vm} />);
-        } else if (vm.class === 'app.RegisterViewModel') {
-          // TODO: Implement the register page
-          // We make the main page empty:
-          setContent(<div>THIS IS WIP</div>);
-        }
-      });
+          // Now let's check if the class is a login page
+          if (vm.class === 'app.LoginViewModel') {
+            // We set the content from the LoginView
+            setContent(<LoginView vm={vm} />);
+          } else if (vm.class === 'app.RegisterViewModel') {
+            // TODO: Implement the register page
+            // We make the main page empty:
+            setContent(<div>THIS IS WIP</div>);
+          }
+        });
 
       // If the user does not want to login, we can switch to the register page using the switch button
       const switchButton = document.getElementById('switch-id');

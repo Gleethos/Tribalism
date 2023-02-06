@@ -215,6 +215,12 @@ export function Session(
     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 */
 
+
+const propertyObservers = {};
+const viewModelObservers = {};
+const methodObservers = {};
+const viewModelCache = {};
+
 /**
  *  This is the entrypoint for the MVVM binding.
  *  Here you can connect to a websocket and get a view model
@@ -227,12 +233,17 @@ export function Session(
  */
 export function connect(serverAddress, iniViewModelId, frontend) {
     let ws = null;
-    const propertyObservers = {};
-    const viewModelObservers = {};
-    const methodObservers = {};
     const session = new Session((vmId, action) => {
                             if ( vmId ) {
-                                viewModelObservers[vmId] = action;
+                                // We check if the view model is already cached:
+                                if ( viewModelCache[vmId] ) {
+                                    action(viewModelCache[vmId]);
+                                    return;
+                                } else console.log("No cached view model found for id: " + vmId);
+                                viewModelObservers[vmId] = (vm)=>{
+                                    viewModelCache[vmId] = vm;
+                                    action(vm);
+                                };
                                 sendVMRequest(vmId);
                             }
                             else // We log an error if the view model id is null
