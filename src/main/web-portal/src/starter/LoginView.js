@@ -1,27 +1,11 @@
 import React from 'react';
-import logo from '../logo.svg';
-import useLoginView from '../hooks/useLoginView';
+import useProperty from '../hooks/useProperty.js';
 
 function LoginView({ vm }) {
-  const {
-    username,
-    password,
-    feedback,
-    feedbackColor,
-    setUsername,
-    setPassword,
-    setFeedback,
-    setFeedbackColor,
-  } = useLoginView(vm);
-
-  if (vm) {
-    vm.username().get((v) => setUsername(v));
-    vm.password().get((v) => setPassword(v));
-    // We replace \n with br tags
-    vm.feedback().get((v) => setFeedback(v.replace(/\\n/g, '<br>')));
-    vm.inputValid().get((v) => setFeedbackColor(v ? 'green' : 'red'));
-  }
-
+  const [username, setUsername] = useProperty(vm, (vm) => vm.username(), '');
+  const [password, setPassword] = useProperty(vm, (vm) => vm.password(), '');
+  const [feedback] = useProperty(vm, (vm) => vm.feedback(), '');
+  const [feedbackColor] = useProperty(vm, (vm) => vm.inputValid(), 'black');
   return (
     <div className='row'>
       <h1>Login Survivor!</h1>
@@ -31,7 +15,7 @@ function LoginView({ vm }) {
           type='text'
           placeholder='Username'
           value={username}
-          onChange={(event) => vm.username().set(event.target.value)}
+          onChange={(event) => setUsername(event.target.value)}
         ></input>
       </div>
       <div className='col-6'>
@@ -40,7 +24,7 @@ function LoginView({ vm }) {
           type='password'
           placeholder='Password'
           value={password}
-          onChange={(event) => vm.password().set(event.target.value)}
+          onChange={(event) => setPassword(event.target.value)}
         ></input>
       </div>
       <div className='col-6'>
@@ -58,9 +42,6 @@ function LoginView({ vm }) {
           }}
           dangerouslySetInnerHTML={{ __html: feedback }}
         ></label>
-      </div>
-      <div>
-        <img src={logo} className='App-logo' alt='logo' />
       </div>
     </div>
   );
