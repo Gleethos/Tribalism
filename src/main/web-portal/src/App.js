@@ -40,14 +40,8 @@ function App() {
   );
   return (
     <div className='App relative'>
-      <header
-        className='App-header absolute top-0 right-0 w-full
-        fit-content'
-      >
+      <header>
         <title>Tribee Login!</title>
-        <button id='switch-id' className=''>
-          Switch
-        </button>
       </header>
 
       <div id='main-content' className='App-body'>

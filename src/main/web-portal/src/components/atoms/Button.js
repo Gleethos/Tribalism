@@ -10,7 +10,7 @@ export default function Button({
   const classes =
     kind === 'primary'
       ? 'bg-gray-800 shadow-sm hover:shadow-lg hover:bg-gray-800/80 hover:scale-105 transition duration-300 text-white'
-      : 'bg-gray-500';
+      : 'bg-gray-500 shadow-sm hover:shadow-lg hover:bg-gray-500/80 hover:scale-105 transition duration-300 text-white';
 
   return (
     <button

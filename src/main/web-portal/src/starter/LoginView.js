@@ -2,7 +2,7 @@ import React from 'react';
 import useProperty from '../hooks/useProperty.js';
 import Input from '../components/atoms/Input.js';
 import Button from '../components/atoms/Button.js';
-import { GiShamblingZombie } from 'react-icons/gi';
+import { GiShamblingZombie, GiRaiseZombie } from 'react-icons/gi';
 
 function LoginView({ vm }) {
   const [username, setUsername] = useProperty(vm, (vm) => vm.username(), '');
@@ -11,13 +11,13 @@ function LoginView({ vm }) {
   const [feedbackColor] = useProperty(vm, (vm) => vm.inputValid(), 'black');
   return (
     <div className=' bg-no-repeat bg-cover bg-black bg-center bg-survival-1 h-[100vh] flex items-center justify-center flex-col gap-6'>
-      <h1 className='text-2xl p-2 font-bold rounded-lg hidden'>
-        Login Survivor!
-      </h1>
       <form
         className='flex justify-center items-center flex-col
-      bg-gray-300/30 rounded-lg pt-8 pb-4 gap-6 px-10 w-full max-w-xl'
+      bg-gray-300/30 rounded-lg pt-6 pb-4 gap-6 px-10 w-full max-w-xl'
       >
+        <h1 className='text-2xl text-gray-800 p-2 font-bold  border-b-2 border-slate-300 pb-4 mb-4'>
+          Login Survivor!
+        </h1>
         <div className='login__username'>
           <Input
             inputStyles={'opacity-50 hover:opacity-100'}
@@ -40,14 +40,22 @@ function LoginView({ vm }) {
             onChange={(event) => setPassword(event.target.value)}
           />
         </div>
-        <div>
+        <div className='flex flex-col gap-4'>
           <Button
-            buttonStyles='flex gap-3'
+            buttonStyles='flex gap-3 items-center justify-center'
             kind='primary'
             onClick={() => vm.login()}
           >
             <span className='block'>Login</span>
             <GiShamblingZombie className='text-2xl' />
+          </Button>
+          <span>or</span>
+          <Button
+            buttonStyles='flex gap-3 scale-[0.9] !bg-gray-500/80 hover:!scale-[1]'
+            kind='secondary'
+          >
+            <span className='block'>Register</span>
+            <GiRaiseZombie className='text-2xl' />
           </Button>
         </div>
 
