@@ -5,6 +5,7 @@ import sprouts.Var;
 import swingtree.api.mvvm.Viewable;
 
 import javax.swing.*;
+import java.awt.*;
 
 public class LoginViewModel implements Viewable
 {
@@ -16,9 +17,12 @@ public class LoginViewModel implements Viewable
     private final Var<String> feedback;
     private final Var<Boolean> usernameIsValid;
     private final Var<Boolean> passwordIsValid;
+    private final Var<Color> usernameBackgroundColor;
+    private final Var<Color> passwordBackgroundColor;
     private final Var<Boolean> loginButtonEnabled;
-    private final Var<Boolean> allInputsDisabled;
+    private final Var<Boolean> textFieldsEnabled;
     private final Var<Boolean> inputValid;
+    private final Var<Color> feedbackColor;
 
 
     public LoginViewModel(AppContext context, ContentViewModel contentViewModel) {
@@ -29,9 +33,28 @@ public class LoginViewModel implements Viewable
         this.feedback = Var.of("").withId("feedback");
         this.usernameIsValid = Var.of(false).withId("usernameIsValid");
         this.passwordIsValid = Var.of(false).withId("passwordIsValid");
+        this.usernameBackgroundColor = Var.of(Color.WHITE).withId("usernameBackgroundColor");
+        this.passwordBackgroundColor = Var.of(Color.WHITE).withId("passwordBackgroundColor");
         this.loginButtonEnabled = Var.of(false).withId("loginButtonEnabled");
-        this.allInputsDisabled = Var.of(false).withId("allInputsDisabled");
+        this.textFieldsEnabled = Var.of(true).withId("textFieldsEnabled");
         this.inputValid = Var.of(false).withId("inputValid");
+        this.feedbackColor = Var.of(Color.RED).withId("feedbackColor");
+    }
+
+    private void adjustFeedbackStyles() {
+        if ( this.usernameIsValid.is(false) && this.username.isNot("") )
+            this.usernameBackgroundColor.set(new Color(255, 102, 102));
+        else
+            this.usernameBackgroundColor.set(Color.WHITE);
+        if ( this.passwordIsValid.is(false) && this.password.isNot("") )
+            this.passwordBackgroundColor.set(new Color(255, 102, 102));
+        else
+            this.passwordBackgroundColor.set(Color.WHITE);
+
+        if ( this.inputValid.isNot(true) )
+            this.feedbackColor.set(Color.RED);
+        else
+            this.feedbackColor.set(new Color(0,100,0));
     }
 
     public Var<String> username() { return username; }
@@ -40,15 +63,15 @@ public class LoginViewModel implements Viewable
 
     public Val<String> feedback() { return feedback; }
 
-    public Val<Boolean> usernameIsValid() { return usernameIsValid; }
+    public Val<Color> usernameBackgroundColor() { return usernameBackgroundColor; }
 
-    public Val<Boolean> passwordIsValid() { return passwordIsValid; }
+    public Val<Color> passwordBackgroundColor() { return passwordBackgroundColor; }
 
     public Val<Boolean> loginButtonEnabled() { return loginButtonEnabled; }
 
-    public Val<Boolean> allInputsDisabled() { return allInputsDisabled; }
+    public Val<Boolean> textFieldsEnabled() { return textFieldsEnabled; }
 
-    public Val<Boolean> inputValid() { return inputValid; }
+    public Val<Color> feedbackColor() { return feedbackColor; }
 
     private void validate() {
         /*
@@ -63,21 +86,29 @@ public class LoginViewModel implements Viewable
             feedback.set("Username and password must be at least 3 and 4 characters long, respectively");
         else
             feedback.set("");
+
+        adjustFeedbackStyles();
     }
 
     public void login() {
-        allInputsDisabled.set(true);
         if ( context.userExists(username.get()) ) {
             context.loginUser(username.get()).ifPresent(user -> {
                 if ( user.password().is(this.password) ) {
-                    feedback.set("Login successful!");
                     contentViewModel.login(new UserContext(user));
-                } else
+                    feedback.set("Login successful!");
+                    feedbackColor.set(new Color(0,100,0));
+                    textFieldsEnabled.set(false); // disable all text inputs after successful login
+                    loginButtonEnabled.set(false); // disable login button after successful login
+                } else {
                     feedback.set("Wrong password!");
+                    feedbackColor.set(Color.RED);
+                }
             });
         }
-        else
+        else {
             feedback.set("User does not exist!");
+            feedbackColor.set(Color.RED);
+        }
     }
 
     public void switchToRegister() {

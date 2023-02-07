@@ -3,7 +3,6 @@ package app;
 import com.formdev.flatlaf.FlatLightLaf;
 
 import javax.swing.*;
-
 import java.awt.*;
 
 import static swingtree.UI.*;
@@ -24,23 +23,19 @@ public class LoginView extends JPanel
                 panel(FILL_X.and(WRAP(2)), "[grow][shrink]")
                 .add(label("Username"))
                 .add(GROW_X,
-                    textField(vm.username()).isEnabledIfNot(vm.allInputsDisabled())
-                    .withBackground(vm.usernameIsValid().viewAs(Color.class,
-                        isValid -> isValid ? Color.WHITE : new Color(255, 102, 102))
-                    )
+                    textField(vm.username()).isEnabledIf(vm.textFieldsEnabled())
+                    .withBackground(vm.usernameBackgroundColor())
                 )
                 .add(label("Password"))
                 .add(GROW_X,
-                    passwordField(vm.password()).isEnabledIfNot(vm.allInputsDisabled())
-                    .withBackground(vm.passwordIsValid().viewAs(Color.class,
-                        isValid -> isValid ? Color.WHITE : new Color(255, 102, 102))
-                    )
+                    passwordField(vm.password()).isEnabledIf(vm.textFieldsEnabled())
+                    .withBackground(vm.passwordBackgroundColor())
                 )
             )
             .add(GROW_X,
                 panel(FILL_X.and(WRAP(1)))
                 .add(GROW_X,
-                    button("Login").isEnabledIfNot(vm.allInputsDisabled())
+                    button("Login").isEnabledIf(vm.loginButtonEnabled())
                     .onClick( it -> vm.login() )
                 )
             )
@@ -48,9 +43,7 @@ public class LoginView extends JPanel
                 panel(FILL_X.and(WRAP(1)))
                 .add(GROW_X,
                     label(vm.feedback().view( f -> String.format("<html><div WIDTH=%d>%s</div></html>", 475, f) ))
-                    .withForeground(vm.inputValid().viewAs(Color.class,
-                         valid -> valid ? new Color(0,100,0) : new Color(255, 102, 102)
-                    ))
+                    .withForeground(vm.feedbackColor())
                 )
             )
             .add(GROW_X.and(SPAN),

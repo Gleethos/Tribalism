@@ -5,10 +5,12 @@ import Button from '../components/atoms/Button.js';
 import { GiShamblingZombie, GiRaiseZombie } from 'react-icons/gi';
 
 function LoginView({ vm }) {
-  const [username, setUsername] = useProperty(vm, (vm) => vm.username(), '');
-  const [password, setPassword] = useProperty(vm, (vm) => vm.password(), '');
-  const [feedback] = useProperty(vm, (vm) => vm.feedback(), '');
-  const [feedbackColor] = useProperty(vm, (vm) => vm.inputValid(), 'black');
+  const [username, setUsername]   = useProperty(vm, (vm) => vm.username(),                ''     );
+  const [password, setPassword]   = useProperty(vm, (vm) => vm.password(),                ''     );
+  const [feedback]                = useProperty(vm, (vm) => vm.feedback(),                ''     );
+  const [feedbackColor]           = useProperty(vm, (vm) => vm.feedbackColor(),           'black');
+  const [usernameBackgroundColor] = useProperty(vm, (vm) => vm.usernameBackgroundColor(), 'white');
+  const [passwordBackgroundColor] = useProperty(vm, (vm) => vm.passwordBackgroundColor(), 'white');
   return (
     <div className=' bg-no-repeat bg-cover bg-black bg-center bg-survival-1 h-[100vh] flex items-center justify-center flex-col gap-6'>
       <form
@@ -60,7 +62,7 @@ function LoginView({ vm }) {
         </div>
 
         <div>
-          <span className='block pt-3'>{feedback}</span>
+          <span className='block pt-3' style={{color:feedbackColor}}>{feedback}</span>
         </div>
       </form>
     </div>
