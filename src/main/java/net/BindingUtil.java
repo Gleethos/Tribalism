@@ -6,6 +6,7 @@ import org.json.JSONObject;
 import sprouts.Action;
 import sprouts.Val;
 import sprouts.Var;
+import swingtree.EventProcessor;
 import swingtree.api.mvvm.Viewable;
 
 import java.awt.*;
@@ -13,6 +14,7 @@ import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.function.Supplier;
 
 public class BindingUtil {
 
@@ -211,14 +213,42 @@ public class BindingUtil {
         }
 
         Method method;
-        Object result;
+        Object result = null;
+        Supplier<Object> invoker;
         if ( methodArgs.length == 0 ) {
             method = vm.getClass().getMethod(methodName);
-            result = method.invoke(vm);
+            invoker = () -> {
+                try {
+                    return method.invoke(vm);
+                } catch (IllegalAccessException | InvocationTargetException e) {
+                    e.printStackTrace();
+                }
+                return null;
+            };
         } else {
             method = vm.getClass().getMethod(methodName, methodArgs[0].getClass());
-            result = method.invoke(vm, methodArgs[0]);
+            invoker = () -> {
+                try {
+                    return method.invoke(vm, methodArgs[0]);
+                } catch (IllegalAccessException | InvocationTargetException e) {
+                    e.printStackTrace();
+                }
+                return null;
+            };
         }
+
+        // Now we need to check if the method is returning void or not!
+        // This is important with respect to the threading
+        // -> We want this to be executed on the application thread, but how?
+        boolean returnsNothing = method.getReturnType().equals(Void.TYPE);
+        if ( returnsNothing )
+            EventProcessor.DECOUPLED.processAppEvent(invoker::get); // Just send it to the app thread
+        else {
+            Object[] resultHolder = new Object[1];
+            EventProcessor.DECOUPLED.processAppEventNow(() -> resultHolder[0] = invoker.get()); // We need to wait for the result!
+            result = resultHolder[0];
+        }
+
         if ( result instanceof Val<?> property ) {
             result = BindingUtil.jsonFromProperty(property, webUserContext);
         }

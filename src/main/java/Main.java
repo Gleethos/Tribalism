@@ -13,8 +13,7 @@ public class Main {
         RootViewModel app = new RootViewModel(context);
         FlatLightLaf.setup();
         UI.show(
-            UI.use(EventProcessor.DECOUPLED,
-            () -> new RootView(app))
+            UI.use(EventProcessor.DECOUPLED, () -> new RootView(app))
         );
     }
 
