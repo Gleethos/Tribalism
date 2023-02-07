@@ -16,10 +16,11 @@ public class RegisterViewModel implements Viewable
     private final Var<String>  password         ;
     private final Var<Boolean> usernameIsValid;
     private final Var<Boolean> passwordIsValid;
+    private final Var<Color>   usernameBackgroundColor;
+    private final Var<Color>   passwordBackgroundColor;
     private final Var<String>  feedback         ;
     private final Var<Color>   feedbackColor    ;
     private final Var<Boolean> allInputsDisabled;
-    private final Var<Boolean> inputValid       ;
 
     public RegisterViewModel(AppContext context, ContentViewModel contentViewModel) {
         this.context = context;
@@ -28,10 +29,11 @@ public class RegisterViewModel implements Viewable
         this.password          = Var.of("").withId("password").onAct( it -> validateAll() );
         this.usernameIsValid   = Var.of(false).withId("usernameIsValid");
         this.passwordIsValid   = Var.of(false).withId("passwordIsValid");
+        this.usernameBackgroundColor = Var.of(Color.WHITE).withId("usernameBackgroundColor");
+        this.passwordBackgroundColor = Var.of(Color.WHITE).withId("passwordBackgroundColor");
         this.feedback          = Var.of("").withId("feedback");
         this.feedbackColor     = Var.of(Color.BLACK).withId("feedbackColor");
         this.allInputsDisabled = Var.of(false).withId("allInputsDisabled");
-        this.inputValid        = Var.of(false).withId("inputValid");
         validateAll();
     }
 
@@ -40,9 +42,9 @@ public class RegisterViewModel implements Viewable
 
     public Var<String> password() { return password; }
 
-    public Val<Boolean> usernameIsValid() { return usernameIsValid; }
+    public Val<Color> usernameBackgroundColor() { return usernameBackgroundColor; }
 
-    public Val<Boolean> passwordIsValid() { return passwordIsValid; }
+    public Val<Color> passwordBackgroundColor() { return passwordBackgroundColor; }
 
     public Val<String> feedback() { return feedback; }
 
@@ -50,18 +52,14 @@ public class RegisterViewModel implements Viewable
 
     public Val<Boolean> allInputsDisabled() { return allInputsDisabled; }
 
-    public Val<Boolean> inputValid() { return inputValid; }
-
 
     private String validatePassword() {
         if ( password.get().length() < 3 ) {
             this.passwordIsValid.set(false);
-            this.inputValid.set(false);
             return "Password must be at least 3 characters long";
         }
         if ( !password.get().matches(".*[A-Z].*") ) {
             this.passwordIsValid.set(false);
-            this.inputValid.set(false);
             return "Password must contain at least one uppercase letter";
         }
         this.passwordIsValid.set(true);
@@ -71,7 +69,6 @@ public class RegisterViewModel implements Viewable
     private String validateUsername() {
         if ( username.get().length() < 3 ) {
             this.usernameIsValid.set(false);
-            this.inputValid.set(false);
             return "Username must be at least 3 characters long";
         }
         this.usernameIsValid.set(true);
@@ -92,19 +89,27 @@ public class RegisterViewModel implements Viewable
 
     public boolean validateAll() {
         String validationMessage = generateValidationMessage();
+        boolean isValid;
         if ( validationMessage.isEmpty() ) {
             feedback.set("All inputs are valid, feel fre to press the submit button!");
             feedbackColor.set(Color.GREEN);
-            rebroadcast();
-            this.inputValid.set(true);
-            return true;
+            isValid = true;
         } else {
             feedback.set(validationMessage);
             feedbackColor.set(Color.RED);
-            this.inputValid.set(false);
-            rebroadcast();
-            return false;
+            isValid = false;
         }
+        if ( this.usernameIsValid.is(true) || this.username.is("") )
+            usernameBackgroundColor.set(Color.WHITE);
+        else
+            usernameBackgroundColor.set(new Color(255, 102, 102));
+        if ( this.passwordIsValid.is(true) || this.password.is("") )
+            passwordBackgroundColor.set(Color.WHITE);
+        else
+            passwordBackgroundColor.set(new Color(255, 102, 102));
+
+        rebroadcast();
+        return isValid;
     }
 
     private void rebroadcast() {
@@ -113,6 +118,8 @@ public class RegisterViewModel implements Viewable
         password.fireSet();
         feedbackColor.fireSet();
         feedback.fireSet();
+        usernameBackgroundColor.fireSet();
+        passwordBackgroundColor.fireSet();
         /*
             This method is COMPLETELY redundant when we have only one view.
             But if we had multiple views, we would need to rebroadcast all properties
