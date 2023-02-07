@@ -18,7 +18,7 @@ function App() {
       const props = state.props; // The properties of the view model
       const methods = state.methods; // The methods of the view model
 
-      if ( content === null )
+      if (content === null)
         contentVM.content().get((vm) => {
           console.log('Received content page: ' + vm.class);
 
@@ -39,10 +39,9 @@ function App() {
     },
   );
   return (
-    <div className='App'>
-      <header className='App-header'>
+    <div className='App relative'>
+      <header>
         <title>Tribee Login!</title>
-        <button id='switch-id'>Switch</button>
       </header>
 
       <div id='main-content' className='App-body'>
