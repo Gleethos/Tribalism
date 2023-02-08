@@ -19,4 +19,6 @@ public interface Query<M extends Model<M>>
     default List<M> skip(int skip) { return asList().subList(skip, asList().size()); }
 
     default List<M> skip(int skip, int limit) { return asList().subList(skip, skip + limit); }
+
+    default int count() { return asList().size(); }
 }
