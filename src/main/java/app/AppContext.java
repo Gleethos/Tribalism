@@ -9,6 +9,11 @@ import sprouts.Vars;
 
 import java.util.Optional;
 
+/**
+ *  Instances of this class are shared between all users as well as most view models in general.
+ *  It is used to access persistent data and to perform operations on it.
+ *  So here you can find access to the database, and all current user contexts, etc.
+ */
 public class AppContext
 {
     private final DataBase db;
@@ -29,19 +34,13 @@ public class AppContext
 
     public DataBase db() { return db; }
 
-    public Vals<UserContext> users() { return users; }
-
-    public void addUser(UserContext user) {
-        users.add(user);
-    }
-
     public boolean userExists(String username) {
         return db.select(User.class).where(User::username).is(username).asList().size() > 0;
     }
 
     public Optional<User> loginUser(String username) {
         User user = db.select(User.class).where(User::username).is(username).asList().get(0);
-        if (user != null) {
+        if ( user != null ) {
             users.add(new UserContext(user));
             return Optional.of(user);
         }

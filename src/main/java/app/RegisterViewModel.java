@@ -129,18 +129,23 @@ public class RegisterViewModel implements Viewable
 
     public void register() {
         if ( validateAll() ) {
-            allInputsDisabled.set(true);
-            feedbackColor.set(Color.BLACK);
-            feedback.set("Registration successful!");
-            feedbackColor.set(Color.GREEN);
-            try {
-                var user = context.db().create(User.class);
-                user.username().set(username.get());
-                user.password().set(password.get());
-                context.addUser(new UserContext(user));
-            } catch (Exception e) {
-                e.printStackTrace();
-                feedback.set("Registration failed! Cause: " + e.getMessage());
+            if ( userDoesNotYetExist() ) {
+                allInputsDisabled.set(true);
+                feedbackColor.set(Color.BLACK);
+                feedback.set("Registration successful!");
+                feedbackColor.set(Color.GREEN);
+                try {
+                    var user = context.db().create(User.class);
+                    user.username().set(username.get());
+                    user.password().set(password.get());
+                } catch (Exception e) {
+                    e.printStackTrace();
+                    feedback.set("Registration failed! Cause: " + e.getMessage());
+                    allInputsDisabled.set(false);
+                    feedbackColor.set(Color.RED);
+                }
+            } else {
+                feedback.set("Registration failed!\nUser '" + username.get() + "' already exists!");
                 allInputsDisabled.set(false);
                 feedbackColor.set(Color.RED);
             }
@@ -149,6 +154,10 @@ public class RegisterViewModel implements Viewable
             feedback.set("Registration failed!");
             feedbackColor.set(Color.RED);
         }
+    }
+
+    private boolean userDoesNotYetExist() {
+        return context.db().select(User.class).where(User::username).is(username.get()).asList().size() == 0;
     }
 
     public void switchToLogin() {
