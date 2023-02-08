@@ -23,7 +23,7 @@ public class AppContext
 
     public AppContext(App app) {
         this.app = app;
-        this.db = DataBase.at("saves/sqlite.db");
+        this.db = DataBase.at(app.getDatabaseLocation());
         this.db.createTablesFor(
             Character.class,
             User.class,

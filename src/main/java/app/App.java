@@ -12,20 +12,33 @@ import swingtree.UI;
 public class App implements Runnable
 {
     @Parameter(
+        names={"--at"},
+        description = "The location of the database file.",
+        arity = 1
+    )
+    private String databaseLocation = "saves/sqlite.db";
+
+    @Parameter(
         names={"--start-server", "-s"},
-        description="Start the server when application starts."
+        description="Start the server when application starts.",
+        arity = 1
     )
     private boolean startServer = false;
 
     @Parameter(
-        names={"--server-port", "-p"},
-        description="The port the server should listen on. Default is 8080."
+        names={"--server-port", "-p", "--port"},
+        description="The port the server should listen on. Default is 8080.",
+        arity = 1
     )
     private int serverPort = 8080;
-    
+
+
     public boolean isStartServer() { return startServer; }
 
     public int getServerPort() { return serverPort; }
+
+    public String getDatabaseLocation() { return databaseLocation; }
+
 
     @Override
     public void run() {
