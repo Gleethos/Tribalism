@@ -14,13 +14,13 @@ import javax.swing.*;
  *  for each one.
  *  The view is notified of content switches through the observer pattern.
  */
-public class ContentViewModel {
-
+public class ContentViewModel
+{
     private final AppContext context;
     private final Var<Viewable> content = Var.ofNullable(Viewable.class, null).withId("content");
 
 
-    public ContentViewModel(AppContext context) {
+    public ContentViewModel( AppContext context ) {
         this.context = context != null ? context : new AppContext();
         showLogin();
     }
@@ -40,6 +40,9 @@ public class ContentViewModel {
         content.set(new LoginViewModel(context, this));
     }
 
+    /**
+     * @return A view for the swing side of the application.
+     */
     public JComponent createView() { return new ContentView(this); }
 
 }
