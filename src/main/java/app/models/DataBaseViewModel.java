@@ -35,10 +35,10 @@ public class DataBaseViewModel {
         List<String> tables = db.listOfAllTableNames();
         listOfTables.clear();
         numberOfTables.set(tables.size());
-        numberUsers.set(db.select(User.class).asList().size());
-        numberCharacters.set(db.select(Character.class).asList().size());
-        numberWorlds.set(db.select(World.class).asList().size());
-        numberGameMasters.set(db.select(GameMaster.class).asList().size());
+        numberUsers.set(db.select(User.class).count());
+        numberCharacters.set(db.select(Character.class).count());
+        numberWorlds.set(db.select(World.class).count());
+        numberGameMasters.set(db.select(GameMaster.class).count());
         listOfTables.addAll(tables);
     }
 

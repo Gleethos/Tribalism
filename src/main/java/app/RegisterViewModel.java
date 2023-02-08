@@ -157,7 +157,11 @@ public class RegisterViewModel implements Viewable
     }
 
     private boolean userDoesNotYetExist() {
-        return context.db().select(User.class).where(User::username).is(username.get()).asList().size() == 0;
+        return context.db()
+                .select(User.class)
+                .where(User::username)
+                .is(this.username)
+                .notExists();
     }
 
     public void switchToLogin() {

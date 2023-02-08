@@ -6,13 +6,13 @@ import java.util.List;
 import java.util.Objects;
 
 /**
- *  This is the most important interface of the DAL/ORM API which defines
+ *  This is the most important interface of the Topsoil ORM API which defines
  *  the database connection in terms of a thing that can create, delete and query
  *  extensions of the {@link Model} interface.
  *  The {@link DataBase} will implement your model interfaces for you through proxies
  *  which will eagerly translate the interactions with your model objects
  *  into SQL queries and updates. All the complicated SQL code is generated
- *  at compile time by the internal {@link SQLiteDataBase} class,
+ *  at run time by the internal {@link SQLiteDataBase} class,
  *  you don't have to think about it.
  *  This type of ORM is especially useful for Swing applications or other
  *  desktop applications where many small database operations are not a problem. <br>
@@ -25,8 +25,8 @@ import java.util.Objects;
  *  data will be stored. <br>
  *  Before creating model instances you have to register them with the {@link DataBase}
  *  so that it can create the tables for them.
- *  If your models have relations to other models you have to register them all
- *  at once by passing them all to the {@link DataBase#createTablesFor(Class[])}
+ *  If your models have relations to other models you have to register the involved model types all
+ *  at once by passing them to the {@link DataBase#createTablesFor(Class[])}
  *  method. <br>
  *  You can then create a model by calling the {@link DataBase#create(Class)} method.<br>
  *  Here is an example of how to do this:
@@ -48,25 +48,50 @@ import java.util.Objects;
  *    // ... some code to register and create many models ...
  *    // Query the database:
  *    List<MyModel> models = db.select(MyModel.class)
- *                                .where(MyModel.SomeProperty).is("Hello World!")
+ *                                .where(MyModel::someProperty).is("Hello World!")
  *                                .asList();
  * }</pre>
  */
 public interface DataBase
 {
-
-    static DataBase at(String path) {
+    /**
+     * Creates a new {@link DataBase} instance representing a database at
+     * the specified path.
+     * If a database already exists at the specified path it will be opened,
+     * otherwise a new database file will be created.
+     *
+     * @param path The path to the database file.
+     * @return A new {@link DataBase} instance.
+     */
+    static DataBase at( String path ) {
         Objects.requireNonNull(path);
         return new SQLiteDataBase(path);
     }
 
+    /**
+     *  Creates tables for the specified model types.
+     *  If a table for a model type already exists it will not be overwritten.
+     *
+     * @param models The model types to create tables for.
+     */
     void createTablesFor( Class<? extends Model<?>>... models );
 
+    /**
+     *  Drops all tables corresponding to the provided model types.
+     *
+     * @param models The model types to drop tables for.
+     */
     void dropTablesFor( Class<? extends Model<?>>... models );
 
+    /**
+     * @return A list of the names of all tables in the database.
+     */
     List<String> listOfAllTableNames();
 
-    void execute(String sql);
+    /**
+     * @param sql The SQL code to execute.
+     */
+    void execute( String sql );
 
     void dropAllTables();
 
@@ -96,8 +121,8 @@ public interface DataBase
      *  Here is an example:
      *  <pre>{@code
      *    List<User> users = db.select(User.class)
-     *                          .where(User.Name.class).is("John")
-     *                          .and(User.Age.class).greaterThan(18)
+     *                          .where(User::name).is("John")
+     *                          .and(User::age).greaterThan(18)
      *                          .asList();
      * }</pre>
      * @param model The model type class used to find the table in the database.
