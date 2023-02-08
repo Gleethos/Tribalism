@@ -1,20 +1,16 @@
-import app.AppContext;
-import app.RootView;
-import app.RootViewModel;
-import com.formdev.flatlaf.FlatLightLaf;
-import swingtree.EventProcessor;
-import swingtree.UI;
+import app.App;
+import com.beust.jcommander.JCommander;
 
-public class Main {
-
+public class Main
+{
     public static void main( String... args )
     {
-        AppContext context = new AppContext();
-        RootViewModel app = new RootViewModel(context);
-        FlatLightLaf.setup();
-        UI.show(
-            UI.use(EventProcessor.DECOUPLED, () -> new RootView(app))
-        );
-    }
+        App app = new App();
+        JCommander.newBuilder()
+                .addObject(app)
+                .build()
+                .parse(args);
 
+        app.run();
+    }
 }

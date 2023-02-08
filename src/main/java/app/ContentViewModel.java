@@ -21,7 +21,7 @@ public class ContentViewModel
 
 
     public ContentViewModel( AppContext context ) {
-        this.context = context != null ? context : new AppContext();
+        this.context = context;
         showLogin();
     }
 

@@ -49,12 +49,19 @@ dependencies {
 
     implementation group: 'org.json', name: 'json', version: '20220924'
 
+    // Command line parsing :
+    implementation "com.beust:jcommander:1.82"
+
     // Logging :
     implementation group: 'org.slf4j', name: 'slf4j-api', version: '1.7.36'
 
     // if you don't already have slf4j-api and an implementation of it in the classpath, add this! (needed for reports)
     testImplementation 'org.slf4j:slf4j-api:1.7.30'
     testCompileOnly 'org.slf4j:slf4j-simple:1.7.30'
+
+    // Integration test with Geb and Spock :
+    testImplementation group: 'org.gebish', name: 'geb-spock', version: '5.1'
+    testImplementation group: 'org.seleniumhq.selenium', name: 'selenium-firefox-driver', version: '4.0.0'
 
 }
 
