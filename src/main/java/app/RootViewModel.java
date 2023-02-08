@@ -4,8 +4,8 @@ import app.models.DataBaseViewModel;
 
 import java.util.Objects;
 
-public class RootViewModel {
-
+public class RootViewModel
+{
     private final AppContext context;
     private final ServerViewModel serverViewModel;
     private final ContentViewModel mainViewModel;

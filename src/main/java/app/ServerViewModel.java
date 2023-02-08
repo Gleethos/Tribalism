@@ -26,14 +26,14 @@ public class ServerViewModel
     private Server server;
 
     public ServerViewModel(AppContext context) {
-        this.port = Var.of(8080);
+        this.port = Var.of(context.app().getServerPort());
         this.portIsValid = Var.of(true);
-        this.portString = Var.of("8080").onAct( it -> {
+        this.portString = Var.of(port.itemAsString()).onAct( it -> {
             try {
                 port.set(Integer.parseInt(it.get()));
                 portIsValid.set(true);
             } catch (NumberFormatException e) {
-                port.set(8080);
+                port.set(context.app().getServerPort());
                 portIsValid.set(false);
             }
         });
@@ -42,6 +42,8 @@ public class ServerViewModel
         this.statusText = Var.of("");
         this.context = context;
         this.server = null;
+        if ( context.app().isStartServer() )
+            buttonClicked(); // we click the start server button if the app is started with the --start-server flag
     }
 
     public Var<String> port() { return portString; }

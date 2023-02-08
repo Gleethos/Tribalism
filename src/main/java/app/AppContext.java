@@ -16,12 +16,14 @@ import java.util.Optional;
  */
 public class AppContext
 {
+    private final App app;
     private final DataBase db;
 
     private final Vars<UserContext> users = Vars.of(UserContext.class);
 
-    public AppContext() {
-        this.db = DataBase.at("saves/sqlite.db");
+    public AppContext(App app) {
+        this.app = app;
+        this.db = DataBase.at(app.getDatabaseLocation());
         this.db.createTablesFor(
             Character.class,
             User.class,
@@ -31,6 +33,8 @@ public class AppContext
             CharacterModel.class
         );
     }
+
+    public App app() { return app; }
 
     public DataBase db() { return db; }
 

@@ -18,7 +18,7 @@ public class ContentView extends JPanel {
     public static void main(String[] args) {
         FlatLightLaf.setup();
         JFrame frame = new JFrame("Main");
-        frame.setContentPane(new ContentView(new ContentViewModel(null)));
+        frame.setContentPane(new ContentView(new ContentViewModel(new AppContext(null))));
         frame.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
         frame.pack();
         frame.setVisible(true);
