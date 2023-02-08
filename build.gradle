@@ -1,7 +1,5 @@
 plugins {
     id 'groovy'
-    //id 'org.springframework.boot' version '3.0.0'
-    //id 'io.spring.dependency-management' version '1.1.0'
     id 'java'
     id "com.github.node-gradle.node" version "3.5.1"
 }
@@ -61,7 +59,7 @@ dependencies {
 
     // Integration test with Geb and Spock :
     testImplementation group: 'org.gebish', name: 'geb-spock', version: '5.1'
-    testImplementation group: 'org.seleniumhq.selenium', name: 'selenium-firefox-driver', version: '4.0.0'
+    testImplementation group: 'org.seleniumhq.selenium', name: 'selenium-firefox-driver', version: '4.8.0'
 
 }
 

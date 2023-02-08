@@ -42,12 +42,16 @@ public class App implements Runnable
 
     @Override
     public void run() {
-        AppContext context = new AppContext(this);
-        RootViewModel app = new RootViewModel(context);
+        var app = createRootViewModel();
         FlatLightLaf.setup();
         UI.show(
             UI.use(EventProcessor.DECOUPLED, () -> new RootView(app))
         );
+    }
+
+    public RootViewModel createRootViewModel() {
+        AppContext context = new AppContext(this);
+        return new RootViewModel(context);
     }
 
 }
