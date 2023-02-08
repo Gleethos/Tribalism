@@ -68,13 +68,30 @@ public interface DataBase
         return new SQLiteDataBase(path);
     }
 
+    /**
+     *  Creates tables for the specified model types.
+     *  If a table for a model type already exists it will not be overwritten.
+     *
+     * @param models The model types to create tables for.
+     */
     void createTablesFor( Class<? extends Model<?>>... models );
 
+    /**
+     *  Drops all tables corresponding to the provided model types.
+     *
+     * @param models The model types to drop tables for.
+     */
     void dropTablesFor( Class<? extends Model<?>>... models );
 
+    /**
+     * @return A list of the names of all tables in the database.
+     */
     List<String> listOfAllTableNames();
 
-    void execute(String sql);
+    /**
+     * @param sql The SQL code to execute.
+     */
+    void execute( String sql );
 
     void dropAllTables();
 
