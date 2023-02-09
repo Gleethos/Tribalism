@@ -35,8 +35,8 @@ function LoginView({ vm }: any) {
             labelOnTop={true}
             type={'text'}
             placeholder='Username'
-            value={username}
-            onChange={(event) => setUsername(event.target.value)}
+            value={username as string}
+            onChange={(event) => setUsername(event.target.value as string)}
           />
         </div>
         <div className='login__password'>
@@ -46,7 +46,7 @@ function LoginView({ vm }: any) {
             labelOnTop={true}
             type={'password'}
             placeholder='Password'
-            value={password}
+            value={password as string}
             onChange={(event) => setPassword(event.target.value)}
           />
         </div>
@@ -70,8 +70,8 @@ function LoginView({ vm }: any) {
         </div>
 
         <div>
-          <span className='block pt-3' style={{ color: feedbackColor }}>
-            {feedback}
+          <span className={`block pt-3 text-${feedbackColor}-900`}>
+            {feedback as React.ReactNode}
           </span>
         </div>
       </form>
