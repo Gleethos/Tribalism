@@ -54,7 +54,9 @@ function LoginView({ vm }) {
             buttonStyles='flex gap-3 scale-[0.9] !bg-gray-500/80 hover:!scale-[1]'
             kind='secondary'
           >
-            <span className='block'>Register</span>
+            <span className='block' onClick={() => vm.switchToRegister()}>
+              Register
+            </span>
             <GiRaiseZombie className='text-2xl' />
           </Button>
         </div>
