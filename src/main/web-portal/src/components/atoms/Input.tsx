@@ -1,5 +1,18 @@
 import React from 'react';
 
+interface InputProps {
+  inputStyles: string;
+  placeholder: string;
+  type: string;
+  value: string;
+  onChange: (
+    event: React.ChangeEvent<HTMLInputElement>,
+  ) => void | ((v: any) => void);
+  labelOnTop?: boolean;
+  labelStyles?: string;
+  id?: string;
+}
+
 export default function Input({
   inputStyles,
   placeholder,
@@ -9,7 +22,7 @@ export default function Input({
   labelOnTop,
   labelStyles,
   id,
-}) {
+}: InputProps) {
   return (
     <div className={`flex gap-2 items-center ${labelOnTop ? 'flex-col' : ''}`}>
       <label

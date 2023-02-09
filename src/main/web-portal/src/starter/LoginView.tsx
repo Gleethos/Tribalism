@@ -1,16 +1,24 @@
 import React from 'react';
-import useProperty from '../hooks/useProperty.js';
-import Input from '../components/atoms/Input.js';
-import Button from '../components/atoms/Button.js';
+import useProperty from '../hooks/useProperty';
+import Input from '../components/atoms/Input';
+import Button from '../components/atoms/Button';
 import { GiShamblingZombie, GiRaiseZombie } from 'react-icons/gi';
 
-function LoginView({ vm }) {
-  const [username, setUsername]   = useProperty(vm, (vm) => vm.username(),                ''     );
-  const [password, setPassword]   = useProperty(vm, (vm) => vm.password(),                ''     );
-  const [feedback]                = useProperty(vm, (vm) => vm.feedback(),                ''     );
-  const [feedbackColor]           = useProperty(vm, (vm) => vm.feedbackColor(),           'black');
-  const [usernameBackgroundColor] = useProperty(vm, (vm) => vm.usernameBackgroundColor(), 'white');
-  const [passwordBackgroundColor] = useProperty(vm, (vm) => vm.passwordBackgroundColor(), 'white');
+function LoginView({ vm }: any) {
+  const [username, setUsername] = useProperty(vm, (vm) => vm.username(), '');
+  const [password, setPassword] = useProperty(vm, (vm) => vm.password(), '');
+  const [feedback] = useProperty(vm, (vm) => vm.feedback(), '');
+  const [feedbackColor] = useProperty(vm, (vm) => vm.feedbackColor(), 'black');
+  const [usernameBackgroundColor] = useProperty(
+    vm,
+    (vm) => vm.usernameBackgroundColor(),
+    'white',
+  );
+  const [passwordBackgroundColor] = useProperty(
+    vm,
+    (vm) => vm.passwordBackgroundColor(),
+    'white',
+  );
   return (
     <div className=' bg-no-repeat bg-cover bg-black bg-center bg-survival-1 h-[100vh] flex items-center justify-center flex-col gap-6'>
       <form
@@ -62,7 +70,9 @@ function LoginView({ vm }) {
         </div>
 
         <div>
-          <span className='block pt-3' style={{color:feedbackColor}}>{feedback}</span>
+          <span className='block pt-3' style={{ color: feedbackColor }}>
+            {feedback}
+          </span>
         </div>
       </form>
     </div>
