@@ -31,7 +31,7 @@ export default function Input({
       >
         {placeholder}
       </label>
-      <input // Now we use the react state
+      <input
         type={type}
         id={value}
         placeholder={placeholder}

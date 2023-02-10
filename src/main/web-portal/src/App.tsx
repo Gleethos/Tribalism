@@ -2,10 +2,10 @@ import './App.css';
 import { Var, Val, VM, Session, connect } from './mvvm/backend-binder';
 import LoginView from './starter/LoginView';
 import * as ReactDOM from 'react-dom';
-import React, { useState } from 'react';
+import React, { ReactElement, useState } from 'react';
 
 function App() {
-  const [content, setContent] = useState(null);
+  const [content, setContent] = useState<ReactElement<any, any>>(<></>);
   connect(
     'ws://localhost:8080/websocket',
     'app.ContentViewModel-0', // The "main" view model where the application starts
@@ -25,12 +25,12 @@ function App() {
           if (vm.class === 'app.LoginViewModel') {
             // We set the content from the LoginView
             // ignore
-            // @ts-ignore
+
             setContent(<LoginView vm={vm} />);
           } else if (vm.class === 'app.RegisterViewModel') {
             // TODO: Implement the register page
             // We make the main page empty:
-            // @ts-ignore
+
             setContent(<div>THIS IS WIP</div>);
           }
         });
