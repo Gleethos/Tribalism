@@ -151,6 +151,21 @@ appNpmBuild.dependsOn npmInstall
 copyWebAppToWebRoot.dependsOn appNpmBuild
 compileJava.dependsOn copyWebAppToWebRoot
 
+// A task which starts the 'Main' class of the project with a certain set of arguments
+// Note that this is done in a new thread, so the task will finish immediately and we can run other tasks in parallel
+task runServer(type: JavaExec) {
+    main = 'Main'
+    classpath = sourceSets.main.runtimeClasspath
+    args = ['--start-server', 'true', '--port', '8080', '--headless', 'true']
+}
+
+// A task for executing the react tests:
+task appNpmTest(type: NpmTask) { // TODO: Make this depend on the server task!
+    description = "Runs the react tests"
+    workingDir = file("${project.projectDir}/$REACT_SKIN_LOCATION")
+    args = ["run", "test"]
+}
+
 test {
     useJUnitPlatform()
 }
