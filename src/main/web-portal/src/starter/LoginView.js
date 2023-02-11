@@ -62,7 +62,7 @@ function LoginView({ vm }) {
         </div>
 
         <div>
-          <span className='block pt-3' style={{color:feedbackColor}}>{feedback}</span>
+          <span id={'login-feedback'} className='block pt-3' style={{color:feedbackColor}}>{feedback}</span>
         </div>
       </form>
     </div>
