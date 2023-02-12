@@ -20,8 +20,8 @@ import java.util.List;
  *  Messages are received here and sent here in the form of JSON strings.
  */
 @WebSocket
-public class BindingWebSocket {
-
+public class BindingWebSocket
+{
     private final static Logger log = LoggerFactory.getLogger(BindingWebSocket.class);
 
     private final WebUserContext webUserContext;

@@ -8,41 +8,73 @@ import org.eclipse.jetty.websocket.servlet.WebSocketServletFactory;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
-public class WebSocketEndpoint extends WebSocketServlet {
-
+/**
+ *  The {@link WebSocketEndpoint} establishes a long-lived web-socket
+ *  connection between the web-frontend and the server.
+ *  Here the web-socket communication is only established, communication happens
+ *  in the {@link BindingWebSocket} class, which is associated with a specific
+ *  {@link WebUserContext}.
+ */
+public class WebSocketEndpoint extends WebSocketServlet
+{
     private final AppContext appContext;
 
+    /**
+     *  This map contains all currently active web-user contexts/sessions.
+     *  This type of "user" is not necessarily a logged-in user, but rather
+     *  a user who has opened the web-frontend in a browser.
+     */
     private final Map<String, WebUserContext> userContexts = new ConcurrentHashMap<>();
 
     public WebSocketEndpoint(AppContext appContext) {
         this.appContext = appContext;
     }
 
+    /**
+     *  This method is called by the Jetty web-server when a new web-socket connection is established.
+     * @param factory The factory which is used to create the web-socket.
+     */
     @Override
     public void configure(WebSocketServletFactory factory) {
-        // set a 10 second idle timeout
+        // set a 10-second idle timeout
         factory.getPolicy().setIdleTimeout(10000);
-        // register my socket
+        // Now we register the socket creator, which establishes a long-lived web-socket based connection
         factory.setCreator((req, res)->{
             /*
-                Ok, so a websocket does not really have a session (req.gtSession() is null),
-                but we can fake it by
-                using the session from the http request.
+                Ok, so a websocket does not really have a session (req.getSession() is null),
+                which is a problem, because we want to establish a long-lived connection
+                which event persists after the user has reload the page or restarted the browser...
+                So what we do is simply use the session from the http request which is
+                used to serve the initial React frontend page.
                 But how do we get the session from the http request?
                 Like so:
-             */
-            var session = req.getHttpServletRequest().getSession();
-            WebUserContext userContext;
-            if ( !userContexts.containsKey(session.getId()) ) {
+            */
+            var httpSession = req.getHttpServletRequest().getSession();
+            /*
+                Now we have a unique session id which we can use to identify the user.
+                So what we do is either create a new user context or retrieve an existing one.
+            */
+            WebUserContext userContext; // This is the user context for a single user!
+
+            // Ok so let's see if we already have a user context for this user:
+            if ( !userContexts.containsKey(httpSession.getId()) ) {
+                // If not, we create a new one:
                 userContext = new WebUserContext();
                 userContext.put(new ContentViewModel(appContext));
                 appContext.registerWebUserContext(userContext);
-                userContexts.put(session.getId(), userContext);
+                userContexts.put(httpSession.getId(), userContext);
+                /*
+                    Not that this is actually an anonymous user, meaning that there is
+                    not necessarily a user logged in.
+                    If the user is logged in, then the web-user-context will receive
+                    a user object from the database.
+                */
             }
             else
-                userContext = userContexts.get(session.getId());
+                userContext = userContexts.get(httpSession.getId());
 
-            return new BindingWebSocket(userContext, session);
+            // Now we return a new web-socket which is bound to the user context:
+            return new BindingWebSocket(userContext, httpSession);
         });
     }
 }
