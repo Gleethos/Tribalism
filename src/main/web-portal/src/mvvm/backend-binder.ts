@@ -133,11 +133,8 @@ export class VM {
   constructor(
       session: Session, // For loading view models like this one
       vm: { [x: string]: any; methods: [any] }, // The current view model
-      vmSet: { (propName: any, value: any): void; (arg0: any, arg1: any): void }, // Send a property change to the server, expects 2 arguments: propName, value
-      vmObserve: {
-        (propName: any, action: any): void;
-        (arg0: any, arg1: (p: any) => void): void;
-      }, // For binding to properties, expects 2 parameters: the property name and the action to call when the property changes
+      vmPropSet: (propName: any, item: any)=>void, // Send a property change to the server, expects 2 arguments: propName, value
+      vmPropObserve: (propName: any, action: (prop: any)=>void)=>void, // For binding to properties, expects 2 parameters: the property name and the action to call when the property changes
       vmCall: {
         (methodName: any, args: any, action: any): void;
         (
@@ -156,12 +153,6 @@ export class VM {
   ) {
     this.class = vm[CLASS_NAME];
     this.state = vm;
-    // Now a pretty to string method:
-    VM.prototype.toString = () => {
-      return (
-          vm[CLASS_NAME] + '["state":{' + JSON.stringify(this.state, null, 4) + '}]'
-      );
-    };
 
     // Now we mirror the methods of the Java view model in JS!
     const methods = vm.methods;
@@ -170,7 +161,6 @@ export class VM {
       // Currently we only support void methods:
       if (method[METHOD_RETURNS][TYPE_NAME] === 'void') {
         attachMagic(this, method[METHOD_NAME], (...args: any) => {
-          console.log("Calling method '" + method[METHOD_NAME] + "'!")
           vmCall(method[METHOD_NAME], args, () => {});
         })
       } else if (
@@ -178,20 +168,18 @@ export class VM {
           method[METHOD_RETURNS][TYPE_NAME] === 'Val'
       ) {
         attachMagic(this, method[METHOD_NAME], (...args: any) => {
-          console.log("Calling method '" + method[METHOD_NAME] + "'!")
-          const propGet = (consumer: (arg0: any) => void) => {
+          const propGet = (consumer: (item: any) => void) => {
             vmCall(
                 method[METHOD_NAME],
                 args,
                 (property: { [x: string]: any }) => {
-                  console.log('Got property: ' + JSON.stringify(property));
                   // If the property value is a view model, we need to load it:
                   if (property[PROP_TYPE][TYPE_IS_VM]) {
                     // We expect the property value not to be "undefined":
                     if (property[PROP_VALUE] !== undefined) {
                       session.get(
                           property[PROP_VALUE],
-                          (vm: any) => consumer(vm), // Here we expect a VM object where the user can bind to...
+                          (vm: VM) => consumer(vm), // Here we expect a VM object where the user can bind to...
                       );
                     } else throw 'Expected a property value, but got undefined!';
                   } else consumer(property[PROP_VALUE]); // This is a primitive value, we can just pass it on...
@@ -199,12 +187,12 @@ export class VM {
             );
           };
 
-          const propObserve = (consumer: (arg0: any) => void) => {
+          const propObserve = (consumer: (prop: any) => void) => {
             vmCall(
                 method[METHOD_NAME],
                 args,
                 (property: { [x: string]: any }) => {
-                  vmObserve(property[PROP_NAME], (p: { [x: string]: any }) => {
+                  vmPropObserve(property[PROP_NAME], (p: { [x: string]: any }) => {
                     // If the property value is a view model, we need to load it:
                     if (p[PROP_TYPE][TYPE_IS_VM]) {
                       session.get(p[PROP_VALUE], (vm: any) => {
@@ -218,12 +206,12 @@ export class VM {
             );
           };
 
-          const propSet = (newValue: any) => {
+          const propSet = (newItem: any) => {
             vmCall(
                 method[METHOD_NAME],
                 args,
                 (property: { [x: string]: any }) => {
-                  vmSet(property[PROP_NAME], newValue);
+                  vmPropSet(property[PROP_NAME], newItem);
                 },
             );
           };
@@ -238,7 +226,6 @@ export class VM {
           };
 
           if (method[METHOD_RETURNS][TYPE_NAME] === 'Var') {
-            // how do i get rid of this error?
             return new Var(propGet, propSet, propObserve, propType);
           } else {
             return new Val(propGet, propObserve, propType);
@@ -246,7 +233,6 @@ export class VM {
         });
       } else {
         attachMagic(this, method[METHOD_NAME], (...args: any) => {
-          console.log("Calling method '" + method[METHOD_NAME] + "'!")
           return new Get((consumer: (arg0: any) => void) => {
             vmCall(
                 method[METHOD_NAME],
@@ -261,6 +247,12 @@ export class VM {
       }
     }
   }
+
+  toString() {
+    return (
+        this.class + '["state":{' + JSON.stringify(this.state, null, 4) + '}]'
+    );
+  }
 }
 
 /**
@@ -270,16 +262,16 @@ export class VM {
  * @param getViewModel a function for fetching a view model from the server
  * @constructor
  */
-export class Session {
-
+export class Session
+{
   getVMFun;
 
   constructor(
-      getViewModel: (vmId: any, action: any) => void, // For loading a view model, expects 2 parameters: the view model id and the action to call when the view model is loaded
+      getViewModel: (vmId: any, action: (vm: VM) => void) => void, // For loading a view model, expects 2 parameters: the view model id and the action to call when the view model is loaded
   ) {
     this.getVMFun = getViewModel;
   }
-  get(vmId: string, action: (vm: any) => void) { this.getVMFun(vmId, action); }
+  get(vmId: string, action: (vm: VM) => void) { this.getVMFun(vmId, action); }
 }
 
 /*
@@ -315,8 +307,9 @@ export function connect(
       if (viewModelCache[vmId]) {
         action(viewModelCache[vmId]);
         return;
-      } else console.log('No cached view model found for id: ' + vmId);
-      viewModelObservers[vmId] = (vm: any) => {
+      }
+      else console.info('No cached view model found for id: ' + vmId);
+      viewModelObservers[vmId] = (vm: VM) => {
         viewModelCache[vmId] = vm;
         action(vm);
       };
@@ -325,21 +318,20 @@ export function connect(
     else console.error('Expected a view model id, but got null!');
   });
 
-  function startWebsocket(action: { (): void; (): void; (): void; (): void }) {
-    ws = new WebSocket(serverAddress);
-    ws.onopen = () => {
-      action();
-    };
-    ws.onclose = () => {
+  function startWebsocket(action: ()=>void) {
+    let newWS = new WebSocket(serverAddress);
+    newWS.onopen = () => { action(); };
+    newWS.onclose = () => {
       // connection closed, discard old websocket and create a new one in 5s
       ws = null;
       setTimeout(() => startWebsocket(() => {}), 5000);
     };
-    ws.onmessage = (event) => {
-      //console.log('Message from server: ' + event.data);
+    newWS.onmessage = (event) => {
+      //console.info('Message from server: ' + event.data);
       // We parse the data as json:
       processResponse(JSON.parse(event.data));
     };
+    ws = newWS;
   }
   startWebsocket(() => sendVMRequest(iniViewModelId));
 
@@ -351,16 +343,14 @@ export function connect(
       if (ws) {
         // The web socket might be closed, if so we reopen it
         // and send the message when it is open again:
-        if (ws.readyState === WebSocket.CLOSED) {
-          startWebsocket(() => {
-            send(message);
-          });
-          return;
+        if ( ws.readyState !== WebSocket.CLOSED ) {
+          console.info('Sending message: ' + message);
+          ws.send(message);
         }
-        console.log('Sending message: ' + message);
-        ws.send(message);
+        else
+          startWebsocket(() => { send(message); }); // We try to re-establish the connection and send the message again
       } else {
-        console.log(
+        console.error(
           "Websocket missing! Failed to send message '" +
             message +
             "'. Retrying in 100ms.",
@@ -373,9 +363,10 @@ export function connect(
 
   function sendVMRequest(vmId: string) {
     if (vmId) {
-      console.log('Requesting view model: ' + vmId);
+      console.info('Requesting view model: ' + vmId);
       send({ [EVENT_TYPE]: GET_VM, [VM_ID]: vmId });
-    } else throw 'The view model id is null!';
+    }
+    else throw 'The view model id is null!';
   }
 
   function processResponse(data: {
@@ -440,7 +431,7 @@ export function connect(
       // If we have a binding, we call it with the new value:
       if (action) action(data[EVENT_PAYLOAD]);
       else
-        console.log(
+        console.error(
           'No action for property observation event: ' + JSON.stringify(data),
         );
     } else if (data[EVENT_TYPE] === CALL_RETURN) {
@@ -451,7 +442,7 @@ export function connect(
       if (actions) {
         // There should at least be one action, if not we log this as an error:
         if (actions.length === 0) {
-          console.log(
+          console.error(
             'No actions for method: ' + data[EVENT_PAYLOAD][METHOD_NAME],
           );
           return;
@@ -460,23 +451,22 @@ export function connect(
         let action = actions.shift();
 
         // The action should not be null, if it is we log this as an error!
-        if (action)
-          // We call the action with the return value:
+        if (action) // We call the action with the return value:
           action(data[EVENT_PAYLOAD][METHOD_RETURNS]);
         else
-          console.log(
+          console.error(
             'No action for method: ' + data[EVENT_PAYLOAD][METHOD_NAME],
           );
       }
-    } else if (data[EVENT_TYPE] === ERROR) {
-      console.log('Server error: ' + data[EVENT_PAYLOAD]);
-    } else {
-      console.log(
+    }
+    else if (data[EVENT_TYPE] === ERROR)
+      console.error('Server error: ' + data[EVENT_PAYLOAD]);
+    else
+      console.error(
         'Unknown event type: ' +
           data[EVENT_TYPE] +
           '! \nData:\n' +
           JSON.stringify(data),
       );
-    }
   }
 }
