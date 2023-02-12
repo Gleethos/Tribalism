@@ -72,7 +72,7 @@ function LoginView({ vm }: any) {
         </div>
 
         <div>
-          <span className={`block pt-3 text-${feedbackColor}-900`}>
+          <span id={'login-feedback'} className={`block pt-3 text-${feedbackColor}-900`}>
             {feedback as React.ReactNode}
           </span>
         </div>

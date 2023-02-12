@@ -32,21 +32,45 @@ public class App implements Runnable
     )
     private int serverPort = 8080;
 
+    @Parameter(
+            names={"--headless"},
+            description="Run the application in headless mode, meaning no UI will be shown.",
+            arity = 1
+    )
+    private boolean headless = false;
 
+
+    /**
+     * @return True if the server should be started immediately after application launch or not.
+     */
     public boolean isStartServer() { return startServer; }
 
+    /**
+     * @return The port onto which the web portal server should listen for clients.
+     */
     public int getServerPort() { return serverPort; }
 
+    /**
+     * @return The path to the file where the application save file should be created/loaded.
+     */
     public String getDatabaseLocation() { return databaseLocation; }
 
+    /**
+     * @return True if the application should be launched without desktop UI.
+     */
+    public boolean isHeadless() { return headless; }
 
     @Override
     public void run() {
         var app = createRootViewModel();
-        FlatLightLaf.setup();
-        UI.show(
-            UI.use(EventProcessor.DECOUPLED, () -> new RootView(app))
-        );
+        if ( !isHeadless() ) {
+            FlatLightLaf.setup();
+            UI.show(
+                UI.use(EventProcessor.DECOUPLED, () -> new RootView(app))
+            );
+        }
+        else
+            while ( true ) { UI.processEvents(); }
     }
 
     public RootViewModel createRootViewModel() {
