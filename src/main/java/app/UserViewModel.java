@@ -10,8 +10,11 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 
-public class UserViewModel implements Viewable {
-
+/**
+ *  Models the state and logic of the view a user has on their profile.
+ */
+public class UserViewModel implements Viewable
+{
     private final UserContext user;
 
     private final Var<String> username;

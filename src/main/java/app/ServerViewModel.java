@@ -64,6 +64,10 @@ public class ServerViewModel
 
     public Val<String> statusText() { return statusText; }
 
+    /**
+     *  This method is called when the user clicks the start/stop button.
+     *  It starts or stops the server, depending on the current status.
+     */
     public void buttonClicked() {
         if ( !portIsValid.get() ) {
             statusText.set("Invalid port number");
