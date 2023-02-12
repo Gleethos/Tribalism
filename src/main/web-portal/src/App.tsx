@@ -5,11 +5,11 @@ import * as ReactDOM from 'react-dom';
 import React, { ReactElement, useState } from 'react';
 
 function App() {
-  const [content, setContent] = useState<ReactElement<any, any>>(<></>);
+  const [content, setContent] = useState<any>(null);
   connect(
     'ws://localhost:8080/websocket',
     'app.ContentViewModel-0', // The "main" view model where the application starts
-    (session: any, contentVM: any) => {
+    (session: Session, contentVM: VM|any) => {
       console.log('Current view model: ' + contentVM);
       // Relevant fields:
       const clazz = contentVM.class;
@@ -17,7 +17,8 @@ function App() {
       const props = state.props; // The properties of the view model
       const methods = state.methods; // The methods of the view model
 
-      if (content === null)
+      // We check if the content is missing
+      if ( content === null )
         contentVM.content().get((vm: { class: string }) => {
           console.log('Received content page: ' + vm.class);
 

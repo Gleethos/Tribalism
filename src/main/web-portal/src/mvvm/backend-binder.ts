@@ -1,3 +1,5 @@
+import {attachMagic} from "./magic";
+
 /*
     Some constants needed to communicate with the server:
     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -45,38 +47,69 @@ const ERROR_TYPE = 'type';
     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
  */
 
-export function Var(
-  get: { (consumer: any): void; (arg0: any): void },
-  set: (newValue: any) => void,
-  observe: { (consumer: any): void; (arg0: any): void },
-  type: (consumer: any) => void,
-) {
-  Var.prototype.getOnce = get;
-  Var.prototype.onShow = observe;
-  Var.prototype.type = type;
-  Var.prototype.get = (consumer: any) => {
-    get(consumer);
-    observe(consumer);
-  };
-  Var.prototype.set = set;
+export class Var {
+
+  getOnceFun;
+  onShowFun;
+  typeObs;
+  getFun;
+  setFun;
+
+  constructor(
+      get:     (arg0: (arg0: any) => void) => void,
+      set:     (newValue: any) => void,
+      observe: (arg0: (arg0: any) => void) => void,
+      type:    (arg0: (arg0: any) => void) => void,
+  ) {
+    this.getOnceFun = get;
+    this.onShowFun = observe;
+    this.typeObs = type;
+    this.getFun = (consumer: any) => {
+                                      get(consumer);
+                                      observe(consumer);
+                                    };
+    this.setFun = set;
+  }
+  getOnce(action: (arg0: any) => void) { this.getOnceFun(action); }
+  onShow(listener: (arg0: any) => void) { this.onShowFun(listener); }
+  type(listener: (arg0: any) => void) { return this.typeObs(listener); }
+  set(item: any) { this.setFun(item); }
+  get(listener: (arg0: any) => void) { this.getFun(listener); }
 }
 
-export function Val(
-  get: { (consumer: any): void; (arg0: any): void },
-  observe: { (consumer: any): void; (arg0: any): void },
-  type: (consumer: any) => void,
-) {
-  Val.prototype.getOnce = get;
-  Val.prototype.onShow = observe;
-  Val.prototype.type = type;
-  Val.prototype.get = (consumer: any) => {
-    get(consumer);
-    observe(consumer);
-  };
+export class Val {
+
+  getOnceFun;
+  onShowFun;
+  typeObs;
+  getFun;
+
+  constructor(
+      get:     (arg0: (arg0: any) => void) => void,
+      observe: (arg0: (arg0: any) => void) => void,
+      type:    (arg0: (arg0: any) => void) => void,
+  ) {
+    this.getOnceFun = get;
+    this.onShowFun = observe;
+    this.typeObs = type;
+    this.getFun = (consumer: any) => {
+                                      get(consumer);
+                                      observe(consumer);
+                                    };
+  }
+  getOnce(action: (arg0: any) => void) { this.getOnceFun(action); }
+  onShow(listener: (arg0: any) => void) { this.onShowFun(listener); }
+  type(listener: (arg0: any) => void) { return this.typeObs(listener); }
+  get(listener: (arg0: any) => void) { this.getFun(listener); }
 }
 
-export function Get(get: (consumer: any) => void) {
-  Get.prototype.get = get;
+export class Get {
+  getFun;
+  constructor(get: (consumer: (arg0: any) => void) => void) {
+    this.getFun = get;
+  }
+
+  get(listener: (arg0: any) => void) { this.getFun(listener) }
 }
 
 /**
@@ -92,134 +125,140 @@ export function Get(get: (consumer: any) => void) {
  * @return vmGet a function for registering an observer for a property of the view model in the backend
  * @constructor
  */
-export function VM(
-  this: any,
-  session: {
-    get: (arg0: any, arg1: { (vm: any): any; (vm: any): void }) => void;
-  }, // For loading view models like this one
-  vm: { [x: string]: any; methods: any }, // The current view model
-  vmSet: { (propName: any, value: any): void; (arg0: any, arg1: any): void }, // Send a property change to the server, expects 2 arguments: propName, value
-  vmObserve: {
-    (propName: any, action: any): void;
-    (arg0: any, arg1: (p: any) => void): void;
-  }, // For binding to properties, expects 2 parameters: the property name and the action to call when the property changes
-  vmCall: {
-    (methodName: any, args: any, action: any): void;
-    (
-      arg0: any,
-      arg1: any[],
-      arg2: {
-        (): void;
-        (property: any): void;
-        (property: any): void;
-        (property: any): void;
-        (property: any): void;
-        (property: any): void;
-      },
-    ): void;
-  }, // For calling methods, expects 3 parameters: the method name, the arguments and the action to call when the method returns
-) {
-  this.class = vm[CLASS_NAME];
-  this.state = vm;
-  // Now a pretty to string method:
-  VM.prototype.toString = () => {
-    return (
-      this.class + '["state":{' + JSON.stringify(this.state, null, 4) + '}]'
-    );
-  };
+export class VM {
 
-  // Now we mirror the methods of the Java view model in JS!
-  const methods = vm.methods;
-  for (let i = 0; i < methods.length; i++) {
-    const method = methods[i];
-    // Currently we only support void methods:
-    if (method[METHOD_RETURNS][TYPE_NAME] === 'void') {
-      this[method[METHOD_NAME]] = (...args: any) => {
-        vmCall(method[METHOD_NAME], args, () => {});
-      };
-    } else if (
-      method[METHOD_RETURNS][TYPE_NAME] === 'Var' ||
-      method[METHOD_RETURNS][TYPE_NAME] === 'Val'
-    ) {
-      this[method[METHOD_NAME]] = (...args: any) => {
-        const propGet = (consumer: (arg0: any) => void) => {
-          vmCall(
-            method[METHOD_NAME],
-            args,
-            (property: { [x: string]: any }) => {
-              console.log('Got property: ' + JSON.stringify(property));
-              // If the property value is a view model, we need to load it:
-              if (property[PROP_TYPE][TYPE_IS_VM]) {
-                // We expect the property value not to be "undefined":
-                if (property[PROP_VALUE] !== undefined) {
-                  session.get(
-                    property[PROP_VALUE],
-                    (vm: any) => consumer(vm), // Here we expect a VM object where the user can bind to...
-                  );
-                } else throw 'Expected a property value, but got undefined!';
-              } else consumer(property[PROP_VALUE]); // This is a primitive value, we can just pass it on...
+  class: string;
+  state: { [x: string]: any };
+
+  constructor(
+      session: Session, // For loading view models like this one
+      vm: { [x: string]: any; methods: [any] }, // The current view model
+      vmSet: { (propName: any, value: any): void; (arg0: any, arg1: any): void }, // Send a property change to the server, expects 2 arguments: propName, value
+      vmObserve: {
+        (propName: any, action: any): void;
+        (arg0: any, arg1: (p: any) => void): void;
+      }, // For binding to properties, expects 2 parameters: the property name and the action to call when the property changes
+      vmCall: {
+        (methodName: any, args: any, action: any): void;
+        (
+            arg0: any,
+            arg1: any[],
+            arg2: {
+              (): void;
+              (property: any): void;
+              (property: any): void;
+              (property: any): void;
+              (property: any): void;
+              (property: any): void;
             },
-          );
-        };
+        ): void;
+      }, // For calling methods, expects 3 parameters: the method name, the arguments and the action to call when the method returns
+  ) {
+    this.class = vm[CLASS_NAME];
+    this.state = vm;
+    // Now a pretty to string method:
+    VM.prototype.toString = () => {
+      return (
+          vm[CLASS_NAME] + '["state":{' + JSON.stringify(this.state, null, 4) + '}]'
+      );
+    };
 
-        const propObserve = (consumer: (arg0: any) => void) => {
-          vmCall(
-            method[METHOD_NAME],
-            args,
-            (property: { [x: string]: any }) => {
-              vmObserve(property[PROP_NAME], (p: { [x: string]: any }) => {
-                // If the property value is a view model, we need to load it:
-                if (p[PROP_TYPE][TYPE_IS_VM]) {
-                  session.get(p[PROP_VALUE], (vm: any) => {
-                    // Here we expect a VM object!
-                    consumer(vm);
-                    // The user can call methods on the VM object...
+    // Now we mirror the methods of the Java view model in JS!
+    const methods = vm.methods;
+    for (let i = 0; i < methods.length; i++) {
+      const method = methods[i];
+      // Currently we only support void methods:
+      if (method[METHOD_RETURNS][TYPE_NAME] === 'void') {
+        attachMagic(this, method[METHOD_NAME], (...args: any) => {
+          console.log("Calling method '" + method[METHOD_NAME] + "'!")
+          vmCall(method[METHOD_NAME], args, () => {});
+        })
+      } else if (
+          method[METHOD_RETURNS][TYPE_NAME] === 'Var' ||
+          method[METHOD_RETURNS][TYPE_NAME] === 'Val'
+      ) {
+        attachMagic(this, method[METHOD_NAME], (...args: any) => {
+          console.log("Calling method '" + method[METHOD_NAME] + "'!")
+          const propGet = (consumer: (arg0: any) => void) => {
+            vmCall(
+                method[METHOD_NAME],
+                args,
+                (property: { [x: string]: any }) => {
+                  console.log('Got property: ' + JSON.stringify(property));
+                  // If the property value is a view model, we need to load it:
+                  if (property[PROP_TYPE][TYPE_IS_VM]) {
+                    // We expect the property value not to be "undefined":
+                    if (property[PROP_VALUE] !== undefined) {
+                      session.get(
+                          property[PROP_VALUE],
+                          (vm: any) => consumer(vm), // Here we expect a VM object where the user can bind to...
+                      );
+                    } else throw 'Expected a property value, but got undefined!';
+                  } else consumer(property[PROP_VALUE]); // This is a primitive value, we can just pass it on...
+                },
+            );
+          };
+
+          const propObserve = (consumer: (arg0: any) => void) => {
+            vmCall(
+                method[METHOD_NAME],
+                args,
+                (property: { [x: string]: any }) => {
+                  vmObserve(property[PROP_NAME], (p: { [x: string]: any }) => {
+                    // If the property value is a view model, we need to load it:
+                    if (p[PROP_TYPE][TYPE_IS_VM]) {
+                      session.get(p[PROP_VALUE], (vm: any) => {
+                        // Here we expect a VM object!
+                        consumer(vm);
+                        // The user can call methods on the VM object...
+                      });
+                    } else consumer(p[PROP_VALUE]); // Here we expect a primitive value!
                   });
-                } else consumer(p[PROP_VALUE]); // Here we expect a primitive value!
-              });
-            },
-          );
-        };
+                },
+            );
+          };
 
-        const propSet = (newValue: any) => {
-          vmCall(
-            method[METHOD_NAME],
-            args,
-            (property: { [x: string]: any }) => {
-              vmSet(property[PROP_NAME], newValue);
-            },
-          );
-        };
-        const propType = (consumer: (arg0: any) => void) => {
-          vmCall(
-            method[METHOD_NAME],
-            args,
-            (property: { [x: string]: any }) => {
-              consumer(property[PROP_TYPE]);
-            },
-          );
-        };
+          const propSet = (newValue: any) => {
+            vmCall(
+                method[METHOD_NAME],
+                args,
+                (property: { [x: string]: any }) => {
+                  vmSet(property[PROP_NAME], newValue);
+                },
+            );
+          };
+          const propType = (consumer: (arg0: any) => void) => {
+            vmCall(
+                method[METHOD_NAME],
+                args,
+                (property: { [x: string]: any }) => {
+                  consumer(property[PROP_TYPE]);
+                },
+            );
+          };
 
-        if (method[METHOD_RETURNS][TYPE_NAME] === 'Var') {
-          // how do i get rid of this error?
-          return new (Var(propGet, propSet, propObserve, propType) as any)();
-        } else {
-          return new (Val(propGet, propObserve, propType) as any)();
-        }
-      };
-    } else {
-      this[method[METHOD_NAME]] = (...args: any) => {
-        return new (Get((consumer: (arg0: any) => void) => {
-          vmCall(
-            method[METHOD_NAME],
-            args,
-            (property: { [x: string]: any }) => {
-              const value = property[PROP_VALUE];
-              consumer(value);
-            },
-          );
-        }) as any)();
-      };
+          if (method[METHOD_RETURNS][TYPE_NAME] === 'Var') {
+            // how do i get rid of this error?
+            return new Var(propGet, propSet, propObserve, propType);
+          } else {
+            return new Val(propGet, propObserve, propType);
+          }
+        });
+      } else {
+        attachMagic(this, method[METHOD_NAME], (...args: any) => {
+          console.log("Calling method '" + method[METHOD_NAME] + "'!")
+          return new Get((consumer: (arg0: any) => void) => {
+            vmCall(
+                method[METHOD_NAME],
+                args,
+                (property: { [x: string]: any }) => {
+                  const value = property[PROP_VALUE];
+                  consumer(value);
+                },
+            );
+          });
+        });
+      }
     }
   }
 }
@@ -231,10 +270,16 @@ export function VM(
  * @param getViewModel a function for fetching a view model from the server
  * @constructor
  */
-export function Session(
-  getViewModel: (vmId: any, action: any) => void, // For loading a view model, expects 2 parameters: the view model id and the action to call when the view model is loaded
-) {
-  Session.prototype.get = getViewModel;
+export class Session {
+
+  getVMFun;
+
+  constructor(
+      getViewModel: (vmId: any, action: any) => void, // For loading a view model, expects 2 parameters: the view model id and the action to call when the view model is loaded
+  ) {
+    this.getVMFun = getViewModel;
+  }
+  get(vmId: string, action: (vm: any) => void) { this.getVMFun(vmId, action); }
 }
 
 /*
@@ -243,10 +288,10 @@ export function Session(
     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 */
 
-const propertyObservers = {};
-const viewModelObservers = {};
-const methodObservers = {};
-const viewModelCache = {};
+const propertyObservers: {[key: string]:(prop: any)=>void} = {};
+const viewModelObservers: {[key:string]:(vm: VM)=>void}  = {};
+const methodObservers: {[key: string]:any[]} = {};
+const viewModelCache: {[key:string]:VM} = {};
 
 /**
  *  This is the entrypoint for the MVVM binding.
@@ -261,13 +306,10 @@ const viewModelCache = {};
 export function connect(
   serverAddress: string | URL,
   iniViewModelId: string,
-  frontend: {
-    (session: any, contentVM: any): void;
-    (arg0: any, arg1: any): void;
-  },
+  frontend: (session: Session, contentVM: VM|any) => void,
 ) {
   let ws: WebSocket | null = null;
-  const session = new (Session((vmId: string, action: (arg0: any) => void) => {
+  const session = new Session((vmId: string, action: (vm: VM) => void) => {
     if (vmId) {
       // We check if the view model is already cached:
       if (viewModelCache[vmId]) {
@@ -281,7 +323,7 @@ export function connect(
       sendVMRequest(vmId);
     } // We log an error if the view model id is null
     else console.error('Expected a view model id, but got null!');
-  }) as any)();
+  });
 
   function startWebsocket(action: { (): void; (): void; (): void; (): void }) {
     ws = new WebSocket(serverAddress);
@@ -301,7 +343,7 @@ export function connect(
   }
   startWebsocket(() => sendVMRequest(iniViewModelId));
 
-  function send(data: string) {
+  function send(data: { }|string) {
     if (data) {
       // First up: If the message is a JSON we turn it into a string:
       const message = typeof data === 'string' ? data : JSON.stringify(data);
@@ -336,7 +378,19 @@ export function connect(
     } else throw 'The view model id is null!';
   }
 
-  function processResponse(data: { [x: string]: string }) {
+  function processResponse(data: {
+      EventType: string,
+      vmId: string,
+      EventPayload: {
+        [x: string]: any;
+        methods: [any],
+        vmId: string
+      }} | {
+      [x: string]: {
+        [x: string]: any;
+        methods: [any]
+      }}
+  ) {
     // Now let's check the EventType: either a view model or a property change...
     if (data[EVENT_TYPE] === RETURN_GET_VM) {
       // We have a view model, so we can set it as the current view model:
@@ -346,201 +400,18 @@ export function connect(
       const vm = new VM(
         session,
         viewModel,
-        (propName: any, value: any) => {
+        (propName: string, value: any) => {
           send({
             [EVENT_TYPE]: SET_PROP,
             [VM_ID]: vmId,
             [PROP_NAME]: propName,
-            [PROP_VALUE]: value,
-            charAt: function (pos: number): string {
-              throw new Error('Function not implemented.');
-            },
-            charCodeAt: function (_index: number): number {
-              throw new Error('Function not implemented.');
-            },
-            concat: function (...strings: string[]): string {
-              throw new Error('Function not implemented.');
-            },
-            indexOf: function (
-              searchString: string,
-              position?: number | undefined,
-            ): number {
-              throw new Error('Function not implemented.');
-            },
-            lastIndexOf: function (
-              searchString: string,
-              position?: number | undefined,
-            ): number {
-              throw new Error('Function not implemented.');
-            },
-            localeCompare: function (that: string): number {
-              throw new Error('Function not implemented.');
-            },
-            match: function (regexp: string | RegExp): RegExpMatchArray | null {
-              throw new Error('Function not implemented.');
-            },
-            replace: function (
-              searchValue: string | RegExp,
-              replaceValue: string,
-            ): string {
-              throw new Error('Function not implemented.');
-            },
-            search: function (regexp: string | RegExp): number {
-              throw new Error('Function not implemented.');
-            },
-            slice: function (
-              start?: number | undefined,
-              end?: number | undefined,
-            ): string {
-              throw new Error('Function not implemented.');
-            },
-            split: function (
-              separator: string | RegExp,
-              limit?: number | undefined,
-            ): string[] {
-              throw new Error('Function not implemented.');
-            },
-            substring: function (
-              start: number,
-              end?: number | undefined,
-            ): string {
-              throw new Error('Function not implemented.');
-            },
-            toLowerCase: function (): string {
-              throw new Error('Function not implemented.');
-            },
-            toLocaleLowerCase: function (
-              locales?: string | string[] | undefined,
-            ): string {
-              throw new Error('Function not implemented.');
-            },
-            toUpperCase: function (): string {
-              throw new Error('Function not implemented.');
-            },
-            toLocaleUpperCase: function (
-              locales?: string | string[] | undefined,
-            ): string {
-              throw new Error('Function not implemented.');
-            },
-            trim: function (): string {
-              throw new Error('Function not implemented.');
-            },
-            length: 0,
-            substr: function (
-              from: number,
-              length?: number | undefined,
-            ): string {
-              throw new Error('Function not implemented.');
-            },
-            codePointAt: function (pos: number): number | undefined {
-              throw new Error('Function not implemented.');
-            },
-            includes: function (
-              searchString: string,
-              position?: number | undefined,
-            ): boolean {
-              throw new Error('Function not implemented.');
-            },
-            endsWith: function (
-              searchString: string,
-              endPosition?: number | undefined,
-            ): boolean {
-              throw new Error('Function not implemented.');
-            },
-            normalize: function (
-              form: 'NFC' | 'NFD' | 'NFKC' | 'NFKD',
-            ): string {
-              throw new Error('Function not implemented.');
-            },
-            repeat: function (count: number): string {
-              throw new Error('Function not implemented.');
-            },
-            startsWith: function (
-              searchString: string,
-              position?: number | undefined,
-            ): boolean {
-              throw new Error('Function not implemented.');
-            },
-            anchor: function (name: string): string {
-              throw new Error('Function not implemented.');
-            },
-            big: function (): string {
-              throw new Error('Function not implemented.');
-            },
-            blink: function (): string {
-              throw new Error('Function not implemented.');
-            },
-            bold: function (): string {
-              throw new Error('Function not implemented.');
-            },
-            fixed: function (): string {
-              throw new Error('Function not implemented.');
-            },
-            fontcolor: function (color: string): string {
-              throw new Error('Function not implemented.');
-            },
-            fontsize: function (size: number): string {
-              throw new Error('Function not implemented.');
-            },
-            italics: function (): string {
-              throw new Error('Function not implemented.');
-            },
-            link: function (url: string): string {
-              throw new Error('Function not implemented.');
-            },
-            small: function (): string {
-              throw new Error('Function not implemented.');
-            },
-            strike: function (): string {
-              throw new Error('Function not implemented.');
-            },
-            sub: function (): string {
-              throw new Error('Function not implemented.');
-            },
-            sup: function (): string {
-              throw new Error('Function not implemented.');
-            },
-            padStart: function (
-              maxLength: number,
-              fillString?: string | undefined,
-            ): string {
-              throw new Error('Function not implemented.');
-            },
-            padEnd: function (
-              maxLength: number,
-              fillString?: string | undefined,
-            ): string {
-              throw new Error('Function not implemented.');
-            },
-            trimEnd: function (): string {
-              throw new Error('Function not implemented.');
-            },
-            trimStart: function (): string {
-              throw new Error('Function not implemented.');
-            },
-            trimLeft: function (): string {
-              throw new Error('Function not implemented.');
-            },
-            trimRight: function (): string {
-              throw new Error('Function not implemented.');
-            },
-            matchAll: function (
-              regexp: RegExp,
-            ): IterableIterator<RegExpMatchArray> {
-              throw new Error('Function not implemented.');
-            },
-            [Symbol.iterator]: function (): IterableIterator<string> {
-              throw new Error('Function not implemented.');
-            },
-            at: function (index: number): string | undefined {
-              throw new Error('Function not implemented.');
-            },
+            [PROP_VALUE]: value
           });
         },
-        (propName: string, action: any) => {
+        (propName: string, action: (prop: any)=>void) => {
           propertyObservers[vmId + ':' + propName] = action;
         },
-        (methodName: string, args: any, action: any) => {
+        (methodName: string, args: any, action: (prop: VM)=>void) => {
           let key = vmId + ':' + methodName;
           if (!methodObservers[key]) methodObservers[key] = [];
           methodObservers[key].push(action);
