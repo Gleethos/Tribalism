@@ -1,4 +1,5 @@
 import {attachMagic} from "./magic";
+import {JSONWebSocket} from "./json-web-socket";
 
 /*
     Some constants needed to communicate with the server:
@@ -300,7 +301,17 @@ export function connect(
   iniViewModelId: string,
   frontend: (session: Session, contentVM: VM|any) => void,
 ) {
-  let ws: WebSocket | null = null;
+  let ws = new JSONWebSocket(serverAddress);
+  ws.onReceived(data => processResponse(data))
+  ws.onConnected(() => sendVMRequest(iniViewModelId));
+
+  function sendVMRequest(vmId: string) {
+    if (vmId) {
+      console.info('Requesting view model: ' + vmId);
+      ws.send({[EVENT_TYPE]: GET_VM, [VM_ID]: vmId});
+    } else throw 'The view model id is null!';
+  }
+
   const session = new Session((vmId: string, action: (vm: VM) => void) => {
     if (vmId) {
       // We check if the view model is already cached:
@@ -317,57 +328,6 @@ export function connect(
     } // We log an error if the view model id is null
     else console.error('Expected a view model id, but got null!');
   });
-
-  function startWebsocket(action: ()=>void) {
-    let newWS = new WebSocket(serverAddress);
-    newWS.onopen = () => { action(); };
-    newWS.onclose = () => {
-      // connection closed, discard old websocket and create a new one in 5s
-      ws = null;
-      setTimeout(() => startWebsocket(() => {}), 5000);
-    };
-    newWS.onmessage = (event) => {
-      //console.info('Message from server: ' + event.data);
-      // We parse the data as json:
-      processResponse(JSON.parse(event.data));
-    };
-    ws = newWS;
-  }
-  startWebsocket(() => sendVMRequest(iniViewModelId));
-
-  function send(data: { }|string) {
-    if (data) {
-      // First up: If the message is a JSON we turn it into a string:
-      const message = typeof data === 'string' ? data : JSON.stringify(data);
-
-      if (ws) {
-        // The web socket might be closed, if so we reopen it
-        // and send the message when it is open again:
-        if ( ws.readyState !== WebSocket.CLOSED ) {
-          console.info('Sending message: ' + message);
-          ws.send(message);
-        }
-        else
-          startWebsocket(() => { send(message); }); // We try to re-establish the connection and send the message again
-      } else {
-        console.error(
-          "Websocket missing! Failed to send message '" +
-            message +
-            "'. Retrying in 100ms.",
-        );
-        // The web socket is not open yet, so we try again in 100ms:
-        setTimeout(() => send(message), 100);
-      }
-    } else throw 'Null is not a valid message!';
-  }
-
-  function sendVMRequest(vmId: string) {
-    if (vmId) {
-      console.info('Requesting view model: ' + vmId);
-      send({ [EVENT_TYPE]: GET_VM, [VM_ID]: vmId });
-    }
-    else throw 'The view model id is null!';
-  }
 
   function processResponse(data: {
       EventType: string,
@@ -392,7 +352,7 @@ export function connect(
         session,
         viewModel,
         (propName: string, value: any) => {
-          send({
+          ws.send({
             [EVENT_TYPE]: SET_PROP,
             [VM_ID]: vmId,
             [PROP_NAME]: propName,
@@ -406,7 +366,7 @@ export function connect(
           let key = vmId + ':' + methodName;
           if (!methodObservers[key]) methodObservers[key] = [];
           methodObservers[key].push(action);
-          send({
+          ws.send({
             [EVENT_TYPE]: CALL,
             [EVENT_PAYLOAD]: {
               [METHOD_NAME]: methodName,
