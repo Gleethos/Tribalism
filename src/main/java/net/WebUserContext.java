@@ -1,19 +1,21 @@
-package binding;
+package net;
 
 import java.util.HashMap;
 import java.util.Map;
 import java.util.WeakHashMap;
 
 /**
- *  Mostly a register for view model instances.
+ *  Mostly a register for view model instances specific to a single web-user.
+ *  The user is not necessarily a database user, but it is a user of the web portal
+ *  uniquely identified by a http session id.
  *  The view model instances are stored in a WeakHashMap, so they can be garbage collected.
  */
-public class WebUserContext {
+public class WebUserContext
+{
     private final Map<Class, Map<Integer, Object>> _viewModels = new HashMap<>();
     private final Map<Object, VMID<?>> _vmids = new WeakHashMap<>();
 
-    public WebUserContext() {
-    }
+    public WebUserContext() {}
 
     public <T> T get( VMID<T> id ) {
         return (T)_viewModels.get(id.type()).get(id.id());

@@ -5,7 +5,7 @@ import sprouts.Var;
 
 import java.util.Optional;
 
-public class CharacterViewModel
+public final class CharacterViewModel
 {
     private final AppContext context;
     private final Var<String> forename;

@@ -1,6 +1,5 @@
 package net;
 
-import binding.WebUserContext;
 import org.eclipse.jetty.websocket.api.Session;
 import org.eclipse.jetty.websocket.api.annotations.OnWebSocketConnect;
 import org.eclipse.jetty.websocket.api.annotations.OnWebSocketMessage;
@@ -16,15 +15,20 @@ import java.lang.reflect.InvocationTargetException;
 import java.util.ArrayList;
 import java.util.List;
 
+/**
+ *  This is where the web-socket communication happens.
+ *  Messages are received here and sent here in the form of JSON strings.
+ */
 @WebSocket
-public class BindingWebSocket {
-
+public class BindingWebSocket
+{
     private final static Logger log = LoggerFactory.getLogger(BindingWebSocket.class);
 
     private final WebUserContext webUserContext;
 
     private Session session;
     private HttpSession httpSession;
+
 
     public BindingWebSocket(WebUserContext webUserContext, HttpSession httpSession) {
         this.webUserContext = webUserContext;
@@ -51,6 +55,11 @@ public class BindingWebSocket {
         }
     }
 
+    /**
+     *  This is where all the messages are received from the web-frontend client!
+     *
+     * @param message The message received from the React client.
+     */
     @OnWebSocketMessage
     public void onMessage(String message) {
         log.debug("Received: " + message);

@@ -1,10 +1,9 @@
 package app;
 
-import app.models.*;
 import app.models.Character;
-import binding.WebUserContext;
+import app.models.*;
 import dal.api.DataBase;
-import sprouts.Vals;
+import net.WebUserContext;
 import sprouts.Vars;
 
 import java.util.Optional;
@@ -13,13 +12,19 @@ import java.util.Optional;
  *  Instances of this class are shared between all users as well as most view models in general.
  *  It is used to access persistent data and to perform operations on it.
  *  So here you can find access to the database, and all current user contexts, etc.
+ *  <p>
+ *  <b>Note that for every running application there is only one instance of this class.
+ *  Please ensure that all methods are thread-safe and the implementation details are both
+ *  well encapsulated and well documented.</b>
  */
-public class AppContext
+public final class AppContext
 {
-    private final App app;
+    private final App app; // The application configuration
     private final DataBase db;
 
     private final Vars<UserContext> users = Vars.of(UserContext.class);
+
+
 
     public AppContext(App app) {
         this.app = app;
@@ -34,8 +39,18 @@ public class AppContext
         );
     }
 
+    /**
+     * Returns the application configuration which contains things like the database location, server port, etc.
+     *
+     * @return The application configuration.
+     */
     public App app() { return app; }
 
+    /**
+     * Returns the database which is used to store persistent data, like users, characters, etc.
+     *
+     * @return The database API, which is from the TopSoil project.
+     */
     public DataBase db() { return db; }
 
     public boolean userExists( String username ) {
@@ -52,7 +67,7 @@ public class AppContext
     }
 
     public void registerWebUserContext(WebUserContext userContext) {
-        //userContext.put()
+        // I don't know if the app context should care about web user contexts, I don't think so. For now.
     }
 
 }
