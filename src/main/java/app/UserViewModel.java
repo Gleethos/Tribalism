@@ -1,7 +1,6 @@
 package app;
 
 import app.models.Character;
-import app.models.UserView;
 import sprouts.Vals;
 import sprouts.Var;
 import sprouts.Vars;

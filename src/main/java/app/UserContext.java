@@ -2,7 +2,12 @@ package app;
 
 import app.models.User;
 
-public class UserContext {
+/**
+ *  This is a compositional sub context of the {@link AppContext} which is responsible for
+ *  holding the state of a currently logged-in user.
+ *  This includes things like view models and database models.
+ */
+public final class UserContext {
 
     private final User user;
 

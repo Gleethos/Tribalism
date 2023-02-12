@@ -1,4 +1,4 @@
-package binding;
+package net;
 
 import java.util.HashMap;
 import java.util.Map;

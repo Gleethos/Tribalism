@@ -1,6 +1,6 @@
-package binding;
+package net;
 
-public record VMID<T>(Class<T> type, int id) {
+record VMID<T>(Class<T> type, int id) {
     public VMID {
         if (type == null) {
             throw new IllegalArgumentException("type");

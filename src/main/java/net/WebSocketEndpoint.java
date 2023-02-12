@@ -2,7 +2,6 @@ package net;
 
 import app.AppContext;
 import app.ContentViewModel;
-import binding.WebUserContext;
 import org.eclipse.jetty.websocket.servlet.WebSocketServlet;
 import org.eclipse.jetty.websocket.servlet.WebSocketServletFactory;
 

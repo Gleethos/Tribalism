@@ -2,9 +2,8 @@ package app;
 
 import app.models.*;
 import app.models.Character;
-import binding.WebUserContext;
+import net.WebUserContext;
 import dal.api.DataBase;
-import sprouts.Vals;
 import sprouts.Vars;
 
 import java.util.Optional;
@@ -14,7 +13,7 @@ import java.util.Optional;
  *  It is used to access persistent data and to perform operations on it.
  *  So here you can find access to the database, and all current user contexts, etc.
  */
-public class AppContext
+public final class AppContext
 {
     private final App app;
     private final DataBase db;
