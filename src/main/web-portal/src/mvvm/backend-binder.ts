@@ -81,10 +81,12 @@ export class Get {
  */
 export class Session
 {
-  private ws: JSONWebSocket;
+  private readonly ws: JSONWebSocket;
+  private readonly cache: Cache;
 
-  constructor( ws: JSONWebSocket ) {
+  constructor( ws: JSONWebSocket, cache: Cache ) {
     this.ws = ws;
+    this.cache = cache;
   }
 
   sendVMRequest(vmId: string) {
@@ -98,13 +100,13 @@ export class Session
     // For loading a view model, expects 2 parameters: the view model id and the action to call when the view model is loaded
     if (vmId) {
       // We check if the view model is already cached:
-      if (viewModelCache[vmId]) {
-        action(viewModelCache[vmId]);
+      if (this.cache.viewModelCache[vmId]) {
+        action(this.cache.viewModelCache[vmId]);
         return;
       }
       else console.info('No cached view model found for id: ' + vmId);
-      viewModelObservers[vmId] = (vm: VM) => {
-        viewModelCache[vmId] = vm;
+      this.cache.viewModelObservers[vmId] = (vm: VM) => {
+        this.cache.viewModelCache[vmId] = vm;
         action(vm);
       };
       this.sendVMRequest(vmId);
@@ -114,11 +116,27 @@ export class Session
 }
 
 
-const propertyObservers: {[key: string]:(prop: any)=>void} = {};
-const viewModelObservers: {[key:string]:(vm: VM)=>void}  = {};
-const methodObservers: {[key: string]:any[]} = {};
-const viewModelCache: {[key:string]:VM} = {};
+class Cache
+{
+  private static cache: {[key: string]: Cache} = {};
 
+  static of(socketAddress: string) {
+    if ( !Cache.cache[socketAddress] )
+      Cache.cache[socketAddress] = new Cache(socketAddress);
+
+    return Cache.cache[socketAddress];
+  }
+
+  private constructor(private socketAddress: string) {
+      this.socketAddress = socketAddress;
+  }
+
+  readonly propertyObservers: {[key: string]:(prop: any)=>void} = {};
+  readonly viewModelObservers: {[key:string]:(vm: VM)=>void}  = {};
+  readonly methodObservers: {[key: string]:any[]} = {};
+  readonly viewModelCache: {[key:string]:VM} = {};
+
+}
 
 export class Backend
 {
@@ -130,6 +148,7 @@ export class Backend
 
   private readonly ws : JSONWebSocket;
   private readonly session : Session;
+  private readonly cache : Cache;
 
   /**
    *  This is the entrypoint for the MVVM binding.
@@ -138,9 +157,9 @@ export class Backend
    * @param serverAddress the address of the web-socket server to connect to
    */
   constructor(serverAddress: string | URL) {
+    this.cache = Cache.of(serverAddress.toString());
     this.ws = new JSONWebSocket(serverAddress);
-    this.session = new Session(this.ws);
-
+    this.session = new Session(this.ws, this.cache);
   }
 
   /**
@@ -191,12 +210,12 @@ export class Backend
           viewModel,
           this.ws,
           (propName: string, action: (prop: any) => void) => {
-            propertyObservers[vmId + ':' + propName] = action;
+            this.cache.propertyObservers[vmId + ':' + propName] = action;
           },
           (methodName: string, args: any, action: (prop: VM) => void) => {
             let key = vmId + ':' + methodName;
-            if (!methodObservers[key]) methodObservers[key] = [];
-            methodObservers[key].push(action);
+            if (!this.cache.methodObservers[key]) this.cache.methodObservers[key] = [];
+            this.cache.methodObservers[key].push(action);
             this.ws.send({
               [Constants.EVENT_TYPE]: Constants.CALL,
               [Constants.EVENT_PAYLOAD]: {
@@ -208,15 +227,15 @@ export class Backend
           },
       );
 
-      if (viewModelObservers[vmId]) {
-        viewModelObservers[vmId](vm);
+      if (this.cache.viewModelObservers[vmId]) {
+        this.cache.viewModelObservers[vmId](vm);
         return;
       }
       frontend(this.session, vm);
     } else if (data[Constants.EVENT_TYPE] === Constants.RETURN_PROP) {
       // We look up the binding for the property change:
       const action =
-          propertyObservers[
+          this.cache.propertyObservers[
           data[Constants.EVENT_PAYLOAD][Constants.VM_ID] + ':' + data[Constants.EVENT_PAYLOAD][Constants.PROP_NAME]
               ];
       // If we have a binding, we call it with the new value:
@@ -227,7 +246,7 @@ export class Backend
         );
     } else if (data[Constants.EVENT_TYPE] === Constants.CALL_RETURN) {
       const actions =
-          methodObservers[
+          this.cache.methodObservers[
           data[Constants.EVENT_PAYLOAD][Constants.VM_ID] + ':' + data[Constants.EVENT_PAYLOAD][Constants.METHOD_NAME]
               ];
       if (actions) {
