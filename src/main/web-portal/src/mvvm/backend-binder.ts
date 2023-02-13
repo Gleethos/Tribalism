@@ -81,14 +81,36 @@ export class Get {
  */
 export class Session
 {
-  getVMFun;
+  private ws: JSONWebSocket;
 
-  constructor(
-      getViewModel: (vmId: any, action: (vm: VM) => void) => void, // For loading a view model, expects 2 parameters: the view model id and the action to call when the view model is loaded
-  ) {
-    this.getVMFun = getViewModel;
+  constructor( ws: JSONWebSocket ) {
+    this.ws = ws;
   }
-  get(vmId: string, action: (vm: VM) => void) { this.getVMFun(vmId, action); }
+
+  sendVMRequest(vmId: string) {
+    if (vmId) {
+      console.info('Requesting view model: ' + vmId);
+      this.ws.send({[Constants.EVENT_TYPE]: Constants.GET_VM, [Constants.VM_ID]: vmId});
+    } else throw 'The view model id is null!';
+  }
+
+  fetchViewModel(vmId: string, action: (vm: VM) => void) {
+    // For loading a view model, expects 2 parameters: the view model id and the action to call when the view model is loaded
+    if (vmId) {
+      // We check if the view model is already cached:
+      if (viewModelCache[vmId]) {
+        action(viewModelCache[vmId]);
+        return;
+      }
+      else console.info('No cached view model found for id: ' + vmId);
+      viewModelObservers[vmId] = (vm: VM) => {
+        viewModelCache[vmId] = vm;
+        action(vm);
+      };
+      this.sendVMRequest(vmId);
+    } // We log an error if the view model id is null
+    else console.error('Expected a view model id, but got null!');
+  }
 }
 
 /*
@@ -118,32 +140,10 @@ export function connect(
   frontend: (session: Session, contentVM: VM|any) => void,
 ) {
   let ws = new JSONWebSocket(serverAddress);
+  const session = new Session(ws);
   ws.onReceived(data => processResponse(data))
-  ws.onConnected(() => sendVMRequest(iniViewModelId));
+  ws.onConnected(() => session.sendVMRequest(iniViewModelId));
 
-  function sendVMRequest(vmId: string) {
-    if (vmId) {
-      console.info('Requesting view model: ' + vmId);
-      ws.send({[Constants.EVENT_TYPE]: Constants.GET_VM, [Constants.VM_ID]: vmId});
-    } else throw 'The view model id is null!';
-  }
-
-  const session = new Session((vmId: string, action: (vm: VM) => void) => {
-    if (vmId) {
-      // We check if the view model is already cached:
-      if (viewModelCache[vmId]) {
-        action(viewModelCache[vmId]);
-        return;
-      }
-      else console.info('No cached view model found for id: ' + vmId);
-      viewModelObservers[vmId] = (vm: VM) => {
-        viewModelCache[vmId] = vm;
-        action(vm);
-      };
-      sendVMRequest(vmId);
-    } // We log an error if the view model id is null
-    else console.error('Expected a view model id, but got null!');
-  });
 
   function processResponse(data: {
       EventType: string,
@@ -159,22 +159,16 @@ export function connect(
       }}
   ) {
     // Now let's check the EventType: either a view model or a property change...
-    if (data[Constants.EVENT_TYPE] === Constants.RETURN_GET_VM) {
+    if ( data[Constants.EVENT_TYPE] === Constants.RETURN_GET_VM ) {
       // We have a view model, so we can set it as the current view model:
       const viewModel = data[Constants.EVENT_PAYLOAD];
       const vmId = viewModel[Constants.VM_ID];
 
       const vm = new VM(
+          vmId,
         session,
         viewModel,
-        (propName: string, value: any) => {
-          ws.send({
-            [Constants.EVENT_TYPE]: Constants.SET_PROP,
-            [Constants.VM_ID]: vmId,
-            [Constants.PROP_NAME]: propName,
-            [Constants.PROP_VALUE]: value
-          });
-        },
+        ws,
         (propName: string, action: (prop: any)=>void) => {
           propertyObservers[vmId + ':' + propName] = action;
         },
@@ -210,7 +204,7 @@ export function connect(
         console.error(
           'No action for property observation event: ' + JSON.stringify(data),
         );
-    } else if (data[Constants.EVENT_TYPE] === Constants.CALL_RETURN) {
+    } else if ( data[Constants.EVENT_TYPE] === Constants.CALL_RETURN ) {
       const actions =
         methodObservers[
           data[Constants.EVENT_PAYLOAD][Constants.VM_ID] + ':' + data[Constants.EVENT_PAYLOAD][Constants.METHOD_NAME]
@@ -235,7 +229,7 @@ export function connect(
           );
       }
     }
-    else if (data[Constants.EVENT_TYPE] === Constants.ERROR)
+    else if ( data[Constants.EVENT_TYPE] === Constants.ERROR )
       console.error('Server error: ' + data[Constants.EVENT_PAYLOAD]);
     else
       console.error(

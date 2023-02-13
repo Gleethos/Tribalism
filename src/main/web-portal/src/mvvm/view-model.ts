@@ -1,6 +1,7 @@
 import {Constants} from "./constants";
 import {attachMagic} from "./magic";
 import {Get, Session, Val, Var} from "./backend-binder";
+import {JSONWebSocket} from "./json-web-socket";
 
 /**
  *  This is used as a representation of a view model.
@@ -21,9 +22,10 @@ export class VM {
     state: { [x: string]: any };
 
     constructor(
+        vmId: string,
         session: Session, // For loading view models like this one
         vmMetaData: { [x: string]: any; methods: [any] }, // The current view model
-        vmPropSet: (propName: any, item: any) => void, // Send a property change to the server, expects 2 arguments: propName, value
+        ws: JSONWebSocket,
         vmPropObserve: (propName: any, action: (prop: any) => void) => void, // For binding to properties, expects 2 parameters: the property name and the action to call when the property changes
         vmCall: {
             (methodName: any, args: any, action: any): void;
@@ -41,6 +43,17 @@ export class VM {
             ): void;
         }, // For calling methods, expects 3 parameters: the method name, the arguments and the action to call when the method returns
     ) {
+        // Send a property change to the server, expects 2 arguments: propName, value
+        const vmPropSet =
+            (propName: string, value: any) => {
+                ws.send({
+                    [Constants.EVENT_TYPE]: Constants.SET_PROP,
+                    [Constants.VM_ID]: vmId,
+                    [Constants.PROP_NAME]: propName,
+                    [Constants.PROP_VALUE]: value
+                });
+            };
+
         this.class = vmMetaData[Constants.CLASS_NAME];
         this.state = vmMetaData;
 
@@ -68,7 +81,7 @@ export class VM {
                                 if (property[Constants.PROP_TYPE][Constants.TYPE_IS_VM]) {
                                     // We expect the property value not to be "undefined":
                                     if (property[Constants.PROP_VALUE] !== undefined) {
-                                        session.get(
+                                        session.fetchViewModel(
                                             property[Constants.PROP_VALUE],
                                             (vm: VM) => consumer(vm), // Here we expect a VM object where the user can bind to...
                                         );
@@ -86,7 +99,7 @@ export class VM {
                                 vmPropObserve(property[Constants.PROP_NAME], (p: { [x: string]: any }) => {
                                     // If the property value is a view model, we need to load it:
                                     if (p[Constants.PROP_TYPE][Constants.TYPE_IS_VM]) {
-                                        session.get(p[Constants.PROP_VALUE], (vm: any) => {
+                                        session.fetchViewModel(p[Constants.PROP_VALUE], (vm: any) => {
                                             // Here we expect a VM object!
                                             consumer(vm);
                                             // The user can call methods on the VM object...
