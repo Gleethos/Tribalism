@@ -1,5 +1,5 @@
 import './App.css';
-import { Var, Val, Session, connect } from './mvvm/backend-binder';
+import { Var, Val, Session, Backend } from './mvvm/backend-binder';
 import LoginView from './starter/LoginView';
 import * as ReactDOM from 'react-dom';
 import React, { ReactElement, useState } from 'react';
@@ -7,8 +7,7 @@ import {VM} from "./mvvm/view-model";
 
 function App() {
   const [content, setContent] = useState<any>(null);
-  connect(
-    'ws://localhost:8080/websocket',
+  new Backend('ws://localhost:8080/websocket').connectToViewModel(
     'app.ContentViewModel-0', // The "main" view model where the application starts
     (session: Session, contentVM: VM|any) => {
       console.log('Current view model: ' + contentVM);

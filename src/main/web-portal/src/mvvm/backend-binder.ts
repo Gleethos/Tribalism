@@ -113,107 +113,128 @@ export class Session
   }
 }
 
-/*
-    The last part of the API for doing MVVM binding is the entry point
-    to a web socket server connection.
-    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-*/
 
 const propertyObservers: {[key: string]:(prop: any)=>void} = {};
 const viewModelObservers: {[key:string]:(vm: VM)=>void}  = {};
 const methodObservers: {[key: string]:any[]} = {};
 const viewModelCache: {[key:string]:VM} = {};
 
-/**
- *  This is the entrypoint for the MVVM binding.
- *  Here you can connect to a websocket and get a view model
- *  through the second parameter, a function that will receive the above defined
- *  Session object as well as VM object.
- *
- * @param serverAddress the address of the web-socket server to connect to
- * @param iniViewModelId the id of the view model to load
- * @param frontend the function to call when the view model is loaded
- */
-export function connect(
-  serverAddress: string | URL,
-  iniViewModelId: string,
-  frontend: (session: Session, contentVM: VM|any) => void,
-) {
-  let ws = new JSONWebSocket(serverAddress);
-  const session = new Session(ws);
-  ws.onReceived(data => processResponse(data))
-  ws.onConnected(() => session.sendVMRequest(iniViewModelId));
+
+export class Backend
+{
+  /*
+      The last part of the API for doing MVVM binding is the entry point
+      to a web socket server connection.
+      ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+  */
+
+  private readonly ws : JSONWebSocket;
+  private readonly session : Session;
+
+  /**
+   *  This is the entrypoint for the MVVM binding.
+   *  Here you can connect to a websocket.
+   *
+   * @param serverAddress the address of the web-socket server to connect to
+   */
+  constructor(serverAddress: string | URL) {
+    this.ws = new JSONWebSocket(serverAddress);
+    this.session = new Session(this.ws);
+
+  }
+
+  /**
+   *  This is the entrypoint for the MVVM binding.
+   *  Here you can connect to a websocket and get a view model
+   *  through the second parameter, a function that will receive the above defined
+   *  Session object as well as VM object.
+   *
+   * @param iniViewModelId the id of the view model to load
+   * @param frontend the function to call when the view model is loaded
+   */
+
+  connectToViewModel(
+      iniViewModelId: string,
+      frontend: (session: Session, contentVM: VM | any) => void,
+  ) {
+    this.ws.onReceived(data => this.processResponse(data, frontend));
+    this.ws.onConnected(() => this.session.sendVMRequest(iniViewModelId));
+  }
 
 
-  function processResponse(data: {
+
+  processResponse(data: {
       EventType: string,
       vmId: string,
       EventPayload: {
         [x: string]: any;
         methods: [any],
         vmId: string
-      }} | {
+      }
+    } | {
       [x: string]: {
         [x: string]: any;
         methods: [any]
-      }}
+      }
+    },
+    frontend: (session: Session, contentVM: VM | any) => void
   ) {
     // Now let's check the EventType: either a view model or a property change...
-    if ( data[Constants.EVENT_TYPE] === Constants.RETURN_GET_VM ) {
+    if (data[Constants.EVENT_TYPE] === Constants.RETURN_GET_VM) {
       // We have a view model, so we can set it as the current view model:
       const viewModel = data[Constants.EVENT_PAYLOAD];
       const vmId = viewModel[Constants.VM_ID];
 
       const vm = new VM(
           vmId,
-        session,
-        viewModel,
-        ws,
-        (propName: string, action: (prop: any)=>void) => {
-          propertyObservers[vmId + ':' + propName] = action;
-        },
-        (methodName: string, args: any, action: (prop: VM)=>void) => {
-          let key = vmId + ':' + methodName;
-          if (!methodObservers[key]) methodObservers[key] = [];
-          methodObservers[key].push(action);
-          ws.send({
-            [Constants.EVENT_TYPE]: Constants.CALL,
-            [Constants.EVENT_PAYLOAD]: {
-              [Constants.METHOD_NAME]: methodName,
-              [Constants.METHOD_ARGS]: args,
-            },
-            [Constants.VM_ID]: vmId,
-          });
-        },
+          this.session,
+          viewModel,
+          this.ws,
+          (propName: string, action: (prop: any) => void) => {
+            propertyObservers[vmId + ':' + propName] = action;
+          },
+          (methodName: string, args: any, action: (prop: VM) => void) => {
+            let key = vmId + ':' + methodName;
+            if (!methodObservers[key]) methodObservers[key] = [];
+            methodObservers[key].push(action);
+            this.ws.send({
+              [Constants.EVENT_TYPE]: Constants.CALL,
+              [Constants.EVENT_PAYLOAD]: {
+                [Constants.METHOD_NAME]: methodName,
+                [Constants.METHOD_ARGS]: args,
+              },
+              [Constants.VM_ID]: vmId,
+            });
+          },
       );
 
       if (viewModelObservers[vmId]) {
         viewModelObservers[vmId](vm);
         return;
       }
-      frontend(session, vm);
+      frontend(this.session, vm);
     } else if (data[Constants.EVENT_TYPE] === Constants.RETURN_PROP) {
       // We look up the binding for the property change:
       const action =
-        propertyObservers[
+          propertyObservers[
           data[Constants.EVENT_PAYLOAD][Constants.VM_ID] + ':' + data[Constants.EVENT_PAYLOAD][Constants.PROP_NAME]
-        ];
+              ];
       // If we have a binding, we call it with the new value:
       if (action) action(data[Constants.EVENT_PAYLOAD]);
       else
         console.error(
-          'No action for property observation event: ' + JSON.stringify(data),
+            'No action for property observation event: ' + JSON.stringify(data),
         );
-    } else if ( data[Constants.EVENT_TYPE] === Constants.CALL_RETURN ) {
+    } else if (data[Constants.EVENT_TYPE] === Constants.CALL_RETURN) {
       const actions =
-        methodObservers[
+          methodObservers[
           data[Constants.EVENT_PAYLOAD][Constants.VM_ID] + ':' + data[Constants.EVENT_PAYLOAD][Constants.METHOD_NAME]
-        ];
+              ];
       if (actions) {
         // There should at least be one action, if not we log this as an error:
         if (actions.length === 0) {
           console.error(
-            'No actions for method: ' + data[Constants.EVENT_PAYLOAD][Constants.METHOD_NAME],
+              'No actions for method: ' + data[Constants.EVENT_PAYLOAD][Constants.METHOD_NAME],
           );
           return;
         }
@@ -225,15 +246,14 @@ export function connect(
           action(data[Constants.EVENT_PAYLOAD][Constants.METHOD_RETURNS]);
         else
           console.error(
-            'No action for method: ' + data[Constants.EVENT_PAYLOAD][Constants.METHOD_NAME],
+              'No action for method: ' + data[Constants.EVENT_PAYLOAD][Constants.METHOD_NAME],
           );
       }
-    }
-    else if ( data[Constants.EVENT_TYPE] === Constants.ERROR )
+    } else if (data[Constants.EVENT_TYPE] === Constants.ERROR)
       console.error('Server error: ' + data[Constants.EVENT_PAYLOAD]);
     else
       console.error(
-        'Unknown event type: ' +
+          'Unknown event type: ' +
           data[Constants.EVENT_TYPE] +
           '! \nData:\n' +
           JSON.stringify(data),
