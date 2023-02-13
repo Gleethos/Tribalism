@@ -41,8 +41,13 @@ final class TableField {
 
         if ( !isSubTypeOfVal && !isSubTypeOfVals )
             throw new IllegalArgumentException(
-                    "The return type of the method " + method.getName() + " is not a subclass of " +
-                    "either " + Val.class.getName() + " or " + Vals.class.getName() + "."
+                    "The return type of method '" + method.getName() + "' " +
+                    "in model type '" + ownerClass.getName() + "' " +
+                    "is not a subclass of " +
+                    "either " + Val.class.getName() + " or " + Vals.class.getName() + ". \n" +
+                    "You might want to declare the method as a default method in the model interface " +
+                    "or wrap the return type in a property type, like so: \n" +
+                    "'public " + Var.class.getSimpleName() + "<" + method.getReturnType().getSimpleName() + "> " + method.getName() + "()'"
                 );
 
         // Great that is correct! But now we have another requirement:

@@ -35,7 +35,10 @@ public final class AppContext
             GameMaster.class,
             World.class,
             Player.class,
-            CharacterModel.class
+            CharacterModel.class,
+            Ability.class,
+            Skill.class,
+            Role.class
         );
     }
 
