@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import {VM} from "../mvvm/view-model";
+import {ViewModel} from "../mvvm/ViewModel";
 
 export default function useProperty(
   vm: any,

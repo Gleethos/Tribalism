@@ -1,15 +1,15 @@
 import './App.css';
-import { Var, Val, Session, Backend } from './mvvm/backend-binder';
+import {Backend} from './mvvm/Backend';
 import LoginView from './starter/LoginView';
-import * as ReactDOM from 'react-dom';
-import React, { ReactElement, useState } from 'react';
-import {VM} from "./mvvm/view-model";
+import React, {useState} from 'react';
+import {ViewModel} from "./mvvm/ViewModel";
+import {Session} from "./mvvm/Session";
 
 function App() {
   const [content, setContent] = useState<any>(null);
   new Backend('ws://localhost:8080/websocket').connectToViewModel(
     'app.ContentViewModel-0', // The "main" view model where the application starts
-    (session: Session, contentVM: VM|any) => {
+    (session: Session, contentVM: ViewModel|any) => {
       console.log('Current view model: ' + contentVM);
       // Relevant fields:
       const clazz = contentVM.class;

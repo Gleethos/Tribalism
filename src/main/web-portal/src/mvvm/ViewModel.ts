@@ -1,23 +1,17 @@
-import {Constants} from "./constants";
+import {Constants} from "./Constants";
 import {attachMagic} from "./magic";
-import {Get, Session, Val, Var} from "./backend-binder";
-import {JSONWebSocket} from "./json-web-socket";
+import {JSONWebSocket} from "./JSONWebSocket";
+import {Session} from "./Session";
+import {Var} from "./Var";
+import {Val} from "./Val";
 
 /**
  *  This is used as a representation of a view model.
  *  it exposes the current state of the view model as
  *  well as a way to bind to its properties in both ways.
- *
- * @param  session the session that this view model belongs to, this is used to load sub-view models
- * @param  vm the state of the view model (a json object)
- * @param  vmSet a function for setting a property of the view model
- * @param  vmObserve a function for registering property observers
- * @param  vmCall
- * @return vmGet a function for registering an observer for a property of the view model in the backend
- * @constructor
  */
-export class VM {
-
+export class ViewModel
+{
     class: string;
     state: { [x: string]: any };
 
@@ -26,7 +20,6 @@ export class VM {
         session: Session, // For loading view models like this one
         vmMetaData: { [x: string]: any; methods: [any] }, // The current view model
         ws: JSONWebSocket,
-        vmPropObserve: (propName: any, action: (prop: any) => void) => void, // For binding to properties, expects 2 parameters: the property name and the action to call when the property changes
         vmCall: {
             (methodName: any, args: any, action: any): void;
             (
@@ -43,6 +36,11 @@ export class VM {
             ): void;
         }, // For calling methods, expects 3 parameters: the method name, the arguments and the action to call when the method returns
     ) {
+        // For binding to properties, expects 2 parameters: the property name and the action to call when the property changes
+        const vmPropObserve = (propName: string, action: (prop: any) => void) => {
+            let key = vmId + ':' + propName;
+            session.cache.propertyObservers[key] = action;
+        };
         // Send a property change to the server, expects 2 arguments: propName, value
         const vmPropSet =
             (propName: string, value: any) => {
@@ -83,7 +81,7 @@ export class VM {
                                     if (property[Constants.PROP_VALUE] !== undefined) {
                                         session.fetchViewModel(
                                             property[Constants.PROP_VALUE],
-                                            (vm: VM) => consumer(vm), // Here we expect a VM object where the user can bind to...
+                                            (vm: ViewModel) => consumer(vm), // Here we expect a VM object where the user can bind to...
                                         );
                                     } else throw 'Expected a property value, but got undefined!';
                                 } else consumer(property[Constants.PROP_VALUE]); // This is a primitive value, we can just pass it on...
@@ -135,7 +133,8 @@ export class VM {
                         return new Val(propGet, propObserve, propType);
                     }
                 });
-            } else {
+            }
+            else
                 attachMagic(this, method[Constants.METHOD_NAME], (...args: any) => {
                     return new Get((consumer: (arg0: any) => void) => {
                         vmCall(
@@ -148,7 +147,6 @@ export class VM {
                         );
                     });
                 });
-            }
         }
     }
 
@@ -157,4 +155,19 @@ export class VM {
             this.class + '["state":{' + JSON.stringify(this.state, null, 4) + '}]'
         );
     }
+}
+
+
+/*
+    First we define the API for interacting with the MVVM backend:
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+ */
+
+class Get {
+    getFun;
+    constructor(get: (consumer: (arg0: any) => void) => void) {
+        this.getFun = get;
+    }
+
+    get(listener: (arg0: any) => void) { this.getFun(listener) }
 }

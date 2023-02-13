@@ -24,7 +24,6 @@ export class JSONWebSocket
             }), 5000);
         };
         newWS.onmessage = (event) => {
-            //console.info('Message from server: ' + event.data);
             // We parse the data as json:
             this.processResponse(JSON.parse(event.data));
         };
@@ -51,7 +50,6 @@ export class JSONWebSocket
                 // The web socket might be closed, if so we reopen it
                 // and send the message when it is open again:
                 if (this.ws.readyState !== WebSocket.CLOSED) {
-                    console.info('Sending message: ' + message);
                     this.ws.send(message);
                 } else
                     this.onConnected(() => {
