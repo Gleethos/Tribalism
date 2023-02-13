@@ -1,20 +1,15 @@
-import { useState } from 'react';
-import {ViewModel} from "../mvvm/ViewModel";
+import {useState} from 'react';
+import {Var} from "../mvvm/Var";
+import {Val} from "../mvvm/Val";
 
-export default function useProperty(
+export function useVar(
   vm: any,
-  propSelector: (vm:{
-      [x:`${string}`]: {
-          (): {
-              get: { (arg0: (v: any) => void): void; new (): any };
-              set: { (arg0: any): void; new (): any };
-          }};
-  })=> any,
-  defaultValue: string | number | boolean | null | undefined,
+  varSelector: (vm:{ [x:`${string}`]: { (): Var }; })=> Var,
+  defaultItem: string | number | boolean | null | undefined,
 ) : [any, (v:any) => void] {
-  const [state, setState] = useState(defaultValue);
+  const [state, setState] = useState(defaultItem);
 
-  if (vm) propSelector(vm).get((v: any) => setState(v));
+  if ( vm ) varSelector(vm).get((v: any) => setState(v));
   /*
     So the selector might select something lik this:
     vm.username();
@@ -23,8 +18,25 @@ export default function useProperty(
   */
   const setBothStates = (v: any) => {
     setState(v);
-    if ( vm ) propSelector(vm).set(v);
+    if ( vm ) varSelector(vm).set(v);
   };
 
   return [state, setBothStates];
+}
+
+export function useVal(
+    vm: any,
+    valSelector: (vm:{ [x:`${string}`]: { (): Val }; })=> Val,
+    defaultValue: string | number | boolean | null | undefined,
+) : [any] {
+  const [state, setState] = useState(defaultValue);
+
+  if ( vm ) valSelector(vm).get((v: any) => setState(v));
+  /*
+    So the selector might select something lik this:
+    vm.username();
+    And then we bind to the state hooks:
+    .get( v => setState(v) );
+  */
+  return [state];
 }
