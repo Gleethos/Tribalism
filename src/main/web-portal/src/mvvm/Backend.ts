@@ -130,7 +130,8 @@ export class Backend
               'No action for method: ' + data[Constants.EVENT_PAYLOAD][Constants.METHOD_NAME],
           );
       }
-    } else if (data[Constants.EVENT_TYPE] === Constants.ERROR)
+    }
+    else if (data[Constants.EVENT_TYPE] === Constants.ERROR)
       console.error('Server error: ' + data[Constants.EVENT_PAYLOAD]);
     else
       console.error(

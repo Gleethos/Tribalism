@@ -44,4 +44,5 @@ test('Test login form', async () => {
   // Now we expect the feedback text to be 'Username must be at least 3 characters long'
   expect(feedbackText.textContent).toContain('Username');
   expect(feedbackText.textContent).toContain('3');
+  expect(feedbackText.textContent).toContain('characters');
 });

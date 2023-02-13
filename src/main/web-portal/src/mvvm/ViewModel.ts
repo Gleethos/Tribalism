@@ -57,13 +57,12 @@ export class ViewModel
 
         // Now we mirror the methods of the Java view model in JS!
         const methods = vmMetaData.methods;
-        for (let i = 0; i < methods.length; i++) {
+        for ( let i = 0; i < methods.length; i++ ) {
             const method = methods[i];
             // Currently we only support void methods:
             if (method[Constants.METHOD_RETURNS][Constants.TYPE_NAME] === 'void') {
                 attachMagic(this, method[Constants.METHOD_NAME], (...args: any) => {
-                    vmCall(method[Constants.METHOD_NAME], args, () => {
-                    });
+                    vmCall(method[Constants.METHOD_NAME], args, () => {});
                 })
             } else if (
                 method[Constants.METHOD_RETURNS][Constants.TYPE_NAME] === 'Var' ||
@@ -78,7 +77,7 @@ export class ViewModel
                                 // If the property value is a view model, we need to load it:
                                 if (property[Constants.PROP_TYPE][Constants.TYPE_IS_VM]) {
                                     // We expect the property value not to be "undefined":
-                                    if (property[Constants.PROP_VALUE] !== undefined) {
+                                    if ( property[Constants.PROP_VALUE] !== undefined ) {
                                         session.fetchViewModel(
                                             property[Constants.PROP_VALUE],
                                             (vm: ViewModel) => consumer(vm), // Here we expect a VM object where the user can bind to...
@@ -96,13 +95,14 @@ export class ViewModel
                             (property: { [x: string]: any }) => {
                                 vmPropObserve(property[Constants.PROP_NAME], (p: { [x: string]: any }) => {
                                     // If the property value is a view model, we need to load it:
-                                    if (p[Constants.PROP_TYPE][Constants.TYPE_IS_VM]) {
+                                    if ( p[Constants.PROP_TYPE][Constants.TYPE_IS_VM] ) {
                                         session.fetchViewModel(p[Constants.PROP_VALUE], (vm: any) => {
                                             // Here we expect a VM object!
                                             consumer(vm);
                                             // The user can call methods on the VM object...
                                         });
-                                    } else consumer(p[Constants.PROP_VALUE]); // Here we expect a primitive value!
+                                    }
+                                    else consumer(p[Constants.PROP_VALUE]); // Here we expect a primitive value!
                                 });
                             },
                         );
@@ -127,7 +127,7 @@ export class ViewModel
                         );
                     };
 
-                    if (method[Constants.METHOD_RETURNS][Constants.TYPE_NAME] === 'Var') {
+                    if ( method[Constants.METHOD_RETURNS][Constants.TYPE_NAME] === 'Var' ) {
                         return new Var(propGet, propSet, propObserve, propType);
                     } else {
                         return new Val(propGet, propObserve, propType);

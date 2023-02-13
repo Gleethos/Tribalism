@@ -1,5 +1,5 @@
-export class Val {
-
+export class Val
+{
     getOnceFun;
     onShowFun;
     typeObs;

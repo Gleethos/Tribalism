@@ -1,9 +1,7 @@
-export class Var {
+import {Val} from "./Val";
 
-    getOnceFun;
-    onShowFun;
-    typeObs;
-    getFun;
+export class Var extends Val
+{
     setFun;
 
     constructor(
@@ -12,13 +10,7 @@ export class Var {
         observe: (arg0: (arg0: any) => void) => void,
         type: (arg0: (arg0: any) => void) => void,
     ) {
-        this.getOnceFun = get;
-        this.onShowFun = observe;
-        this.typeObs = type;
-        this.getFun = (consumer: any) => {
-            get(consumer);
-            observe(consumer);
-        };
+        super(get, observe, type);
         this.setFun = set;
     }
 
@@ -38,7 +30,4 @@ export class Var {
         this.setFun(item);
     }
 
-    get(listener: (arg0: any) => void) {
-        this.getFun(listener);
-    }
 }
