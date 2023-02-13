@@ -1,47 +1,6 @@
-import {attachMagic} from "./magic";
 import {JSONWebSocket} from "./json-web-socket";
-
-/*
-    Some constants needed to communicate with the server:
-    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
- */
-
-const EVENT_TYPE = 'EventType';
-const EVENT_PAYLOAD = 'EventPayload';
-
-// Event Type Values:
-const SET_PROP = 'act';
-const RETURN_PROP = 'show';
-const GET_VM = 'getVM';
-const RETURN_GET_VM = 'viewModel';
-const CALL = 'call';
-const CALL_RETURN = 'callReturn';
-const ERROR = 'error';
-
-// View model properties:
-const VM_ID = 'vmId';
-const CLASS_NAME = 'className';
-const PROPS = 'props';
-const METHOD_NAME = 'name';
-const METHOD_ARG_NAME = 'name';
-const METHOD_ARG_TYPE = 'type';
-const TYPE_NAME = 'type';
-const TYPE_IS_VM = 'viewable';
-const METHOD_ARG_TYPE_IS_VM = 'viewable';
-const METHOD_ARGS = 'args';
-const METHOD_RETURNS = 'returns';
-
-// Property properties:
-const PROP_NAME = 'propName';
-const PROP_VALUE = 'value';
-const PROP_TYPE = 'type';
-const PROP_TYPE_NAME = 'name';
-const PROP_TYPE_STATES = 'states';
-
-// Error properties:
-const ERROR_MESSAGE = 'message';
-const ERROR_STACK_TRACE = 'stackTrace';
-const ERROR_TYPE = 'type';
+import {Constants} from "./constants";
+import {VM} from "./view-model";
 
 /*
     First we define the API for interacting with the MVVM backend:
@@ -114,149 +73,6 @@ export class Get {
 }
 
 /**
- *  This is used as a representation of a view model.
- *  it exposes the current state of the view model as
- *  well as a way to bind to its properties in both ways.
- *
- * @param  session the session that this view model belongs to, this is used to load sub-view models
- * @param  vm the state of the view model (a json object)
- * @param  vmSet a function for setting a property of the view model
- * @param  vmObserve a function for registering property observers
- * @param  vmCall
- * @return vmGet a function for registering an observer for a property of the view model in the backend
- * @constructor
- */
-export class VM {
-
-  class: string;
-  state: { [x: string]: any };
-
-  constructor(
-      session: Session, // For loading view models like this one
-      vm: { [x: string]: any; methods: [any] }, // The current view model
-      vmPropSet: (propName: any, item: any)=>void, // Send a property change to the server, expects 2 arguments: propName, value
-      vmPropObserve: (propName: any, action: (prop: any)=>void)=>void, // For binding to properties, expects 2 parameters: the property name and the action to call when the property changes
-      vmCall: {
-        (methodName: any, args: any, action: any): void;
-        (
-            arg0: any,
-            arg1: any[],
-            arg2: {
-              (): void;
-              (property: any): void;
-              (property: any): void;
-              (property: any): void;
-              (property: any): void;
-              (property: any): void;
-            },
-        ): void;
-      }, // For calling methods, expects 3 parameters: the method name, the arguments and the action to call when the method returns
-  ) {
-    this.class = vm[CLASS_NAME];
-    this.state = vm;
-
-    // Now we mirror the methods of the Java view model in JS!
-    const methods = vm.methods;
-    for (let i = 0; i < methods.length; i++) {
-      const method = methods[i];
-      // Currently we only support void methods:
-      if (method[METHOD_RETURNS][TYPE_NAME] === 'void') {
-        attachMagic(this, method[METHOD_NAME], (...args: any) => {
-          vmCall(method[METHOD_NAME], args, () => {});
-        })
-      } else if (
-          method[METHOD_RETURNS][TYPE_NAME] === 'Var' ||
-          method[METHOD_RETURNS][TYPE_NAME] === 'Val'
-      ) {
-        attachMagic(this, method[METHOD_NAME], (...args: any) => {
-          const propGet = (consumer: (item: any) => void) => {
-            vmCall(
-                method[METHOD_NAME],
-                args,
-                (property: { [x: string]: any }) => {
-                  // If the property value is a view model, we need to load it:
-                  if (property[PROP_TYPE][TYPE_IS_VM]) {
-                    // We expect the property value not to be "undefined":
-                    if (property[PROP_VALUE] !== undefined) {
-                      session.get(
-                          property[PROP_VALUE],
-                          (vm: VM) => consumer(vm), // Here we expect a VM object where the user can bind to...
-                      );
-                    } else throw 'Expected a property value, but got undefined!';
-                  } else consumer(property[PROP_VALUE]); // This is a primitive value, we can just pass it on...
-                },
-            );
-          };
-
-          const propObserve = (consumer: (prop: any) => void) => {
-            vmCall(
-                method[METHOD_NAME],
-                args,
-                (property: { [x: string]: any }) => {
-                  vmPropObserve(property[PROP_NAME], (p: { [x: string]: any }) => {
-                    // If the property value is a view model, we need to load it:
-                    if (p[PROP_TYPE][TYPE_IS_VM]) {
-                      session.get(p[PROP_VALUE], (vm: any) => {
-                        // Here we expect a VM object!
-                        consumer(vm);
-                        // The user can call methods on the VM object...
-                      });
-                    } else consumer(p[PROP_VALUE]); // Here we expect a primitive value!
-                  });
-                },
-            );
-          };
-
-          const propSet = (newItem: any) => {
-            vmCall(
-                method[METHOD_NAME],
-                args,
-                (property: { [x: string]: any }) => {
-                  vmPropSet(property[PROP_NAME], newItem);
-                },
-            );
-          };
-          const propType = (consumer: (arg0: any) => void) => {
-            vmCall(
-                method[METHOD_NAME],
-                args,
-                (property: { [x: string]: any }) => {
-                  consumer(property[PROP_TYPE]);
-                },
-            );
-          };
-
-          if (method[METHOD_RETURNS][TYPE_NAME] === 'Var') {
-            return new Var(propGet, propSet, propObserve, propType);
-          } else {
-            return new Val(propGet, propObserve, propType);
-          }
-        });
-      } else {
-        attachMagic(this, method[METHOD_NAME], (...args: any) => {
-          return new Get((consumer: (arg0: any) => void) => {
-            vmCall(
-                method[METHOD_NAME],
-                args,
-                (property: { [x: string]: any }) => {
-                  const value = property[PROP_VALUE];
-                  consumer(value);
-                },
-            );
-          });
-        });
-      }
-    }
-  }
-
-  toString() {
-    return (
-        this.class + '["state":{' + JSON.stringify(this.state, null, 4) + '}]'
-    );
-  }
-}
-
-/**
  *  This is a representation of a websocket session.
  *  It allows you to fetch new view models from the server.
  *
@@ -308,7 +124,7 @@ export function connect(
   function sendVMRequest(vmId: string) {
     if (vmId) {
       console.info('Requesting view model: ' + vmId);
-      ws.send({[EVENT_TYPE]: GET_VM, [VM_ID]: vmId});
+      ws.send({[Constants.EVENT_TYPE]: Constants.GET_VM, [Constants.VM_ID]: vmId});
     } else throw 'The view model id is null!';
   }
 
@@ -343,20 +159,20 @@ export function connect(
       }}
   ) {
     // Now let's check the EventType: either a view model or a property change...
-    if (data[EVENT_TYPE] === RETURN_GET_VM) {
+    if (data[Constants.EVENT_TYPE] === Constants.RETURN_GET_VM) {
       // We have a view model, so we can set it as the current view model:
-      const viewModel = data[EVENT_PAYLOAD];
-      const vmId = viewModel[VM_ID];
+      const viewModel = data[Constants.EVENT_PAYLOAD];
+      const vmId = viewModel[Constants.VM_ID];
 
       const vm = new VM(
         session,
         viewModel,
         (propName: string, value: any) => {
           ws.send({
-            [EVENT_TYPE]: SET_PROP,
-            [VM_ID]: vmId,
-            [PROP_NAME]: propName,
-            [PROP_VALUE]: value
+            [Constants.EVENT_TYPE]: Constants.SET_PROP,
+            [Constants.VM_ID]: vmId,
+            [Constants.PROP_NAME]: propName,
+            [Constants.PROP_VALUE]: value
           });
         },
         (propName: string, action: (prop: any)=>void) => {
@@ -367,12 +183,12 @@ export function connect(
           if (!methodObservers[key]) methodObservers[key] = [];
           methodObservers[key].push(action);
           ws.send({
-            [EVENT_TYPE]: CALL,
-            [EVENT_PAYLOAD]: {
-              [METHOD_NAME]: methodName,
-              [METHOD_ARGS]: args,
+            [Constants.EVENT_TYPE]: Constants.CALL,
+            [Constants.EVENT_PAYLOAD]: {
+              [Constants.METHOD_NAME]: methodName,
+              [Constants.METHOD_ARGS]: args,
             },
-            [VM_ID]: vmId,
+            [Constants.VM_ID]: vmId,
           });
         },
       );
@@ -382,28 +198,28 @@ export function connect(
         return;
       }
       frontend(session, vm);
-    } else if (data[EVENT_TYPE] === RETURN_PROP) {
+    } else if (data[Constants.EVENT_TYPE] === Constants.RETURN_PROP) {
       // We look up the binding for the property change:
       const action =
         propertyObservers[
-          data[EVENT_PAYLOAD][VM_ID] + ':' + data[EVENT_PAYLOAD][PROP_NAME]
+          data[Constants.EVENT_PAYLOAD][Constants.VM_ID] + ':' + data[Constants.EVENT_PAYLOAD][Constants.PROP_NAME]
         ];
       // If we have a binding, we call it with the new value:
-      if (action) action(data[EVENT_PAYLOAD]);
+      if (action) action(data[Constants.EVENT_PAYLOAD]);
       else
         console.error(
           'No action for property observation event: ' + JSON.stringify(data),
         );
-    } else if (data[EVENT_TYPE] === CALL_RETURN) {
+    } else if (data[Constants.EVENT_TYPE] === Constants.CALL_RETURN) {
       const actions =
         methodObservers[
-          data[EVENT_PAYLOAD][VM_ID] + ':' + data[EVENT_PAYLOAD][METHOD_NAME]
+          data[Constants.EVENT_PAYLOAD][Constants.VM_ID] + ':' + data[Constants.EVENT_PAYLOAD][Constants.METHOD_NAME]
         ];
       if (actions) {
         // There should at least be one action, if not we log this as an error:
         if (actions.length === 0) {
           console.error(
-            'No actions for method: ' + data[EVENT_PAYLOAD][METHOD_NAME],
+            'No actions for method: ' + data[Constants.EVENT_PAYLOAD][Constants.METHOD_NAME],
           );
           return;
         }
@@ -412,19 +228,19 @@ export function connect(
 
         // The action should not be null, if it is we log this as an error!
         if (action) // We call the action with the return value:
-          action(data[EVENT_PAYLOAD][METHOD_RETURNS]);
+          action(data[Constants.EVENT_PAYLOAD][Constants.METHOD_RETURNS]);
         else
           console.error(
-            'No action for method: ' + data[EVENT_PAYLOAD][METHOD_NAME],
+            'No action for method: ' + data[Constants.EVENT_PAYLOAD][Constants.METHOD_NAME],
           );
       }
     }
-    else if (data[EVENT_TYPE] === ERROR)
-      console.error('Server error: ' + data[EVENT_PAYLOAD]);
+    else if (data[Constants.EVENT_TYPE] === Constants.ERROR)
+      console.error('Server error: ' + data[Constants.EVENT_PAYLOAD]);
     else
       console.error(
         'Unknown event type: ' +
-          data[EVENT_TYPE] +
+          data[Constants.EVENT_TYPE] +
           '! \nData:\n' +
           JSON.stringify(data),
       );

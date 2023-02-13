@@ -1,8 +1,9 @@
 import './App.css';
-import { Var, Val, VM, Session, connect } from './mvvm/backend-binder';
+import { Var, Val, Session, connect } from './mvvm/backend-binder';
 import LoginView from './starter/LoginView';
 import * as ReactDOM from 'react-dom';
 import React, { ReactElement, useState } from 'react';
+import {VM} from "./mvvm/view-model";
 
 function App() {
   const [content, setContent] = useState<any>(null);

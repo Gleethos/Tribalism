@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import {VM} from "../mvvm/backend-binder";
+import {VM} from "../mvvm/view-model";
 
 export default function useProperty(
   vm: any,
