@@ -1,6 +1,5 @@
 package app;
 
-import app.models.DataBaseViewModel;
 import swingtree.UI;
 
 import javax.swing.*;
@@ -9,7 +8,7 @@ import static swingtree.UI.*;
 
 /**
  *  Presents some backend information with respect to the database (SQLite save file).
- *  This is the view for the {@link app.models.DataBaseViewModel}.
+ *  This is the view for the {@link DataBaseViewModel}.
  */
 public class DataBaseView extends JPanel
 {

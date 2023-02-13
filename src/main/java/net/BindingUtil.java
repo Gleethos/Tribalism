@@ -1,6 +1,5 @@
 package net;
 
-import binding.WebUserContext;
 import org.json.JSONArray;
 import org.json.JSONObject;
 import sprouts.Action;

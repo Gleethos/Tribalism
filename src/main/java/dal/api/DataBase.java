@@ -93,8 +93,16 @@ public interface DataBase
      */
     void execute( String sql );
 
+    /**
+     *  Drops all tables in the database.
+     */
     void dropAllTables();
 
+    /**
+     *  Drops the table corresponding to the provided model type.
+     *
+     * @param model The model type to drop the table for.
+     */
     void dropTable( Class<? extends Model<?>> model );
 
     String sqlCodeOfTable( Class<? extends Model<?>> model );

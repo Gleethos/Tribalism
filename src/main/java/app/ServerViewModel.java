@@ -11,6 +11,14 @@ import sprouts.Var;
 
 import javax.swing.*;
 
+/**
+ *  This is the view model for controlling the application's web-server.
+ *  As a hybrid desktop/web application, Tribalism can be used both as a desktop-
+ *  and as a web-application. This view model is used to start, stop and configure the server.
+ *  This part of the application is mostly intended for advanced game masters and developers.
+ *  There is currently also only a desktop view for this view model, so web users will not be able to
+ *  start or stop the server.
+ */
 public class ServerViewModel
 {
     public enum Status { ONLINE, OFFLINE, ERROR }
@@ -56,6 +64,10 @@ public class ServerViewModel
 
     public Val<String> statusText() { return statusText; }
 
+    /**
+     *  This method is called when the user clicks the start/stop button.
+     *  It starts or stops the server, depending on the current status.
+     */
     public void buttonClicked() {
         if ( !portIsValid.get() ) {
             statusText.set("Invalid port number");
@@ -117,8 +129,6 @@ public class ServerViewModel
         statusText.set("...running!");
     }
 
-    public JComponent createView() {
-        return new ServerView(this);
-    }
+    public JComponent createView() { return new ServerView(this); }
 
 }

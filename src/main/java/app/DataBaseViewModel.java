@@ -1,6 +1,9 @@
-package app.models;
+package app;
 
-import app.DataBaseView;
+import app.models.Character;
+import app.models.GameMaster;
+import app.models.User;
+import app.models.World;
 import dal.api.DataBase;
 import dal.impl.SQLiteDataBase;
 import sprouts.Event;
@@ -13,6 +16,11 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
+/**
+ *  This is the view model for the {@link DataBaseView} which is mostly intended for debugging purposes
+ *  by the developer or game master. It exposes direct access to the database tables.
+ *  Be careful when using this view model, as it can easily corrupt the TopSoil {@link DataBase} layer (our ORM).
+ */
 public class DataBaseViewModel {
 
     private final DataBase db;

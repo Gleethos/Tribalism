@@ -2,6 +2,14 @@ import {useState} from 'react';
 import {Var} from "../mvvm/Var";
 import {Val} from "../mvvm/Val";
 
+/**
+ * This hook is used to bind a property of a view model to a state hook.
+ * It will also update the view model when the state hook changes, and when
+ * the view model property changes, then the state hook will be updated as well.
+ * @param vm The view model from which a property will be selected.
+ * @param varSelector A function that selects the property from the view model.
+ * @param defaultItem The default value of the property in the view (If the view model has not yet delivered the "real" value).
+ */
 export function useVar(
   vm: any,
   varSelector: (vm:{ [x:`${string}`]: { (): Var }; })=> Var,
