@@ -1,7 +1,12 @@
 import app.App;
 import com.beust.jcommander.JCommander;
 
-public class Main
+/**
+ *  The main class which is used to start the application when exported as a JAR file.
+ *  The packaged Tribalism app can be started from the command-line like this: <br>
+ *  <code>java -jar tribalism.jar --at /home/user/tribalism.db</code>
+ */
+public final class Main
 {
     public static void main( String... args )
     {
@@ -11,6 +16,6 @@ public class Main
                 .build()
                 .parse(args);
 
-        app.run();
+        app.run(); // Start the application business logic, note that this is blocking.
     }
 }

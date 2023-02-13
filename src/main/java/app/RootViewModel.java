@@ -1,7 +1,5 @@
 package app;
 
-import app.models.DataBaseViewModel;
-
 import java.util.Objects;
 
 public class RootViewModel

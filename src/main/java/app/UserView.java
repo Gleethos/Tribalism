@@ -1,10 +1,12 @@
-package app.models;
-
-import app.UserViewModel;
+package app;
 
 import javax.swing.*;
+
 import static swingtree.UI.*;
 
+/**
+ *  The desktop view of the user page, which is available after login.
+ */
 public class UserView extends JPanel
 {
     public UserView(UserViewModel vm) {

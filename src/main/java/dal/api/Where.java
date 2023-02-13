@@ -4,8 +4,28 @@ import sprouts.Val;
 
 import java.util.function.Function;
 
-public interface Where<M extends Model<M>> extends Query<M> {
-
+/**
+ *  In the fluent query builder API of TopSoil,
+ *  this interface is used to open the where clause of the query.
+ *  <p>
+ *  <b>Example:</b>
+ *  <pre>{@code
+ *      db.select(Food.class)
+ *      .where(Food::name) // Select the field to be tested
+ *      .is("Tofu")
+ *      .and(Food::calories)
+ *      .isLessThan(100)
+ *  }</pre>
+ *  <p>
+ *      This will select all rows from the Food table where the name is "Tofu" and the calories are less than 100.
+ *  <p>
+ *  <b>Important:</b> Do not use a lambda expression here, use a method reference instead.
+ *  Calling anything else than a method reference will result in a runtime exception.
+ *  <p>
+ * @param <M> The type of the model to query.
+ */
+public interface Where<M extends Model<M>> extends Query<M>
+{
     /**
      *  Select the field to be tested in the where clause of the query
      *  using the method reference syntax like this:
