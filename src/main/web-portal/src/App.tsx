@@ -1,15 +1,16 @@
 import './App.css';
 import { Var, Val, VM, Session, connect } from './mvvm/backend-binder';
-import LoginView from './starter/LoginView';
+import LoginView from './views/LoginView';
 import * as ReactDOM from 'react-dom';
 import React, { ReactElement, useState } from 'react';
+import RegisterView from './views/RegisterView';
 
 function App() {
   const [content, setContent] = useState<any>(null);
   connect(
     'ws://localhost:8080/websocket',
     'app.ContentViewModel-0', // The "main" view model where the application starts
-    (session: Session, contentVM: VM|any) => {
+    (session: Session, contentVM: VM | any) => {
       console.log('Current view model: ' + contentVM);
       // Relevant fields:
       const clazz = contentVM.class;
@@ -18,7 +19,7 @@ function App() {
       const methods = state.methods; // The methods of the view model
 
       // We check if the content is missing
-      if ( content === null )
+      if (content === null)
         contentVM.content().get((vm: { class: string }) => {
           console.log('Received content page: ' + vm.class);
 
@@ -32,7 +33,7 @@ function App() {
             // TODO: Implement the register page
             // We make the main page empty:
 
-            setContent(<div>THIS IS WIP</div>);
+            setContent(<RegisterView vm={vm} />);
           }
         });
 

@@ -5,6 +5,7 @@ module.exports = {
     extend: {
       backgroundImage: {
         'survival-1': "url('../public/survival-1.png')",
+        'survival-4': "url('../public/survival-4.png')",
       },
     },
   },
