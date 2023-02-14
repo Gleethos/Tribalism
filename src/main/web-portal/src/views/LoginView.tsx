@@ -20,7 +20,7 @@ function LoginView({ vm }: any) {
     'white',
   );
   return (
-    <div className=' bg-no-repeat bg-cover bg-black bg-center bg-survival-1 h-[100vh] flex items-center justify-center flex-col gap-6'>
+    <div className=' bg-no-repeat bg-cover xl:bg-contain bg-black bg-center bg-survival-1 h-[100vh] flex items-center justify-center flex-col gap-6'>
       <form
         className='flex justify-center items-center flex-col
       bg-gray-300/30 rounded-lg pt-6 pb-4 gap-6 px-10 w-full max-w-xl'
@@ -72,7 +72,10 @@ function LoginView({ vm }: any) {
         </div>
 
         <div>
-          <span id={'login-feedback'} className={`block pt-3 text-${feedbackColor}-900`}>
+          <span
+            id={'login-feedback'}
+            className={`block pt-3 text-${feedbackColor}-900`}
+          >
             {feedback as React.ReactNode}
           </span>
         </div>
