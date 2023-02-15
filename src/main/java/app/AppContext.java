@@ -37,6 +37,7 @@ public final class AppContext
             Player.class,
             CharacterModel.class,
             Ability.class,
+            AbilityType.class,
             Skill.class,
             Role.class
         );
