@@ -11,7 +11,7 @@ function App() {
   new Backend('ws://localhost:8080/websocket').connectToViewModel(
     'app.ContentViewModel-0', // The "main" view model where the application starts
     (session: Session, contentVM: ViewModel | any) => {
-      console.log('Current view model: ' + contentVM);
+
       // Relevant fields:
       const clazz = contentVM.class;
       const state = contentVM.state;
@@ -24,22 +24,11 @@ function App() {
           console.log('Received content page: ' + vm.class);
 
           // Now let's check if the class is a login page
-          if (vm.class === 'app.LoginViewModel') {
-            // We set the content from the LoginView
-            // ignore
-
-            setContent(<LoginView vm={vm} />);
-          } else if (vm.class === 'app.RegisterViewModel') {
-            // TODO: Implement the register page
-            // We make the main page empty:
-
-            setContent(<RegisterView vm={vm} />);
-          }
+          if (vm.class === 'app.LoginViewModel')
+            setContent(<LoginView vm={vm} />); // We set the content to the login page
+          else if (vm.class === 'app.RegisterViewModel')
+            setContent(<RegisterView vm={vm} />); // We set the content to the register page
         });
-
-      // If the user does not want to login, we can switch to the register page using the switch button
-      const switchButton = document.getElementById('switch-id');
-      //switchButton.onclick = () => contentVM.showRegister();
     },
   );
   return (

@@ -2,19 +2,19 @@ import React from 'react';
 import { GiRaiseZombie, GiShamblingZombie } from 'react-icons/gi';
 import Button from '../components/atoms/Button';
 import Input from '../components/atoms/Input';
-import useProperty from '../hooks/useProperty';
+import {useVar, useVal} from '../hooks/useProperty';
 
 export default function RegisterView({ vm }: any) {
-  const [username, setUsername] = useProperty(vm, (vm) => vm.username(), '');
-  const [password, setPassword] = useProperty(vm, (vm) => vm.password(), '');
-  const [feedback] = useProperty(vm, (vm) => vm.feedback(), '');
-  const [feedbackColor] = useProperty(vm, (vm) => vm.feedbackColor(), 'black');
-  const [usernameBackgroundColor] = useProperty(
+  const [username, setUsername] = useVar(vm, (vm) => vm.username(), '');
+  const [password, setPassword] = useVar(vm, (vm) => vm.password(), '');
+  const [feedback] = useVal(vm, (vm) => vm.feedback(), '');
+  const [feedbackColor] = useVal(vm, (vm) => vm.feedbackColor(), 'black');
+  const [usernameBackgroundColor] = useVal(
     vm,
     (vm) => vm.usernameBackgroundColor(),
     'white',
   );
-  const [passwordBackgroundColor] = useProperty(
+  const [passwordBackgroundColor] = useVal(
     vm,
     (vm) => vm.passwordBackgroundColor(),
     'white',
