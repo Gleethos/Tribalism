@@ -6,9 +6,11 @@ import {ViewModel} from "./mvvm/ViewModel";
 import {Session} from "./mvvm/Session";
 import RegisterView from './views/RegisterView';
 
+const backend = Backend.at('ws://localhost:8080/websocket');
+
 function App() {
   const [content, setContent] = useState<any>(null);
-  new Backend('ws://localhost:8080/websocket').connectToViewModel(
+  backend.connectToViewModel(
     'app.ContentViewModel-0', // The "main" view model where the application starts
     (session: Session, contentVM: ViewModel | any) => {
 
