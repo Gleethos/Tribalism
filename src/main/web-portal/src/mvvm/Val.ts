@@ -1,9 +1,17 @@
+
+/**
+ *  An immutable property wrapping an observable item.
+ */
 export class Val
 {
-    getOnceFun;
-    onShowFun;
-    typeObs;
-    getFun;
+    private readonly getOnceFun;
+    private readonly onShowFun;
+    private readonly typeObs;
+    private readonly getFun;
+
+    private currentItem : any;
+    private itemLoaded : boolean = false;
+
 
     constructor(
         get: (arg0: (arg0: any) => void) => void,
@@ -14,7 +22,11 @@ export class Val
         this.onShowFun = observe;
         this.typeObs = type;
         this.getFun = (consumer: any) => {
-            get(consumer);
+            if ( this.itemLoaded ) consumer(this.currentItem);
+            get( item => {
+                this.currentItem = item;
+                consumer(item);
+            });
             observe(consumer);
         };
     }

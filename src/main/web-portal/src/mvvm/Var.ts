@@ -1,5 +1,8 @@
 import {Val} from "./Val";
 
+/**
+ *  A mutable property wrapping an observable item.
+ */
 export class Var extends Val
 {
     setFun;
@@ -12,18 +15,6 @@ export class Var extends Val
     ) {
         super(get, observe, type);
         this.setFun = set;
-    }
-
-    getOnce(action: (arg0: any) => void) {
-        this.getOnceFun(action);
-    }
-
-    onShow(listener: (arg0: any) => void) {
-        this.onShowFun(listener);
-    }
-
-    type(listener: (arg0: any) => void) {
-        return this.typeObs(listener);
     }
 
     set(item: any) {
