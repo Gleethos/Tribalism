@@ -108,7 +108,7 @@ public final class App implements Runnable
             );
         }
         else
-            while ( true ) { UI.processEvents(); } // We are using the Swing-Tree event processor!
+            UI.joinDecoupledEventProcessor(); // We are using the Swing-Tree event processor!
     }
 
     /**
