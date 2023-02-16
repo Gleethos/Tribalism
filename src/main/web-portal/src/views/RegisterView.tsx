@@ -21,7 +21,7 @@ export default function RegisterView({ vm }: any) {
   );
   return (
     <div className=' bg-no-repeat bg-cover xl:bg-contain bg-black bg-center bg-survival-4 h-[100vh] flex items-center justify-center flex-col gap-6'>
-      <form
+      <div
         className='flex justify-center items-center flex-col
       bg-gray-300/30 rounded-lg pt-6 pb-4 gap-6 px-10 w-full max-w-xl'
       >
@@ -78,7 +78,7 @@ export default function RegisterView({ vm }: any) {
             {feedback as React.ReactNode}
           </span>
         </div>
-      </form>
+      </div>
     </div>
   );
 }
