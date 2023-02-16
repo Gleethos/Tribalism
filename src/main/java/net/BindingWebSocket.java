@@ -136,6 +136,7 @@ public class BindingWebSocket
         var vm = webUserContext.get(vmId);
         vmJson.put(Constants.EVENT_TYPE, Constants.RETURN_GET_VM);
         vmJson.put(Constants.EVENT_PAYLOAD, BindingUtil.toJson(vm, webUserContext));
+        long httpSessionCreationTime = httpSession.getCreationTime();
         BindingUtil.bind( vm, new Action<>() {
             @Override
             public void accept(Val<Object> val) {
@@ -151,7 +152,9 @@ public class BindingWebSocket
                     e.printStackTrace();
                 }
             }
-            @Override public boolean canBeRemoved() { return !session.isOpen(); }
+            @Override public boolean canBeRemoved() {
+                return httpSessionCreationTime != httpSession.getCreationTime();
+            }
         });
         // Send a message to the client that sent the message
         _send(vmJson);
