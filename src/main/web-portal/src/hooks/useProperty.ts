@@ -17,7 +17,11 @@ export function useVar(
 ) : [any, (v:any) => void] {
   const [state, setState] = useState(defaultItem);
 
-  if ( vm ) varSelector(vm).get((v: any) => setState(v));
+  const prop = ( vm ? varSelector(vm) : null );
+
+  if ( prop instanceof Var )
+    prop.get((v: any) => setState(v));
+
   /*
     So the selector might select something lik this:
     vm.username();
@@ -26,7 +30,8 @@ export function useVar(
   */
   const setBothStates = (v: any) => {
     setState(v);
-    if ( vm ) varSelector(vm).set(v);
+    if ( prop instanceof Var )
+      prop.set(v);
   };
 
   return [state, setBothStates];

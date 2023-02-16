@@ -1,12 +1,18 @@
 
+import {Session} from "./Session";
+import {Constants} from "./Constants";
+import {ViewModel} from "./ViewModel";
+
 /**
  *  An immutable property wrapping an observable item.
  */
 export class Val
 {
+    protected readonly session: Session
+    protected readonly methodName: string;
+    protected readonly vm: ViewModel
     private readonly getOnceFun;
     private readonly onShowFun;
-    private readonly typeObs;
     private readonly getFun;
 
     private currentItem : any;
@@ -14,13 +20,17 @@ export class Val
 
 
     constructor(
+        session: Session,
+        methodName: string,
+        vm: ViewModel,
         get: (arg0: (arg0: any) => void) => void,
         observe: (arg0: (arg0: any) => void) => void,
-        type: (arg0: (arg0: any) => void) => void,
     ) {
+        this.session = session;
+        this.methodName = methodName;
+        this.vm = vm;
         this.getOnceFun = get;
         this.onShowFun = observe;
-        this.typeObs = type;
         this.getFun = (consumer: any) => {
             if ( this.itemLoaded ) consumer(this.currentItem);
             get( item => {
@@ -39,8 +49,14 @@ export class Val
         this.onShowFun(listener);
     }
 
-    type(listener: (arg0: any) => void) {
-        return this.typeObs(listener);
+    type(consumer: (arg0: any) => void) {
+        this.vm.vmCall(
+            this.methodName,
+            [],
+            (property: { [x: string]: any }) => {
+                consumer(property[Constants.PROP_TYPE]);
+            },
+        );
     }
 
     get(listener: (arg0: any) => void) {

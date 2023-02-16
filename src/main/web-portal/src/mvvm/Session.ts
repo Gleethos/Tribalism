@@ -42,4 +42,8 @@ export class Session {
         } // We log an error if the view model id is null
         else console.error('Expected a view model id, but got null!');
     }
+
+    send(json: {}) {
+        this.ws.send(json);
+    }
 }

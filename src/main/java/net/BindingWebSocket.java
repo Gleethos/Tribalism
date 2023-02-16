@@ -14,6 +14,7 @@ import javax.servlet.http.HttpSession;
 import java.lang.reflect.InvocationTargetException;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.Future;
 
 /**
  *  This is where the web-socket communication happens.
@@ -38,7 +39,9 @@ public class BindingWebSocket
     private void _send( JSONObject json ) {
         try {
             String message = json.toString();
-            session.getRemote().sendStringByFuture(message);
+            Future<Void> future = session.getRemote().sendStringByFuture(message);
+            // Now we wait for the message to be sent:
+            future.get();
             log.debug("Sent: " + message);
         } catch (Throwable t) {
             log.error("Error sending message to websocket!", t);

@@ -80,25 +80,7 @@ export class Backend
       const viewModel = data[Constants.EVENT_PAYLOAD];
       const vmId = viewModel[Constants.VM_ID];
 
-      const vm = new ViewModel(
-          vmId,
-          this.session,
-          viewModel,
-          this.ws,
-          (methodName: string, args: any, action: (prop: ViewModel) => void) => {
-            let key = vmId + ':' + methodName;
-            if (!this.cache.methodObservers[key]) this.cache.methodObservers[key] = [];
-            this.cache.methodObservers[key].push(action);
-            this.ws.send({
-              [Constants.EVENT_TYPE]: Constants.CALL,
-              [Constants.EVENT_PAYLOAD]: {
-                [Constants.METHOD_NAME]: methodName,
-                [Constants.METHOD_ARGS]: args,
-              },
-              [Constants.VM_ID]: vmId,
-            });
-          },
-      );
+      const vm = new ViewModel(vmId, this.session, viewModel);
 
       if (this.cache.viewModelObservers[vmId]) {
         this.cache.viewModelObservers[vmId](vm);
