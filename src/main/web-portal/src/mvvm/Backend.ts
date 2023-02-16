@@ -4,8 +4,16 @@ import {ViewModel} from "./ViewModel";
 import {Cache} from "./Cache";
 import {Session} from "./Session";
 
+const INSTANCES: { [key: string]: Backend } = {};
+
 export class Backend
 {
+    static at(serverAddress: string | URL) {
+        if (!INSTANCES[serverAddress.toString()])
+            INSTANCES[serverAddress.toString()] = new Backend(serverAddress);
+        return INSTANCES[serverAddress.toString()];
+    }
+
   /*
       The last part of the API for doing MVVM binding is the entry point
       to a web socket server connection.
@@ -15,6 +23,7 @@ export class Backend
   private readonly ws : JSONWebSocket;
   private readonly session : Session;
   private readonly cache : Cache;
+  private currentViewModelId : string = "";
 
   /**
    *  This is the entrypoint for the MVVM binding.
@@ -22,7 +31,7 @@ export class Backend
    *
    * @param serverAddress the address of the web-socket server to connect to
    */
-  constructor(serverAddress: string | URL) {
+  private constructor(serverAddress: string | URL) {
     this.cache = Cache.of(serverAddress.toString());
     this.ws = new JSONWebSocket(serverAddress);
     this.session = new Session(this.ws, this.cache);
@@ -42,6 +51,9 @@ export class Backend
       iniViewModelId: string,
       frontend: (session: Session, contentVM: ViewModel | any) => void,
   ) {
+    // We check if we are already connected to the requested view model:
+    if ( this.currentViewModelId === iniViewModelId ) return;
+    this.currentViewModelId = iniViewModelId;
     this.ws.onReceived(data => this.processResponse(data, frontend));
     this.ws.onConnected(() => this.session.sendVMRequest(iniViewModelId));
   }

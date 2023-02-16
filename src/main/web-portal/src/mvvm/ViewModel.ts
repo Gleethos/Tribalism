@@ -20,21 +20,7 @@ export class ViewModel
         session: Session, // For loading view models like this one
         vmMetaData: { [x: string]: any; methods: [any] }, // The current view model
         ws: JSONWebSocket,
-        vmCall: {
-            (methodName: any, args: any, action: any): void;
-            (
-                arg0: any,
-                arg1: any[],
-                arg2: {
-                    (): void;
-                    (property: any): void;
-                    (property: any): void;
-                    (property: any): void;
-                    (property: any): void;
-                    (property: any): void;
-                },
-            ): void;
-        }, // For calling methods, expects 3 parameters: the method name, the arguments and the action to call when the method returns
+        vmCall: (methodName: string, args: any, action: any)=>void, // For calling methods, expects 3 parameters: the method name, the arguments and the action to call when the method returns
     ) {
         // For binding to properties, expects 2 parameters: the property name and the action to call when the property changes
         const vmPropObserve = (propName: string, action: (prop: any) => void) => {

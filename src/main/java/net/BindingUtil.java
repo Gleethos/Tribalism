@@ -241,10 +241,10 @@ public class BindingUtil {
         // -> We want this to be executed on the application thread, but how?
         boolean returnsNothing = method.getReturnType().equals(Void.TYPE);
         if ( returnsNothing )
-            EventProcessor.DECOUPLED.processAppEvent(invoker::get); // Just send it to the app thread
+            EventProcessor.DECOUPLED.registerAppEvent(invoker::get); // Just send it to the app thread
         else {
             Object[] resultHolder = new Object[1];
-            EventProcessor.DECOUPLED.processAppEventNow(() -> resultHolder[0] = invoker.get()); // We need to wait for the result!
+            EventProcessor.DECOUPLED.registerAndRunAppEventNow(() -> resultHolder[0] = invoker.get()); // We need to wait for the result!
             result = resultHolder[0];
         }
 
