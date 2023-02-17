@@ -6,9 +6,19 @@ import {Session} from "./Session";
 
 const INSTANCES: { [key: string]: Backend } = {};
 
+/**
+ *  A frontend representation of the backend.
+ *  This abstracts away the details of the communication protocol with the backend,
+ *  and it allows you to load view models from the backend and get their frontend representation.
+ */
 export class Backend
 {
-    static at(serverAddress: string | URL) {
+  /**
+   * This method returns the backend instance for the given server address.
+   * If a backend instance for the given server address does not exist yet, it will be created.
+   * @param serverAddress the address of the web-socket server to connect to
+   */
+  static at(serverAddress: string | URL) {
         if (!INSTANCES[serverAddress.toString()])
             INSTANCES[serverAddress.toString()] = new Backend(serverAddress);
         return INSTANCES[serverAddress.toString()];
@@ -74,31 +84,14 @@ export class Backend
     },
     frontend: (session: Session, contentVM: ViewModel | any) => void
   ) {
+    console.log("Received data: " + JSON.stringify(data));
     // Now let's check the EventType: either a view model or a property change...
     if (data[Constants.EVENT_TYPE] === Constants.RETURN_GET_VM) {
       // We have a view model, so we can set it as the current view model:
       const viewModel = data[Constants.EVENT_PAYLOAD];
       const vmId = viewModel[Constants.VM_ID];
 
-      const vm = new ViewModel(
-          vmId,
-          this.session,
-          viewModel,
-          this.ws,
-          (methodName: string, args: any, action: (prop: ViewModel) => void) => {
-            let key = vmId + ':' + methodName;
-            if (!this.cache.methodObservers[key]) this.cache.methodObservers[key] = [];
-            this.cache.methodObservers[key].push(action);
-            this.ws.send({
-              [Constants.EVENT_TYPE]: Constants.CALL,
-              [Constants.EVENT_PAYLOAD]: {
-                [Constants.METHOD_NAME]: methodName,
-                [Constants.METHOD_ARGS]: args,
-              },
-              [Constants.VM_ID]: vmId,
-            });
-          },
-      );
+      const vm = new ViewModel(vmId, this.session, viewModel);
 
       if (this.cache.viewModelObservers[vmId]) {
         this.cache.viewModelObservers[vmId](vm);
@@ -144,7 +137,7 @@ export class Backend
       }
     }
     else if (data[Constants.EVENT_TYPE] === Constants.ERROR)
-      console.error('Server error: ' + data[Constants.EVENT_PAYLOAD]);
+      console.error('Server error: ' + JSON.stringify(data[Constants.EVENT_PAYLOAD]));
     else
       console.error(
           'Unknown event type: ' +

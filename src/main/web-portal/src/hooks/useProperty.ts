@@ -15,9 +15,20 @@ export function useVar(
   varSelector: (vm:{ [x:`${string}`]: { (): Var }; })=> Var,
   defaultItem: string | number | boolean | null | undefined,
 ) : [any, (v:any) => void] {
+
+  const prop = ( vm ? varSelector(vm) : null );
+  if ( prop?.isCached() )
+    defaultItem = prop?.getCachedItem();
+
   const [state, setState] = useState(defaultItem);
 
-  if ( vm ) varSelector(vm).get((v: any) => setState(v));
+  if ( prop instanceof Var ) {
+    if ( prop.isCached() )
+      prop.onShow((v: any) => setState(v));
+    else
+      prop.get((v: any) => setState(v));
+  }
+
   /*
     So the selector might select something lik this:
     vm.username();
@@ -26,7 +37,8 @@ export function useVar(
   */
   const setBothStates = (v: any) => {
     setState(v);
-    if ( vm ) varSelector(vm).set(v);
+    if ( prop instanceof Var )
+      prop.set(v);
   };
 
   return [state, setBothStates];
@@ -35,11 +47,21 @@ export function useVar(
 export function useVal(
     vm: any,
     valSelector: (vm:{ [x:`${string}`]: { (): Val }; })=> Val,
-    defaultValue: string | number | boolean | null | undefined,
+    defaultItem: string | number | boolean | null | undefined,
 ) : [any] {
-  const [state, setState] = useState(defaultValue);
+  const prop = ( vm ? valSelector(vm) : null );
+  if ( prop?.isCached() )
+    defaultItem = prop?.getCachedItem();
 
-  if ( vm ) valSelector(vm).get((v: any) => setState(v));
+  const [state, setState] = useState(defaultItem);
+
+  if ( prop instanceof Val ) {
+    if ( prop.isCached() )
+      prop.onShow((v: any) => setState(v));
+    else
+      prop.get((v: any) => setState(v));
+  }
+
   /*
     So the selector might select something lik this:
     vm.username();

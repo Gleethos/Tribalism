@@ -1,24 +1,29 @@
 import {Val} from "./Val";
+import {Session} from "./Session";
+import {Constants} from "./Constants";
+import {ViewModel} from "./ViewModel";
 
 /**
  *  A mutable property wrapping an observable item.
  */
 export class Var extends Val
 {
-    setFun;
-
     constructor(
-        get: (arg0: (arg0: any) => void) => void,
-        set: (newValue: any) => void,
-        observe: (arg0: (arg0: any) => void) => void,
-        type: (arg0: (arg0: any) => void) => void,
+        session: Session,
+        methodName: string,
+        vm: ViewModel
     ) {
-        super(get, observe, type);
-        this.setFun = set;
+        super(session, methodName, vm);
     }
 
-    set(item: any) {
-        this.setFun(item);
+    /**
+     * Set the value of the property both in the frontend and in the backend.
+     * @param newItem The new value of the property.
+     */
+    set(newItem: any) {
+        this.getState((propAsJson: { [x: string]: any }) => {
+                this.vm.vmPropSet(propAsJson[Constants.PROP_NAME], newItem);
+            });
     }
 
 }

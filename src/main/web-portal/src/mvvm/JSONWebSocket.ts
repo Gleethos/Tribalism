@@ -49,7 +49,8 @@ export class JSONWebSocket
             if (this.ws) {
                 // The web socket might be closed, if so we reopen it
                 // and send the message when it is open again:
-                if (this.ws.readyState !== WebSocket.CLOSED) {
+                if ( this.ws.readyState !== WebSocket.CLOSED && this.ws.readyState !== WebSocket.CLOSING ) {
+                    console.log("Sending message: " + message);
                     this.ws.send(message);
                 } else
                     this.onConnected(() => {
