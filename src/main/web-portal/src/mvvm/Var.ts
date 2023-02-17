@@ -11,15 +11,13 @@ export class Var extends Val
     constructor(
         session: Session,
         methodName: string,
-        vm: ViewModel,
-        get: (arg0: (arg0: any) => void) => void,
-        observe: (arg0: (arg0: any) => void) => void
+        vm: ViewModel
     ) {
-        super(session, methodName, vm, get, observe);
+        super(session, methodName, vm);
     }
 
     set(newItem: any) {
-        this.vm.vmCall(
+        this.vm.invoke(
             this.methodName,
             [],
             (property: { [x: string]: any }) => {
