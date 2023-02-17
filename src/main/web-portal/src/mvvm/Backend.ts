@@ -137,7 +137,7 @@ export class Backend
       }
     }
     else if (data[Constants.EVENT_TYPE] === Constants.ERROR)
-      console.error('Server error: ' + data[Constants.EVENT_PAYLOAD]);
+      console.error('Server error: ' + JSON.stringify(data[Constants.EVENT_PAYLOAD]));
     else
       console.error(
           'Unknown event type: ' +

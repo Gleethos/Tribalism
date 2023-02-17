@@ -36,16 +36,42 @@ public class BindingWebSocket
         this.httpSession = httpSession;
     }
 
+    private void _sendPending() {
+        var pendingMessage = this.webUserContext.getPendingMessage();
+        while ( pendingMessage.isPresent() ) {
+            _send(pendingMessage.get());
+            this.webUserContext.removePendingMessage();
+            pendingMessage = this.webUserContext.getPendingMessage();
+        }
+    }
+
     private void _send( JSONObject json ) {
+        String message = json.toString();
+        if ( !session.isOpen() ) {
+            this.webUserContext.addPendingMessage(message);
+            log.info("Session is closed, message will be sent later: " + message);
+            return;
+        }
+        _sendPending();
+        boolean success = _send(message);
+        if ( !success ) {
+            this.webUserContext.addPendingMessage(message);
+            log.info("Failed to send message, message will be sent later: " + message);
+        }
+    }
+
+    private boolean _send( String message ) {
         try {
-            String message = json.toString();
             Future<Void> future = session.getRemote().sendStringByFuture(message);
             // Now we wait for the message to be sent:
             future.get();
+            System.out.println("Sent: " + message);
             log.debug("Sent: " + message);
+            return true;
         } catch (Throwable t) {
             log.error("Error sending message to websocket!", t);
         }
+        return false;
     }
 
     @OnWebSocketConnect
@@ -56,6 +82,7 @@ public class BindingWebSocket
         } catch (Throwable t) {
             log.error("Error sending message to websocket!", t);
         }
+        _sendPending();
     }
 
     /**
@@ -65,6 +92,7 @@ public class BindingWebSocket
      */
     @OnWebSocketMessage
     public void onMessage(String message) {
+        System.out.println("Received: " + message);
         log.debug("Received: " + message);
 
         JSONObject json;
