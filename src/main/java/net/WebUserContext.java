@@ -1,5 +1,6 @@
 package net;
 
+import java.lang.ref.WeakReference;
 import java.util.*;
 
 /**
@@ -10,7 +11,7 @@ import java.util.*;
  */
 public class WebUserContext
 {
-    private final Map<Class, Map<Integer, Object>> _viewModels = new HashMap<>();
+    private final Map<Class, Map<Integer, WeakReference<Object>>> _viewModels = new HashMap<>();
     private final Map<Object, VMID<?>> _vmids = new WeakHashMap<>();
     private final List<String> _pendingMessages = new ArrayList<>();
 
@@ -42,7 +43,7 @@ public class WebUserContext
         // Now we try to find the class :
         try {
             var clazz = Class.forName(type);
-            return (T)_viewModels.get(clazz).get(instanceId);
+            return (T)_viewModels.get(clazz).get(instanceId).get();
         } catch (ClassNotFoundException e) {
             e.printStackTrace();
         }
@@ -58,7 +59,7 @@ public class WebUserContext
     }
 
     private <T> void _put(VMID<T> id, T viewModel ) {
-        _viewModels.computeIfAbsent(id.type(), k -> new HashMap<>()).put(id.id(), viewModel);
+        _viewModels.computeIfAbsent(id.type(), k -> new HashMap<>()).put(id.id(), new WeakReference<>(viewModel));
         _vmids.put(viewModel, id);
     }
 

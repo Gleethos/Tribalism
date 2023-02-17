@@ -1,6 +1,6 @@
 package app;
 
-import net.WebSocketEndpoint;
+import net.ConnectionServlet;
 import org.eclipse.jetty.server.Server;
 import org.eclipse.jetty.server.ServerConnector;
 import org.eclipse.jetty.servlet.DefaultServlet;
@@ -110,7 +110,7 @@ public class ServerViewModel
 
         server.setHandler(context);
 
-        ServletHolder holder = new ServletHolder(new WebSocketEndpoint(this.context));
+        ServletHolder holder = new ServletHolder(new ConnectionServlet(this.context));
         context.addServlet(holder, "/websocket/*");
         // Now a servlet for serving the actual web page
         // We do this like in spring boot, by adding a default servlet

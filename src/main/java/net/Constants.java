@@ -1,7 +1,10 @@
 package net;
 
-public class Constants {
-
+/**
+ *  This class contains all the constants used in the MVVM network protocol.
+ */
+public class Constants
+{
     public static String EVENT_TYPE = "EventType";
     public static String EVENT_PAYLOAD = "EventPayload";
 
