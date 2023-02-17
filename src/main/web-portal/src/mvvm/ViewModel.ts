@@ -14,6 +14,7 @@ export class ViewModel
 {
     private readonly session: Session;
     private readonly vmId: string;
+
     class: string;
     state: { [x: string]: any };
 

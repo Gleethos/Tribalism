@@ -16,14 +16,14 @@ export class Var extends Val
         super(session, methodName, vm);
     }
 
+    /**
+     * Set the value of the property both in the frontend and in the backend.
+     * @param newItem The new value of the property.
+     */
     set(newItem: any) {
-        this.vm.invoke(
-            this.methodName,
-            [],
-            (property: { [x: string]: any }) => {
-                this.vm.vmPropSet(property[Constants.PROP_NAME], newItem);
-            },
-        );
+        this.getState((propAsJson: { [x: string]: any }) => {
+                this.vm.vmPropSet(propAsJson[Constants.PROP_NAME], newItem);
+            });
     }
 
 }
