@@ -37,7 +37,7 @@ public class WebSocketEndpoint extends WebSocketServlet
     @Override
     public void configure(WebSocketServletFactory factory) {
         // set a 10-second idle timeout
-        factory.getPolicy().setIdleTimeout(10000);
+        factory.getPolicy().setIdleTimeout(1_000_000); // 1000 seconds = 16 minutes
         // Now we register the socket creator, which establishes a long-lived web-socket based connection
         factory.setCreator((req, res)->{
             /*

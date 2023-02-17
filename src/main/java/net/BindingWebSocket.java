@@ -28,19 +28,26 @@ public class BindingWebSocket
     private final WebUserContext webUserContext;
 
     private Session session;
-    private HttpSession httpSession;
+    private final HttpSession httpSession;
 
 
     public BindingWebSocket(WebUserContext webUserContext, HttpSession httpSession) {
         this.webUserContext = webUserContext;
         this.httpSession = httpSession;
+        log.info("Created new websocket for user: " + httpSession.getId() + " at time " + httpSession.getCreationTime());
     }
 
     private void _sendPending() {
         var pendingMessage = this.webUserContext.getPendingMessage();
         while ( pendingMessage.isPresent() ) {
-            _send(pendingMessage.get());
-            this.webUserContext.removePendingMessage();
+            boolean success = _send(pendingMessage.get());
+            if ( !success ) {
+                log.info("Failed to send pending message, message will be sent later: " + pendingMessage.get());
+                return;
+            } else {
+                log.info("Sent message delayed: " + pendingMessage.get());
+                this.webUserContext.removePendingMessage();
+            }
             pendingMessage = this.webUserContext.getPendingMessage();
         }
     }
@@ -58,6 +65,7 @@ public class BindingWebSocket
             this.webUserContext.addPendingMessage(message);
             log.info("Failed to send message, message will be sent later: " + message);
         }
+        else log.info("Sent message: " + message);
     }
 
     private boolean _send( String message ) {
@@ -65,7 +73,6 @@ public class BindingWebSocket
             Future<Void> future = session.getRemote().sendStringByFuture(message);
             // Now we wait for the message to be sent:
             future.get();
-            System.out.println("Sent: " + message);
             log.debug("Sent: " + message);
             return true;
         } catch (Throwable t) {
@@ -92,8 +99,7 @@ public class BindingWebSocket
      */
     @OnWebSocketMessage
     public void onMessage(String message) {
-        System.out.println("Received: " + message);
-        log.debug("Received: " + message);
+        log.info("Received: " + message);
 
         JSONObject json;
         try {
@@ -184,7 +190,10 @@ public class BindingWebSocket
                 }
             }
             @Override public boolean canBeRemoved() {
-                return httpSessionCreationTime != httpSession.getCreationTime();
+                boolean observerInvalid = httpSessionCreationTime != httpSession.getCreationTime();
+                if ( observerInvalid )
+                    log.info("Observer is invalid, removing it!");
+                return observerInvalid;
             }
         });
         // Send a message to the client that sent the message
