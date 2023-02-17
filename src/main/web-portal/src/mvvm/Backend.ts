@@ -56,7 +56,6 @@ export class Backend
    * @param iniViewModelId the id of the view model to load
    * @param frontend the function to call when the view model is loaded
    */
-
   connectToViewModel(
       iniViewModelId: string,
       frontend: (session: Session, contentVM: ViewModel | any) => void,
@@ -88,10 +87,10 @@ export class Backend
     // Now let's check the EventType: either a view model or a property change...
     if (data[Constants.EVENT_TYPE] === Constants.RETURN_GET_VM) {
       // We have a view model, so we can set it as the current view model:
-      const viewModel = data[Constants.EVENT_PAYLOAD];
-      const vmId = viewModel[Constants.VM_ID];
+      const vmStateAsJson = data[Constants.EVENT_PAYLOAD];
+      const vmId = vmStateAsJson[Constants.VM_ID];
 
-      const vm = new ViewModel(vmId, this.session, viewModel);
+      const vm = new ViewModel(vmId, this.session, vmStateAsJson);
 
       if (this.cache.viewModelObservers[vmId]) {
         this.cache.viewModelObservers[vmId](vm);
