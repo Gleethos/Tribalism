@@ -6,9 +6,19 @@ import {Session} from "./Session";
 
 const INSTANCES: { [key: string]: Backend } = {};
 
+/**
+ *  A frontend representation of the backend.
+ *  This abstracts away the details of the communication protocol with the backend,
+ *  and it allows you to load view models from the backend and get their frontend representation.
+ */
 export class Backend
 {
-    static at(serverAddress: string | URL) {
+  /**
+   * This method returns the backend instance for the given server address.
+   * If a backend instance for the given server address does not exist yet, it will be created.
+   * @param serverAddress the address of the web-socket server to connect to
+   */
+  static at(serverAddress: string | URL) {
         if (!INSTANCES[serverAddress.toString()])
             INSTANCES[serverAddress.toString()] = new Backend(serverAddress);
         return INSTANCES[serverAddress.toString()];
@@ -74,6 +84,7 @@ export class Backend
     },
     frontend: (session: Session, contentVM: ViewModel | any) => void
   ) {
+    console.log("Received data: " + JSON.stringify(data));
     // Now let's check the EventType: either a view model or a property change...
     if (data[Constants.EVENT_TYPE] === Constants.RETURN_GET_VM) {
       // We have a view model, so we can set it as the current view model:

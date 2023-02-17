@@ -14,6 +14,7 @@ export class ViewModel
 {
     private readonly session: Session;
     private readonly vmId: string;
+    private readonly propertyCache: { [x: string]: Val } = {};
 
     class: string;
     state: { [x: string]: any };
@@ -32,34 +33,39 @@ export class ViewModel
         const methods = vmMetaData.methods;
         for ( let i = 0; i < methods.length; i++ ) {
             const method = methods[i];
+            const methodName = method[Constants.METHOD_NAME];
+            const returnType = method[Constants.METHOD_RETURNS][Constants.TYPE_NAME];
+
             // Currently we only support void methods:
-            if (method[Constants.METHOD_RETURNS][Constants.TYPE_NAME] === 'void') {
-                attachMagic(this, method[Constants.METHOD_NAME], (...args: any) => {
-                    this.invoke(method[Constants.METHOD_NAME], args);
-                })
-            } else if (
-                method[Constants.METHOD_RETURNS][Constants.TYPE_NAME] === 'Var' ||
-                method[Constants.METHOD_RETURNS][Constants.TYPE_NAME] === 'Val'
-            ) {
-                attachMagic(this, method[Constants.METHOD_NAME], (...args: any) => {
+            if ( returnType === 'void' )
+                attachMagic(this, methodName, (...args: any) => { this.invoke(methodName, args); })
+            else if ( returnType === 'Var' || returnType === 'Val' )
+                attachMagic(this, methodName, (...args: any) => {
                     // If there are arguments, we throw an error, because we don't support that yet
                     if (args.length > 0)
                         throw new Error('We don\'t support property returning methods with arguments yet!');
 
-                    if ( method[Constants.METHOD_RETURNS][Constants.TYPE_NAME] === 'Var' )
-                        return new Var(session, method[Constants.METHOD_NAME], this);
-                    else
-                        return new Val(session, method[Constants.METHOD_NAME], this);
+                    // If there is a property in cache, we return that
+                    if (this.propertyCache[methodName])
+                        return this.propertyCache[methodName];
+
+                    // Otherwise we create a new property and return that
+                    const prop : Val = ( returnType === 'Var'
+                                            ? new Var(session, methodName, this)
+                                            : new Val(session, methodName, this)
+                                        );
+
+                    this.propertyCache[methodName] = prop;
+                    return prop;
                 });
-            }
             else
-                attachMagic(this, method[Constants.METHOD_NAME], (...args: any) => {
+                attachMagic(this, methodName, (...args: any) => {
                     return new Get((consumer: (arg0: any) => void) => {
                         this.invoke(
-                            method[Constants.METHOD_NAME],
+                            methodName,
                             args,
-                            (property: { [x: string]: any }) => {
-                                const value = property[Constants.PROP_VALUE];
+                            (propAsJson: { [x: string]: any }) => {
+                                const value = propAsJson[Constants.PROP_VALUE];
                                 consumer(value);
                             },
                         );

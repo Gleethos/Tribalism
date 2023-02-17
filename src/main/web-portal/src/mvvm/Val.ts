@@ -75,16 +75,27 @@ export class Val
     getOnce(consumer: (item: any) => void) {
         this.getState(
             (propAsJson: { [x: string]: any }) => {
+                const item = propAsJson[Constants.PROP_VALUE];
                 // If the property value is a view model, we need to load it:
                 if (propAsJson[Constants.PROP_TYPE][Constants.TYPE_IS_VM]) {
                     // We expect the property value not to be "undefined":
-                    if ( propAsJson[Constants.PROP_VALUE] !== undefined ) {
+                    if ( item !== undefined ) {
                         this.session.fetchViewModel(
-                            propAsJson[Constants.PROP_VALUE],
-                            (vm: ViewModel) => consumer(vm), // Here we expect a VM object where the user can bind to...
+                            item,
+                            (vm: ViewModel) => {
+                                this.currentItem = vm;
+                                this.itemLoaded = true;
+                                consumer(vm);
+                            }, // Here we expect a VM object where the user can bind to...
                         );
-                    } else throw 'Expected a property value, but got undefined!';
-                } else consumer(propAsJson[Constants.PROP_VALUE]); // This is a primitive value, we can just pass it on...
+                    }
+                    else throw 'Expected a property value, but got undefined!';
+                }
+                else {
+                    this.currentItem = item;
+                    this.itemLoaded = true;
+                    consumer(item);
+                } // This is a primitive value, we can just pass it on...
             });
     };
 
@@ -110,11 +121,22 @@ export class Val
         if ( this.itemLoaded ) listener(this.currentItem);
         this.getOnce( item => {
             this.currentItem = item;
+            this.itemLoaded = true;
             listener(item);
         });
         this.onShow(listener);
     }
 
+    isCached() {
+        return this.itemLoaded;
+    }
+
+    getCachedItem() {
+        if ( this.isCached() )
+            return this.currentItem;
+        else
+            throw 'The property is not cached!';
+    }
 
     toString() {
         return (this.state === null ? '{empty}' : JSON.stringify(this.state));
