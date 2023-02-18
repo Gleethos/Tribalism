@@ -5,7 +5,6 @@ import sprouts.Var;
 
 public interface Skill extends Model<Skill>
 {
-    Var<String> name();
-    Var<String> description();
-    Var<Integer> value();
+    Var<SkillType> type();
+    Var<Integer> level();
 }

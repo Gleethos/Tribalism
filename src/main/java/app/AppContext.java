@@ -2,6 +2,7 @@ package app;
 
 import app.models.Character;
 import app.models.*;
+import app.models.bootstrap.ModelTypes;
 import dal.api.DataBase;
 import net.WebUserContext;
 import sprouts.Vars;
@@ -21,6 +22,7 @@ public final class AppContext
 {
     private final App app; // The application configuration
     private final DataBase db;
+    private final ModelTypes modelTypes;
 
     private final Vars<UserContext> users = Vars.of(UserContext.class);
 
@@ -29,18 +31,7 @@ public final class AppContext
     public AppContext(App app) {
         this.app = app;
         this.db = DataBase.at(app.getDatabaseLocation());
-        this.db.createTablesFor(
-            Character.class,
-            User.class,
-            GameMaster.class,
-            World.class,
-            Player.class,
-            CharacterModel.class,
-            Ability.class,
-            AbilityType.class,
-            Skill.class,
-            Role.class
-        );
+        this.modelTypes = ModelTypes.load(db);
     }
 
     /**

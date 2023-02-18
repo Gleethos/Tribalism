@@ -1,0 +1,54 @@
+[
+  {
+    "name": "Plumber",
+    "description": "Plumbing is the installation and maintenance of pipes, fixtures, and other plumbing equipment used for water distribution and waste water disposal in a building, and includes the septic system and well. It also refers to the theory of the functioning of these systems.",
+    "abilities":[
+      {"name": "strength",     "level": 0},
+      {"name": "dexterity",    "level": 0},
+      {"name": "constitution", "level": 0},
+      {"name": "intelligence", "level": 0},
+      {"name": "wisdom",       "level": 0},
+      {"name": "charisma",     "level": 0},
+      {"name": "sensing",      "level": 0},
+      {"name": "willpower",    "level": 0}
+    ],
+    "skills": [
+      {
+        "type": "jump",
+        "level": 0
+      },
+      {
+        "type": "swim",
+        "level": 0
+      },
+      {
+        "type": "climb",
+        "level": 0
+      },
+      {
+        "type": "repair",
+        "level": 0
+      },
+      {
+        "type": "mechanics",
+        "level": 0
+      },
+      {
+        "type": "electronics",
+        "level": 0
+      },
+      {
+        "type": "firstaid",
+        "level": 0
+      },
+      {
+        "type": "survival",
+        "level": 0
+      },
+      {
+        "type": "craft",
+        "level": 0
+      }
+    ]
+  }
+]
