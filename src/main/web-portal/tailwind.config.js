@@ -4,7 +4,10 @@ module.exports = {
   theme: {
     extend: {
       backgroundImage: {
-        'survival-1': "url('../public/survival-1.png')",
+        'survival-1':
+          "url('../public/survivor-standing-in-postapocalyptic-city.png')",
+        'survival-4':
+          "url('../public/survivor-looking-out-of-window-at-burning-plane.png')",
       },
     },
   },

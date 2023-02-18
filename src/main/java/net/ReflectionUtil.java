@@ -5,19 +5,13 @@ import org.json.JSONObject;
 import sprouts.Action;
 import sprouts.Val;
 import sprouts.Var;
-import swingtree.EventProcessor;
 import swingtree.api.mvvm.Viewable;
 
-import java.awt.*;
-import java.lang.reflect.InvocationTargetException;
-import java.lang.reflect.Method;
-import java.util.ArrayList;
 import java.util.List;
-import java.util.function.Supplier;
 
-public class BindingUtil {
+public class ReflectionUtil {
 
-    private BindingUtil() {}
+    private ReflectionUtil() {}
 
 
     /**
@@ -43,7 +37,7 @@ public class BindingUtil {
 
 
     public static <T> Var<T> findViewModelPropById( Object vm, String id ) {
-        return BindingUtil.findPropertiesInViewModel(vm)
+        return ReflectionUtil.findPropertiesInViewModel(vm)
                 .stream()
                 .filter( p -> p instanceof Var<?> )
                 .map( p -> (Var<T>) p )
@@ -58,7 +52,7 @@ public class BindingUtil {
 
 
     public static void applyToViewModelPropertyById(Object vm, String id, String newValue ) {
-        Var<Object> prop = BindingUtil.findViewModelPropById(vm, id);
+        Var<Object> prop = ReflectionUtil.findViewModelPropById(vm, id);
 
         if ( newValue == null ) {
             if ( prop.allowsNull() )
@@ -168,115 +162,14 @@ public class BindingUtil {
         }
     }
 
-    public static JSONObject callViewModelMethod(
-            Object vm,
-            JSONObject methodCallData,
-            WebUserContext webUserContext
-    ) throws NoSuchMethodException, InvocationTargetException, IllegalAccessException, ClassNotFoundException {
-        /*
-            The call request should look like this:
-            {
-                "method":"bar",
-                "args":[{"name":"xy", "value": 5}]
-            }
-        */
-        String methodName = methodCallData.getString(Constants.METHOD_NAME);
-        var args = methodCallData.getJSONArray(Constants.METHOD_ARGS);
-        var methodArgs     = new Object[args.length()];
-        var methodArgNames = new String[args.length()];
-        var methodArgTypes = new Class[args.length()];
-        for (int i = 0; i < args.length(); i++) {
-            var arg = args.getJSONObject(i);
-            String argName = arg.getString(Constants.METHOD_ARG_NAME);
-            String argType = arg.getString(Constants.METHOD_ARG_TYPE);
-            Object argValue = arg.get(Constants.PROP_VALUE);
-            if ( argValue != null ) {
-                String valueType = argValue.getClass().getSimpleName();
-                // Lets do some type checking and try to convert the value if possible!
-                if ( valueType.equals("String") ) {
-                    if (argType.equals("int")||argType.equals("Integer"))
-                        argValue = Integer.parseInt(argValue.toString());
-                    else if (argType.equals("long")||argType.equals("Long"))
-                        argValue = Long.parseLong(argValue.toString());
-                    else if (argType.equals("double")||argType.equals("Double"))
-                        argValue = Double.parseDouble(argValue.toString());
-                    else if (argType.equals("float")||argType.equals("Float"))
-                        argValue = Float.parseFloat(argValue.toString());
-                    else if (argType.equals("boolean")||argType.equals("Boolean"))
-                        argValue = Boolean.parseBoolean(argValue.toString());
-                }
-            }
-            methodArgs[i] = argValue;
-            methodArgNames[i] = argName;
-            methodArgTypes[i] = Class.forName(argType);
-        }
-
-        Method method;
-        Object result = null;
-        Supplier<Object> invoker;
-        if ( methodArgs.length == 0 ) {
-            method = vm.getClass().getMethod(methodName);
-            invoker = () -> {
-                try {
-                    return method.invoke(vm);
-                } catch (IllegalAccessException | InvocationTargetException e) {
-                    e.printStackTrace();
-                }
-                return null;
-            };
-        } else {
-            method = vm.getClass().getMethod(methodName, methodArgs[0].getClass());
-            invoker = () -> {
-                try {
-                    return method.invoke(vm, methodArgs[0]);
-                } catch (IllegalAccessException | InvocationTargetException e) {
-                    e.printStackTrace();
-                }
-                return null;
-            };
-        }
-
-        // Now we need to check if the method is returning void or not!
-        // This is important with respect to the threading
-        // -> We want this to be executed on the application thread, but how?
-        boolean returnsNothing = method.getReturnType().equals(Void.TYPE);
-        if ( returnsNothing )
-            EventProcessor.DECOUPLED.processAppEvent(invoker::get); // Just send it to the app thread
-        else {
-            Object[] resultHolder = new Object[1];
-            EventProcessor.DECOUPLED.processAppEventNow(() -> resultHolder[0] = invoker.get()); // We need to wait for the result!
-            result = resultHolder[0];
-        }
-
-        if ( result instanceof Val<?> property ) {
-            result = BindingUtil.jsonFromProperty(property, webUserContext);
-        }
-        return new JSONObject()
-                .put(Constants.METHOD_NAME, methodName)
-                .put(Constants.METHOD_RETURNS, result);
-    }
-
     public static void bind(
             Object vm,
             Action<Val<Object>> observer
     ) {
-        BindingUtil.findPropertiesInViewModel(vm).forEach(p -> p.onSet(observer) );
+        ReflectionUtil.findPropertiesInViewModel(vm).forEach(p -> p.onSet(observer) );
     }
 
-    public static JSONObject toJson(Object vm, WebUserContext webUserContext) {
-        JSONObject json = new JSONObject();
-        for ( var property : BindingUtil.findPropertiesInViewModel(vm) )
-            json.put(property.id(), BindingUtil.jsonFromProperty(property, webUserContext));
-
-        JSONObject result = new JSONObject();
-        result.put(Constants.PROPS, json);
-        result.put(Constants.CLASS_NAME, vm.getClass().getName());
-        result.put(Constants.VM_ID, webUserContext.vmIdOf(vm).toString());
-        result.put("methods", _getMethodsForViewModel(vm));
-        return result;
-    }
-
-    private static JSONArray _getMethodsForViewModel(Object vm) {
+    static JSONArray getMethodsForViewModel(Object vm) {
         var publicMethods = new JSONArray();
         /*
             So lets say we have a class like this:
@@ -322,66 +215,6 @@ public class BindingUtil {
             }
         }
         return publicMethods;
-    }
-
-
-    public static JSONObject jsonFromProperty(
-            Val<?> property,
-            WebUserContext webUserContext
-    ) {
-        Class<?> type = property.type();
-        List<String> knownStates = new ArrayList<>();
-        if ( Enum.class.isAssignableFrom(type) ) {
-            for ( var state : type.getEnumConstants() )
-                knownStates.add(((Enum)state).name());
-        }
-        JSONObject json = new JSONObject();
-        json.put(Constants.PROP_NAME, property.id());
-        json.put(Constants.PROP_VALUE, toJsonCompatibleValueFromProperty(property, webUserContext));
-        json.put(Constants.PROP_TYPE,
-                new JSONObject()
-                        .put(Constants.PROP_TYPE_NAME, type.getName())
-                        .put(Constants.PROP_TYPE_STATES, knownStates)
-                        .put(Constants.TYPE_IS_VM, Viewable.class.isAssignableFrom(type))
-        );
-
-        return json;
-    }
-
-
-    private static Object toJsonCompatibleValueFromProperty( Val<?> prop, WebUserContext webUserContext) {
-
-        if ( prop.isEmpty() ) // We return a json null if the property is empty
-            return JSONObject.NULL;
-
-
-        if ( prop.type() == Boolean.class )
-            return prop.get();
-        else if ( prop.type() == Integer.class )
-            return prop.get();
-        else if ( prop.type() == Double.class )
-            return prop.get();
-        else if ( prop.type() == Enum.class )
-            return ((Enum)prop.get()).name();
-        else if (Viewable.class.isAssignableFrom(prop.type())) {
-            Viewable viewable = (Viewable) prop.get();
-            if ( !webUserContext.hasVM(viewable) ) webUserContext.put(viewable);
-
-            // We do not send the entire viewable object, but only the id
-            return webUserContext.vmIdOf(viewable).toString();
-        }
-        else if ( prop.type() == Color.class ) {
-            // In the frontend colors are usually hex strings
-            Color color = (Color) prop.get();
-            return String.format("#%02x%02x%02x", color.getRed(), color.getGreen(), color.getBlue());
-        }
-
-        Object value = prop.get();
-        String asString = String.valueOf(value);
-        asString = asString.replace("\"", "\\\"");
-        asString = asString.replace("\r", "\\r");
-        asString = asString.replace("\n", "\\n");
-        return asString;
     }
 
 }

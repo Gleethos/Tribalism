@@ -1,8 +1,7 @@
 package net;
 
-import java.util.HashMap;
-import java.util.Map;
-import java.util.WeakHashMap;
+import java.lang.ref.WeakReference;
+import java.util.*;
 
 /**
  *  Mostly a register for view model instances specific to a single web-user.
@@ -12,10 +11,24 @@ import java.util.WeakHashMap;
  */
 public class WebUserContext
 {
-    private final Map<Class, Map<Integer, Object>> _viewModels = new HashMap<>();
+    private final Map<Class, Map<Integer, WeakReference<Object>>> _viewModels = new HashMap<>();
     private final Map<Object, VMID<?>> _vmids = new WeakHashMap<>();
+    private final List<String> _pendingMessages = new ArrayList<>();
+
 
     public WebUserContext() {}
+
+    public void addPendingMessage(String message) { _pendingMessages.add(message); }
+
+    public Optional<String> getPendingMessage() {
+        if ( _pendingMessages.isEmpty() ) return Optional.empty();
+        return Optional.of(_pendingMessages.get(0));
+    }
+
+    public void removePendingMessage() {
+        if ( _pendingMessages.isEmpty() ) return;
+        _pendingMessages.remove(0);
+    }
 
     public <T> T get( VMID<T> id ) {
         return (T)_viewModels.get(id.type()).get(id.id());
@@ -30,7 +43,7 @@ public class WebUserContext
         // Now we try to find the class :
         try {
             var clazz = Class.forName(type);
-            return (T)_viewModels.get(clazz).get(instanceId);
+            return (T)_viewModels.get(clazz).get(instanceId).get();
         } catch (ClassNotFoundException e) {
             e.printStackTrace();
         }
@@ -46,7 +59,7 @@ public class WebUserContext
     }
 
     private <T> void _put(VMID<T> id, T viewModel ) {
-        _viewModels.computeIfAbsent(id.type(), k -> new HashMap<>()).put(id.id(), viewModel);
+        _viewModels.computeIfAbsent(id.type(), k -> new HashMap<>()).put(id.id(), new WeakReference<>(viewModel));
         _vmids.put(viewModel, id);
     }
 

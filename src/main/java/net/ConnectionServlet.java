@@ -9,13 +9,13 @@ import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
- *  The {@link WebSocketEndpoint} establishes a long-lived web-socket
+ *  The {@link ConnectionServlet} establishes a long-lived web-socket
  *  connection between the web-frontend and the server.
  *  Here the web-socket communication is only established, communication happens
- *  in the {@link BindingWebSocket} class, which is associated with a specific
+ *  in the {@link Connection} class, which is associated with a specific
  *  {@link WebUserContext}.
  */
-public class WebSocketEndpoint extends WebSocketServlet
+public class ConnectionServlet extends WebSocketServlet
 {
     private final AppContext appContext;
 
@@ -26,7 +26,7 @@ public class WebSocketEndpoint extends WebSocketServlet
      */
     private final Map<String, WebUserContext> userContexts = new ConcurrentHashMap<>();
 
-    public WebSocketEndpoint(AppContext appContext) {
+    public ConnectionServlet(AppContext appContext) {
         this.appContext = appContext;
     }
 
@@ -36,8 +36,8 @@ public class WebSocketEndpoint extends WebSocketServlet
      */
     @Override
     public void configure(WebSocketServletFactory factory) {
-        // set a 10-second idle timeout
-        factory.getPolicy().setIdleTimeout(10000);
+        // set a 1000-second idle timeout (16 minutes)
+        factory.getPolicy().setIdleTimeout(1_000_000); 
         // Now we register the socket creator, which establishes a long-lived web-socket based connection
         factory.setCreator((req, res)->{
             /*
@@ -74,7 +74,7 @@ public class WebSocketEndpoint extends WebSocketServlet
                 userContext = userContexts.get(httpSession.getId());
 
             // Now we return a new web-socket which is bound to the user context:
-            return new BindingWebSocket(userContext, httpSession);
+            return new Connection(userContext, httpSession);
         });
     }
 }
