@@ -30,6 +30,8 @@ public class ServerViewModel
     private final Var<String> buttonText;
     private final Var<String> statusText;
 
+    private final Var<String> webPortalLocation = Var.of("src/main/resources/web");
+
     private final AppContext context;
     private Server server;
 
@@ -63,6 +65,8 @@ public class ServerViewModel
     public Val<String> buttonText() { return buttonText; }
 
     public Val<String> statusText() { return statusText; }
+
+    public Var<String> webPortalLocation() { return webPortalLocation; }
 
     /**
      *  This method is called when the user clicks the start/stop button.
@@ -105,7 +109,7 @@ public class ServerViewModel
         // Set up the web socket endpoint
         ServletContextHandler context = new ServletContextHandler(ServletContextHandler.SESSIONS);
         context.setContextPath("/");
-        context.setResourceBase("src/main/resources");
+        context.setResourceBase(webPortalLocation.get());
         context.getSessionHandler().setMaxInactiveInterval( 60 * 60 * 24 ); // Who plays longer than a day?
 
         server.setHandler(context);
@@ -127,6 +131,20 @@ public class ServerViewModel
         status.set(Status.ONLINE);
         buttonText.set("Stop");
         statusText.set("...running!");
+    }
+
+    /**
+     *  This method is called when the user clicks the open web portal button.
+     *  It opens the web portal in the user's default browser.
+     */
+    public void openWebPortal() {
+        if ( status.is(Status.ONLINE) ) {
+            try {
+                java.awt.Desktop.getDesktop().browse(java.net.URI.create("http://localhost:" + port.get()));
+            } catch (java.io.IOException e) {
+                System.out.println(e.getMessage());
+            }
+        }
     }
 
     public JComponent createView() { return new ServerView(this); }
