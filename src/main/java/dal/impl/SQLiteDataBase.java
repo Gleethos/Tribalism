@@ -87,13 +87,46 @@ public class SQLiteDataBase extends AbstractDataBase
 
 
     private List<String> getCreateTableStatements() {
-        List<String> existingTables = listOfAllTableNames();
+        List<String> allExistingTables = listOfAllTableNames();
         List<String> statements = new ArrayList<>();
         for ( ModelTable modelTable : _modelRegistry.getTables() ) {
-            if ( !existingTables.contains(modelTable.getTableName()) )
+            if ( !allExistingTables.contains(modelTable.getTableName()) )
                 statements.add(modelTable.createTableStatement());
-            else
+            else {
                 log.info("Table " + modelTable.getTableName() + " already exists!");
+                var collision = modelTable.getTableName();
+                var statement = modelTable.createTableStatement();
+                /*
+                    Before we return the statements we need to carefully look at the table name collisions.
+                    For every single table name collision we need to check if the sql code of the table
+                    is the same as the sql code of the table we are trying to create!
+                    If it is not the same we need to throw an exception because
+                    it means that the database is in an inconsistent state with the model (source code).
+                */
+                var tableSQL = sqlCodeOfTable(modelTable.getTableName());
+                // Before checking for equality we strip both strings of all executive whitespace and
+                // other characters that are not part of the sql code like newlines and tabs.
+                tableSQL = tableSQL.replaceAll("\\s+", " ").trim();
+                statement = statement.replaceAll("\\s+", " ").trim();
+                // Next we remove SQL syntax that is not part of the table definition
+                tableSQL = tableSQL.replace("CREATE TABLE IF NOT EXISTS ", "CREATE TABLE ");
+                statement = statement.replace("CREATE TABLE IF NOT EXISTS ", "CREATE TABLE ");
+                // We trim semicolons from the end of the sql code
+                if ( tableSQL.endsWith(";") )
+                    tableSQL = tableSQL.substring(0, tableSQL.length()-1);
+                if ( statement.endsWith(";") )
+                    statement = statement.substring(0, statement.length()-1);
+                // We check for equality
+                if ( !tableSQL.equals(statement) ) {
+                    throw new IllegalStateException(
+                            "The table '" + collision + "' already exists in the database, \nbut the sql " +
+                            "code of the table does not match the the table statement representing " +
+                            "the model. \nThis means that the database is not compatible with the source code " +
+                            "of the model. \nThe sql code of the table is: \n'" + tableSQL + "', \nand the table " +
+                            "statement representing the source code model is: \n'" + statement + "'."
+                        );
+                }
+            }
         }
         return statements;
     }
@@ -117,6 +150,20 @@ public class SQLiteDataBase extends AbstractDataBase
             throw new IllegalArgumentException("The model '" + model.getName() + "' does not have a table in the database!");
         if ( result.size() > 1 )
             throw new IllegalArgumentException("There are multiple tables for the model '" + model.getName() + "' in the database!");
+        return (String) result.get("sql").get(0);
+    }
+
+    public String sqlCodeOfTable(String tableName) {
+        // We query the database for the sql code of the table
+        var sql = new StringBuilder();
+        sql.append("SELECT sql FROM sqlite_master WHERE type='table' AND name='");
+        sql.append(tableName);
+        sql.append("'");
+        Map<String, List<Object>> result = _query(sql.toString());
+        if ( result.isEmpty() )
+            throw new IllegalArgumentException("The table '" + tableName + "' does not exist in the database!");
+        if ( result.size() > 1 )
+            throw new IllegalArgumentException("There are multiple tables for the name '" + tableName + "' in the database!");
         return (String) result.get("sql").get(0);
     }
 

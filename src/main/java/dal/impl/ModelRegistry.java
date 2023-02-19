@@ -60,7 +60,7 @@ class ModelRegistry
             and then remove them from the map and repeat the process until the map is empty.
         */
         List<Class<?>> sortedModels = new ArrayList<>();
-        Map<Class<?>, List<Class<?>>> modelReferences = new HashMap<>();
+        Map<Class<?>, List<Class<?>>> modelReferences = new LinkedHashMap<>();
         List<ModelTable> intermediateTables = new ArrayList<>();
 
         for (ModelTable modelTable : newModelTables.values()) {
