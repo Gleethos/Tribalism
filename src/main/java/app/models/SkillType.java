@@ -7,4 +7,8 @@ public interface SkillType extends Model<SkillType>
 {
     Var<String> name();
     Var<String> description();
+
+    Var<String> primaryAbility();
+    Var<String> secondaryAbility();
+    Var<String> tertiaryAbility();
 }

@@ -119,11 +119,14 @@ public class SQLiteDataBase extends AbstractDataBase
                 // We check for equality
                 if ( !tableSQL.equals(statement) ) {
                     throw new IllegalStateException(
-                            "The table '" + collision + "' already exists in the database, \nbut the sql " +
-                            "code of the table does not match the the table statement representing " +
-                            "the model. \nThis means that the database is not compatible with the source code " +
-                            "of the model. \nThe sql code of the table is: \n'" + tableSQL + "', \nand the table " +
-                            "statement representing the source code model is: \n'" + statement + "'."
+                            "The database at '" + getURL() + "' is not compatible with the provided source code model" +
+                            modelTable.getModelInterface().map( m -> " '" + m.getName() + "'" ).orElse("") + "! \n" +
+                            "The sql code of table '" + collision + "' encountered inside the database, \n" +
+                            "does not match the table statement generated from " +
+                            "the model source code. \nThis means that the database is not compatible with the source code " +
+                            "of the model" + modelTable.getModelInterface().map( m -> " '" + m.getName() + "'" ).orElse("") +
+                            ". \nThe sql code of the table is: \n'" + tableSQL + "', \nwhereas the table " +
+                            "statement necessary for representing the current model interface is: \n'" + statement + "'."
                         );
                 }
             }

@@ -6,6 +6,7 @@ import org.json.JSONArray;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.io.File;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -17,6 +18,7 @@ public class RoleTypes
 
     private final List<Role> roles = new ArrayList<>();
     private final Map<String, Role> rolesByName = new HashMap<>();
+    private final String workingDirectory;
 
     public RoleTypes(
             DataBase db,
@@ -24,9 +26,25 @@ public class RoleTypes
             AbilityTypes abilityTypes,
             SkillTypes skillTypes
     ) {
+        this.workingDirectory = workingDirectory;
         // We load the roles in the order they are defined in the role-types.json file.
         // The roles are in the resource folder at src/main/resources/app/constants/role-types.json
         var location = "/app/bootstrap/role-types.json";
+        // We check if the file already exists in the working directory!
+        // If so, we load it from there, otherwise we load it from the resource folder.
+        if ( new File(workingDirectory + "/role-types.json" ).exists() )
+            location = workingDirectory + "/role-types.json";
+        loadFromLocation(db, location, abilityTypes, skillTypes);
+        saveAsJSONToWorkingDirectory(db);
+    }
+
+    private void loadFromLocation(
+            DataBase db,
+            String location,
+            AbilityTypes abilityTypes,
+            SkillTypes skillTypes
+    ) {
+
         String jsonText = null;
         // We load the json file into a string:
         try (var in = getClass().getResourceAsStream(location)) {
@@ -36,7 +54,6 @@ public class RoleTypes
             throw new RuntimeException("Could not load " + location);
         }
         /*
-
            The json content might look something like this:
            [
               {
@@ -52,16 +69,7 @@ public class RoleTypes
                       {"name": "sensing",      "level": -1},
                       {"name": "willpower",    "level": 1}
                     ],
-                "skills": [
-                  {
-                    "type": "jump", // references the skill type by name
-                    "level": 0
-                  }, {
-                    "type": "swim",
-                    "level": 1
-                  },
-                  ...
-                ]
+                "skills": [...]
               },
               ...
             ]
@@ -122,6 +130,39 @@ public class RoleTypes
                 newSkill.isProficient().set(isProficient);
                 newSkill.learnability().set(learnability);
             }
+        }
+    }
+
+    private void saveAsJSONToWorkingDirectory(DataBase db) {
+        var json = new JSONArray();
+        for (var role : roles) {
+            var jsonRole = new org.json.JSONObject();
+            jsonRole.put("name", role.name().get());
+            jsonRole.put("description", role.description().get());
+            var jsonAbilities = new JSONArray();
+            for (var ability : role.abilities()) {
+                var jsonAbility = new org.json.JSONObject();
+                jsonAbility.put("name", ability.type().get().name().get());
+                jsonAbility.put("level", ability.level().get());
+                jsonAbilities.put(jsonAbility);
+            }
+            jsonRole.put("abilities", jsonAbilities);
+            var jsonSkills = new JSONArray();
+            for (var skill : role.skills()) {
+                var jsonSkill = new org.json.JSONObject();
+                jsonSkill.put("name", skill.type().get().name().get());
+                jsonSkill.put("level", skill.level().get());
+                jsonSkill.put("proficient", skill.isProficient().get());
+                jsonSkill.put("learnability", skill.learnability().get());
+                jsonSkills.put(jsonSkill);
+            }
+            jsonRole.put("skills", jsonSkills);
+            json.put(jsonRole);
+        }
+        try (var out = new java.io.FileWriter(workingDirectory + "/role-types.json")) {
+            out.write(json.toString(4));
+        } catch (Exception e) {
+            log.error("Failed to save 'role-types.json'!", e);
         }
     }
 
