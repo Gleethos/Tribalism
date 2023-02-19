@@ -5,19 +5,11 @@ import app.models.Character;
 
 public class ModelTypes
 {
-    private static ModelTypes _INSTANCE = null;
-
     private final AbilityTypes abilityTypes;
     private final RoleTypes roleTypes;
     private final SkillTypes skillTypes;
 
-    public static ModelTypes load(dal.api.DataBase db) {
-        if (_INSTANCE != null) return _INSTANCE;
-        _INSTANCE = new ModelTypes(db);
-        return _INSTANCE;
-    }
-
-    private ModelTypes(dal.api.DataBase db) {
+    public ModelTypes(dal.api.DataBase db, String workingDirectory) {
         db.createTablesFor(
                 Character.class,
                 User.class,
@@ -31,9 +23,9 @@ public class ModelTypes
                 SkillType.class,
                 Role.class
         );
-        abilityTypes = AbilityTypes.load(db);
-        roleTypes = RoleTypes.load(db);
-        skillTypes = SkillTypes.load(db);
+        abilityTypes = new AbilityTypes(db, workingDirectory);
+        skillTypes   = new SkillTypes(db, workingDirectory);
+        roleTypes    = new RoleTypes(db, workingDirectory, abilityTypes, skillTypes);
     }
 
     public AbilityTypes abilityTypes() {

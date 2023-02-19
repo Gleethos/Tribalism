@@ -30,8 +30,8 @@ public final class AppContext
 
     public AppContext(App app) {
         this.app = app;
-        this.db = DataBase.at(app.getDatabaseLocation());
-        this.modelTypes = ModelTypes.load(db);
+        this.db = DataBase.at(app.getDatabaseLocation()+App.SAVE_FILE_NAME);
+        this.modelTypes = new ModelTypes(db, app.getDatabaseLocation());
     }
 
     /**

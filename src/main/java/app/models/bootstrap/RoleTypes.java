@@ -13,22 +13,17 @@ import java.util.Map;
 
 public class RoleTypes
 {
-    private static Logger log = LoggerFactory.getLogger(RoleTypes.class);
-    private static RoleTypes _INSTANCE = null;
+    private static final Logger log = LoggerFactory.getLogger(RoleTypes.class);
 
     private final List<Role> roles = new ArrayList<>();
     private final Map<String, Role> rolesByName = new HashMap<>();
 
-    public static RoleTypes load(DataBase db) {
-        if (_INSTANCE != null) return _INSTANCE;
-        _INSTANCE = new RoleTypes(db);
-        return _INSTANCE;
-    }
-
-
-    private RoleTypes(DataBase db) {
-        AbilityTypes abilityTypes = AbilityTypes.load(db);
-        SkillTypes skillTypes = SkillTypes.load(db);
+    public RoleTypes(
+            DataBase db,
+            String workingDirectory,
+            AbilityTypes abilityTypes,
+            SkillTypes skillTypes
+    ) {
         // We load the roles in the order they are defined in the role-types.json file.
         // The roles are in the resource folder at src/main/resources/app/constants/role-types.json
         var location = "/app/bootstrap/role-types.json";
@@ -118,10 +113,14 @@ public class RoleTypes
                 var skill = skills.getJSONObject(j);
                 var skillName  = skill.getString("name");
                 var skillLevel = skill.getInt("level");
+                var isProficient = skill.getBoolean("proficient");
+                var learnability = skill.getDouble("learnability");
                 var skillType  = skillTypes.findByName(skillName).orElseThrow();
                 var newSkill   = db.create(Skill.class);
                 newSkill.type().set(skillType);
                 newSkill.level().set(skillLevel);
+                newSkill.isProficient().set(isProficient);
+                newSkill.learnability().set(learnability);
             }
         }
     }

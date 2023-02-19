@@ -55,7 +55,7 @@ abstract class AbstractDataBase implements DataBase {
      */
     protected void _createAndOrConnectToDatabase() throws SQLException
     {
-        _LOG.info("Establishing connection to database url '"+_url+"' now!");
+        _LOG.info("Establishing connection to database url '"+_url+"' now.");
         try {
             Class<?> dbDriver = Class.forName("org.sqlite.JDBC");
         } catch (Exception e) {

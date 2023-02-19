@@ -7,20 +7,11 @@ import java.util.*;
 
 public class AbilityTypes
 {
-    private static AbilityTypes _INSTANCE = null;
-
     private final List<AbilityType> abilityTypes = new ArrayList<>();
     private final Map<String, AbilityType> abilityTypesByName = new HashMap<>();
 
 
-    public static AbilityTypes load(DataBase db) {
-        if (_INSTANCE != null) return _INSTANCE;
-        _INSTANCE = new AbilityTypes(db);
-        return _INSTANCE;
-    }
-
-
-    private AbilityTypes(DataBase db) {
+    public AbilityTypes(DataBase db, String workingDirectory) {
         // We load the ability types in the order they are defined in the ability-types.json file.
         // The abilities are in the resource folder at src/main/resources/app/constants/ability-types.json
         var location = "/app/bootstrap/ability-types.json";

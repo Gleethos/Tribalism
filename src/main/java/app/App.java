@@ -13,6 +13,8 @@ import swingtree.UI;
  */
 public final class App implements Runnable
 {
+    public static String SAVE_FILE_NAME = "tribalism.db";
+
     /**
      *  We are using SQLite as the database engine, which stores all of its data in a single file,
      *  in essence it's an application save file.
@@ -20,14 +22,14 @@ public final class App implements Runnable
      *  determine the location of the database file.
      *  <p>
      *  An example of using this parameter would be: <br>
-     *  <code>java -jar tribalism.jar --at /home/user/tribalism.db</code>
+     *  <code>java -jar tribalism.jar --at /home/user/myTribalismApp</code>
      */
     @Parameter(
         names={"--at"},
         description = "The location of the database file.",
         arity = 1
     )
-    private String databaseLocation = "saves/sqlite.db";
+    private String databaseLocation = "saves/";
 
     /**
      * The Tribalism application is a hybrid desktop/web application, meaning it can be used

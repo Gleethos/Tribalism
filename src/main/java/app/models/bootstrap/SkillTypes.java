@@ -7,20 +7,11 @@ import java.util.*;
 
 public class SkillTypes
 {
-    private static SkillTypes _INSTANCE = null;
-
     private final List<SkillType> skillTypes = new ArrayList<>();
     private final Map<String, SkillType> skillTypesByName = new HashMap<>();
 
 
-    public static SkillTypes load(DataBase db) {
-        if (_INSTANCE != null) return _INSTANCE;
-        _INSTANCE = new SkillTypes(db);
-        return _INSTANCE;
-    }
-
-
-    private SkillTypes(DataBase db) {
+    public SkillTypes(DataBase db, String workingDirectory) {
         // We load the skill types in the order they are defined in the skills.json file.
         // The skills are in the resource folder at src/main/resources/app/constants/skill-types.json
         var location = "/app/bootstrap/skill-types.json";
