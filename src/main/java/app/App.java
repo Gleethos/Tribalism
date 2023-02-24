@@ -116,15 +116,27 @@ public final class App implements Runnable
 
     @Override
     public void run() {
-        var app = createRootViewModel();
-        if ( !isHeadless() ) {
-            FlatLightLaf.setup();
-            UI.show(
-                UI.use(EventProcessor.DECOUPLED, () -> new RootView(app))
-            );
+        try {
+            var app = createRootViewModel();
+            if (!isHeadless()) {
+                FlatLightLaf.setup();
+                UI.show(
+                    UI.use(EventProcessor.DECOUPLED, () -> new RootView(app))
+                );
+            } else
+                UI.joinDecoupledEventProcessor(); // We are using the Swing-Tree event processor!
+        } catch (Exception e) {
+            // Something went severely wrong! What do we do?
+            // Well we don't want to let our users hanging! We need to let them know what happened!
+            // So first we print it:
+            e.printStackTrace();
+            // And if the application is not headless, we display something more user-friendly:
+            if (!isHeadless()) {
+                FlatLightLaf.setup();
+                UI.show(UI.use(EventProcessor.DECOUPLED, () -> new FatalErrorView(e)));
+            }
+            else System.exit(1); // We have to exit the application, otherwise it will hang!
         }
-        else
-            UI.joinDecoupledEventProcessor(); // We are using the Swing-Tree event processor!
     }
 
     /**
