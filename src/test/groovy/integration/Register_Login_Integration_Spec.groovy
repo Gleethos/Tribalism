@@ -53,8 +53,8 @@ class Register_Login_Integration_Spec extends GebSpec
             RootViewModel root = app.createRootViewModel() // This is the root view model of the application
         when :
             var serverVM = root.serverViewModel()
-            var databaseVM = root.createDataBaseViewModel()
-            var mainVM = root.createMainViewModel()
+            var databaseVM = root.dataBaseViewModel()
+            var mainVM = root.mainViewModel()
         then :
             serverVM != null
             databaseVM != null

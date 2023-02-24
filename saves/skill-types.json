@@ -51,7 +51,7 @@
     {
         "primary ability": "",
         "secondary ability": "",
-        "name": "Catch",
+        "name": "\u0003",
         "tertiary ability": "",
         "description": ""
     },
@@ -710,6 +710,13 @@
         "primary ability": "",
         "secondary ability": "",
         "name": "Weapon Throwing",
+        "tertiary ability": "",
+        "description": ""
+    },
+    {
+        "primary ability": "",
+        "secondary ability": "",
+        "name": "Catch",
         "tertiary ability": "",
         "description": ""
     }

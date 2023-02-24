@@ -1,14 +1,14 @@
 package app;
 
-import app.models.Character;
 import app.models.*;
 import app.models.bootstrap.ModelTypes;
 import dal.api.DataBase;
-import dal.api.QueryProcessor;
+import dal.api.DataBaseProcessor;
 import net.WebUserContext;
 import sprouts.Vars;
 import swingtree.EventProcessor;
 
+import java.util.List;
 import java.util.Optional;
 
 /**
@@ -36,9 +36,9 @@ public final class AppContext
         this.modelTypes = new ModelTypes(db, app.getDatabaseLocation());
     }
 
-    private QueryProcessor createQueryProcessor() {
+    private DataBaseProcessor createQueryProcessor() {
         var mainThread = Thread.currentThread();
-        return new QueryProcessor() {
+        return new DataBaseProcessor() {
             @Override
             public void process(Runnable task) {
                 if ( Thread.currentThread() == mainThread ) {
@@ -56,6 +56,8 @@ public final class AppContext
                 }
                 EventProcessor.DECOUPLED.registerAndRunAppEventNow(task);
             }
+
+            @Override public List<Thread> getThreads() { return List.of(mainThread); }
         };
     }
 

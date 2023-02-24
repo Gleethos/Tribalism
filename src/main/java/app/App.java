@@ -79,6 +79,21 @@ public final class App implements Runnable
     )
     private boolean headless = false;
 
+    /**
+     * This parameter is used to determine whether the developer views should be shown or not
+     * when the application is launched.
+     * If the application is launched in headless mode, this parameter is ignored, because
+     * the headless mode turns off all desktop UI, including the developer views.
+     * <p>
+     * An example of using this parameter would be: <br>
+     * <code>java -jar tribalism.jar --show-dev-views true</code>
+     */
+    @Parameter(
+        names={"--show-dev-views"},
+        description="Shows the developer views, which give insight into the database, server and application constants.",
+        arity = 1
+    )
+    private boolean devViews = true;
 
     /**
      * @return True if the server should be started immediately after application launch or not.
@@ -114,14 +129,19 @@ public final class App implements Runnable
      */
     public boolean isHeadless() { return headless; }
 
+    /**
+     * @return True if the developer views should be shown.
+     */
+    public boolean isDevViews() { return devViews; }
+
     @Override
     public void run() {
         try {
-            var app = createRootViewModel();
+            var vm = createRootViewModel();
             if (!isHeadless()) {
                 FlatLightLaf.setup();
                 UI.show(
-                    UI.use(EventProcessor.DECOUPLED, () -> new RootView(app))
+                    UI.use(EventProcessor.DECOUPLED, () -> new RootView(vm))
                 );
             } else
                 UI.joinDecoupledEventProcessor(); // We are using the Swing-Tree event processor!

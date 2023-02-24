@@ -10,7 +10,7 @@ public class RootViewModel
     private final DataBaseViewModel dataBaseViewModel;
     private final BootstrapViewModel bootstrapViewModel;
 
-    public RootViewModel(AppContext context) {
+    public RootViewModel( AppContext context ) {
         this.context = Objects.requireNonNull(context);
         this.serverViewModel = new ServerViewModel(context);
         this.mainViewModel = new ContentViewModel(context);
@@ -18,17 +18,13 @@ public class RootViewModel
         this.bootstrapViewModel = new BootstrapViewModel(context);
     }
 
-    public ServerViewModel serverViewModel() {
-        return serverViewModel;
-    }
+    public boolean developerTabsAreShown() { return context.app().isDevViews(); }
 
-    public ContentViewModel createMainViewModel() {
-        return mainViewModel;
-    }
+    public ServerViewModel serverViewModel() { return serverViewModel; }
 
-    public DataBaseViewModel createDataBaseViewModel() {
-        return dataBaseViewModel;
-    }
+    public ContentViewModel mainViewModel() { return mainViewModel; }
 
-    public BootstrapViewModel createBootstrapViewModel() { return bootstrapViewModel; }
+    public DataBaseViewModel dataBaseViewModel() { return dataBaseViewModel; }
+
+    public BootstrapViewModel bootstrapViewModel() { return bootstrapViewModel; }
 }

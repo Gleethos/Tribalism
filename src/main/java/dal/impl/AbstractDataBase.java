@@ -1,10 +1,7 @@
 package dal.impl;
 
 import dal.api.DataBase;
-import dal.api.QueryProcessor;
-import org.json.JSONArray;
-import org.json.JSONException;
-import org.json.JSONObject;
+import dal.api.DataBaseProcessor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -25,15 +22,18 @@ abstract class AbstractDataBase implements DataBase {
     private final String _url, _user, _pwd;
 
     private final Map<Thread, Connection> _connections = new HashMap<>();
-    private final QueryProcessor _processor;
+    private final DataBaseProcessor _processor;
 
     AbstractDataBase(
             String url,
             String name,
             String password,
-            QueryProcessor processor
+            DataBaseProcessor processor
     ) {
+        var currentThread = Thread.currentThread();
         _processor = processor;
+        if ( !_processor.getThreads().contains(currentThread) )
+            throw new RuntimeException("The current thread '" + currentThread.getName() + "' is not allowed to access the database!");
 
         if(!url.startsWith("jdbc:sqlite:")) {
             String path = new File("").getAbsolutePath().replace("\\","/");
@@ -83,6 +83,14 @@ abstract class AbstractDataBase implements DataBase {
 
     private Connection _getConnection() {
         Connection con = _connections.get(Thread.currentThread());
+        if ( con == null && _processor.getThreads().contains(Thread.currentThread()) ) {
+            try {
+                _createAndOrConnectToDatabase();
+                con = _connections.get(Thread.currentThread());
+            } catch (Exception e) {
+                e.printStackTrace();
+            }
+        }
         if ( con == null ) {
             String threadName = Thread.currentThread().getName();
             String postfix = "";

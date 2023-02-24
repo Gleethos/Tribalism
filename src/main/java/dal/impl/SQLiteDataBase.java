@@ -5,7 +5,6 @@ import org.slf4j.Logger;
 import sprouts.Val;
 import sprouts.Vars;
 
-import java.io.File;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.lang.reflect.Proxy;
@@ -26,7 +25,7 @@ public class SQLiteDataBase extends AbstractDataBase
 
     private final ModelRegistry _modelRegistry = new ModelRegistry();
 
-    public SQLiteDataBase(String location, QueryProcessor processor) {
+    public SQLiteDataBase(String location, DataBaseProcessor processor) {
         super(location, "", "", processor);
     }
 
