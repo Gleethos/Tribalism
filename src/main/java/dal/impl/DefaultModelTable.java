@@ -5,17 +5,17 @@ import dal.api.Model;
 import java.lang.reflect.Method;
 import java.lang.reflect.ParameterizedType;
 import java.lang.reflect.Type;
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.List;
-import java.util.Optional;
+import java.util.*;
 
 class DefaultModelTable implements ModelTable
 {
     private final TableField[] fields;
     private final Class<? extends Model<?>> modelInterface;
 
-    DefaultModelTable(Class<? extends Model<?>> modelInterface, List<Class<? extends Model<?>>> otherModels) {
+    DefaultModelTable(
+        Class<? extends Model<?>> modelInterface,
+        List<Class<? extends Model<?>>> otherModels
+    ) {
         // We expect something like this:
         /*
             public interface Address extends Model<Address> {
@@ -36,7 +36,7 @@ class DefaultModelTable implements ModelTable
             throw new IllegalArgumentException(
                     "The interface " + modelInterface.getName() + " is not a subclass of " + Model.class.getName()
             );
-        // Now we check if the the first type parameter of the Model interface is the same as the interface itself
+        // Now we check if the first type parameter of the Model interface is the same as the interface itself
         // We need to find the extends clause of the interface
         if (!Model.class.equals(modelInterface)) {
             Type[] interfaces = modelInterface.getGenericInterfaces();
@@ -96,14 +96,19 @@ class DefaultModelTable implements ModelTable
             throw new RuntimeException(e);
         }
 
-        // Before storing the fields as array in this objects let's first sort them,
+        // Before storing the fields as array in this object let's first sort them,
         // we do this because the methods we get through reflection are not sorted...
         // What we want is simple: The id field should be the first field and the rest should be sorted alphabetically
         // Additionally we want foreign keys to be last
 
-        // Now we sort the rest of the fields
+        // Before all that however, let's first sort the fields by name alphabetically
+        // to make sure that the initial order is always the same (making thing deterministic)
+        fields.sort(Comparator.comparing(TableField::getName));
+
+        // Now we prepare the sorted fields list
         List<TableField> sortedFields = new ArrayList<>(fields);
 
+        // Finally we sort the fields by kind and then by name if the kind is the same
         sortedFields.sort((field1, field2) -> {
             var firstKind = field1.getKind();
             var secondKind = field2.getKind();

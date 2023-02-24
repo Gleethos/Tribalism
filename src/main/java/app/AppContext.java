@@ -1,11 +1,14 @@
 package app;
 
-import app.models.Character;
 import app.models.*;
+import app.models.bootstrap.ModelTypes;
 import dal.api.DataBase;
+import dal.api.DataBaseProcessor;
 import net.WebUserContext;
 import sprouts.Vars;
+import swingtree.EventProcessor;
 
+import java.util.List;
 import java.util.Optional;
 
 /**
@@ -21,6 +24,7 @@ public final class AppContext
 {
     private final App app; // The application configuration
     private final DataBase db;
+    private final ModelTypes modelTypes;
 
     private final Vars<UserContext> users = Vars.of(UserContext.class);
 
@@ -28,15 +32,33 @@ public final class AppContext
 
     public AppContext(App app) {
         this.app = app;
-        this.db = DataBase.at(app.getDatabaseLocation());
-        this.db.createTablesFor(
-            Character.class,
-            User.class,
-            GameMaster.class,
-            World.class,
-            Player.class,
-            CharacterModel.class
-        );
+        this.db = DataBase.at(app.getDatabaseLocation()+"/"+app.getSaveFileName(), createQueryProcessor());
+        this.modelTypes = new ModelTypes(db, app.getDatabaseLocation());
+    }
+
+    private DataBaseProcessor createQueryProcessor() {
+        var mainThread = Thread.currentThread();
+        return new DataBaseProcessor() {
+            @Override
+            public void process(Runnable task) {
+                if ( Thread.currentThread() == mainThread ) {
+                    task.run();
+                    return;
+                }
+                EventProcessor.DECOUPLED.registerAppEvent(task);
+            }
+
+            @Override
+            public void processNow(Runnable task) {
+                if ( Thread.currentThread() == mainThread ) {
+                    task.run();
+                    return;
+                }
+                EventProcessor.DECOUPLED.registerAndRunAppEventNow(task);
+            }
+
+            @Override public List<Thread> getThreads() { return List.of(mainThread); }
+        };
     }
 
     /**

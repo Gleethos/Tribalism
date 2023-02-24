@@ -346,7 +346,7 @@ class DataBase_Spec extends Specification
             db.createTablesFor(Workplace, Person, Address)
 
         then : 'The database should now contain two tables.'
-            db.listOfAllTableNames() as Set == ["dal_models_Address_table", "dal_models_Workplace_table", "dal_models_Person_table", "employees_list_table"] as Set
+            db.listOfAllTableNames() as Set == ["dal_models_Address_table", "dal_models_Workplace_table", "dal_models_Person_table", "dal_models_Workplace__employees_list_table"] as Set
 
         when : 'We create a new workplace with and address and 2 people working there.'
             var address = db.create(Address)

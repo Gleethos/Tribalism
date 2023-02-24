@@ -134,7 +134,7 @@ task appNpmBuild(type: NpmTask) {
 // Copies the project to the service folder
 task copyWebAppToWebRoot(type: Copy) {
     from "$REACT_SKIN_LOCATION/build"
-    into 'src/main/resources/.'
+    into 'src/main/resources/web/.'
 }
 
 /*

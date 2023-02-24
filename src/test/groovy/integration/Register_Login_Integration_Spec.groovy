@@ -48,12 +48,13 @@ class Register_Login_Integration_Spec extends GebSpec
             JCommander.newBuilder()
                     .addObject(app)
                     .build()
-                    .parse("--at", "saves/sqlite.db", "--port", "4242", "--start-server", "false")
+                    .parse("--at", "test_saves/sqlite.db", "--port", "4242", "--start-server", "false")
+
             RootViewModel root = app.createRootViewModel() // This is the root view model of the application
         when :
             var serverVM = root.serverViewModel()
-            var databaseVM = root.createDataBaseViewModel()
-            var mainVM = root.createMainViewModel()
+            var databaseVM = root.dataBaseViewModel()
+            var mainVM = root.mainViewModel()
         then :
             serverVM != null
             databaseVM != null
