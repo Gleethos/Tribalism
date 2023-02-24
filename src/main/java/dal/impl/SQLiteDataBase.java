@@ -14,6 +14,8 @@ import java.util.function.Function;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
+import static dal.impl.ModelTable.INTER_TABLE_POSTFIX;
+
 /**
  *  This class constitutes both a representation of a database
  *  and define an API which is in essence an interface based ORM.
@@ -170,8 +172,7 @@ public class SQLiteDataBase extends AbstractDataBase
         return (String) result.get("sql").get(0);
     }
 
-    @Override
-    public <T extends Model<T>> T select(Class<T> model, int id) {
+    private ModelTable _getTableFor( Class<? extends Model<?>> model ) {
         // First let's verify that the model is indeed a model
         if ( !Model.class.isAssignableFrom(model) )
             throw new IllegalArgumentException("The provided class is not a model!");
@@ -180,12 +181,24 @@ public class SQLiteDataBase extends AbstractDataBase
         if ( !doesTableExist(_tableNameFromClass(model)) )
             throw new IllegalArgumentException("The table for the model '" + model.getName() + "' does not exist!");
 
+        return _modelRegistry.getTable(model)
+                            .orElseThrow(()->new RuntimeException(
+                                "The model '" + model.getName() + "' does have a " +
+                                "table in the database, but the model type is not known " +
+                                "to the TopSoil ORM!\n " +
+                                "This is most likely because the model was not registered " +
+                                "through the 'createTablesFor(Class)' method of the TopSoil DataBase API."
+                            ));
+    }
+
+    @Override
+    public <T extends Model<T>> T select( Class<T> model, int id )
+    {
         // Now let's verify that the id is valid
         if ( id < 0 )
             throw new IllegalArgumentException("The id must be a positive integer!");
-
         /*
-            Now you might thing we simply do a single database query to get the model
+            Now you might think we simply do a single database query to get the model
             and then that's it. But that is not the case.
             This ORM is interface based, so we are free to implement the model in any way we want.
             And what we want is dynamic models where calling the setter of a property updates
@@ -194,7 +207,7 @@ public class SQLiteDataBase extends AbstractDataBase
             Let's do that now:
         */
         // Let's find the table for the model
-        ModelTable modelTable = _modelRegistry.getTable(model);
+        var modelTable = _getTableFor(model);
 
         // Let's first see if the registry already contains a proxy
         var proxy = _modelRegistry.findModelProxy(_tableNameFromClass(model), id).orElse(null);
@@ -240,7 +253,7 @@ public class SQLiteDataBase extends AbstractDataBase
             throw new IllegalArgumentException("The table for the model '" + model.getName() + "' does not exist!");
 
         // Now let's create the model
-        ModelTable modelTable      = _modelRegistry.getTable(model);
+        ModelTable modelTable      = _getTableFor(model);
         List<TableField> fields    = modelTable.getFields();
         List<Object> defaultValues = modelTable.getDefaultValues();
         List<String> fieldNames    = fields.stream().map(TableField::getName).collect(Collectors.toList());
@@ -305,7 +318,7 @@ public class SQLiteDataBase extends AbstractDataBase
     }
 
     @Override
-    public <M extends Model<M>> void delete(M modelToBeRemoved) {
+    public <M extends Model<M>> void delete( M modelToBeRemoved ) {
         Objects.requireNonNull(modelToBeRemoved, "The provided model is null!");
         Class<?> modelProxyClass = modelToBeRemoved.getClass();
         // Now we need to get the interface class defining the model
@@ -340,10 +353,11 @@ public class SQLiteDataBase extends AbstractDataBase
             List<Integer> refIds = result.get(leftName).stream().map( o -> (Integer) o ).distinct().toList();
             refIds.forEach( refId -> {
                 var refModel = select((Class<Model>) left, refId);
-                String methodName = intermTableName.substring(0, intermTableName.length() - "_list_table".length());
+                String prefix = _nameFromClass(left) + "__";
+                String methodName = intermTableName.substring(0, intermTableName.length() - INTER_TABLE_POSTFIX.length());
+                methodName = methodName.substring(prefix.length());
                 Vars<Object> listOfModels = null;
-                // We need to find property and store it in the above variable
-                // Lets call the method:
+                // Let's call the method:
                 try {
                     Method m = refModel.getClass().getMethod(methodName);
                     listOfModels = (Vars<Object>) m.invoke(refModel);
@@ -368,7 +382,7 @@ public class SQLiteDataBase extends AbstractDataBase
     public <M extends Model<M>> Where<M> select(Class<M> model) {
         StringBuilder sql = new StringBuilder();
         sql.append("SELECT * FROM ").append(_tableNameFromClass(model)).append(" WHERE ");
-        ModelTable table = _modelRegistry.getTable(model);
+        ModelTable table = _getTableFor(model);
         List<Object> values = new ArrayList<>();
         Junction[] junc = {null};
         Compare<M, Object> valueCollector = new Compare<>() {
@@ -602,7 +616,7 @@ public class SQLiteDataBase extends AbstractDataBase
         Function<M, Val<T>> selector,
         Class<M> model
     ) {
-        var propSelector = new PropertySelectionProxy(_modelRegistry.getTable(model));
+        var propSelector = new PropertySelectionProxy(_getTableFor(model));
         selector.apply((M) Proxy.newProxyInstance(
                                 model.getClassLoader(),
                                 new Class<?>[]{model},

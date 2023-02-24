@@ -148,8 +148,20 @@ class ModelRegistry
         return modelTables.values().stream().anyMatch(t -> t.getModelInterface().isPresent() && t.getModelInterface().get().equals(modelInterface));
     }
 
-    public ModelTable getTable(Class<? extends Model<?>> modelInterface) {
-        return modelTables.values().stream().filter(t -> t.getModelInterface().isPresent() && t.getModelInterface().get().equals(modelInterface)).findFirst().orElse(null);
+    Optional<ModelTable> getTable( Class<? extends Model<?>> modelInterface ) {
+        String tableName = AbstractDataBase._tableNameFromClass(modelInterface);
+        var found1 = modelTables.get(tableName);
+        var found2 = modelTables.values()
+                                .stream()
+                                .filter(t -> t.getModelInterface().isPresent() && t.getModelInterface().get().equals(modelInterface))
+                                .findFirst()
+                                .orElse(null);
+
+        // Let's do some consistency checks
+        if ( found1 != found2 )
+            throw new IllegalStateException("The model table for " + modelInterface + " is not consistent!");
+
+        return Optional.ofNullable(found1);
     }
 
     public List<ModelTable> getIntermediateTables() {

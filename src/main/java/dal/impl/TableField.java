@@ -244,7 +244,7 @@ final class TableField {
             return Optional.of(new ModelTable() {
                 @Override
                 public String getTableName() {
-                    return TableField.this.getName() + INTER_TABLE_POSTFIX;
+                    return AbstractDataBase._nameFromClass(_ownerModelClass) + "__" + TableField.this.getName() + INTER_TABLE_POSTFIX;
                 }
 
                 @Override

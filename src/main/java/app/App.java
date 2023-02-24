@@ -29,7 +29,7 @@ public final class App implements Runnable
         description = "The location of the database file.",
         arity = 1
     )
-    private String databaseLocation = "saves/";
+    private String databaseLocation = "saves";
 
     /**
      * The Tribalism application is a hybrid desktop/web application, meaning it can be used
@@ -93,7 +93,21 @@ public final class App implements Runnable
     /**
      * @return The path to the file where the application save file should be created/loaded.
      */
-    public String getDatabaseLocation() { return databaseLocation; }
+    public String getDatabaseLocation() {
+        if ( databaseLocation.endsWith(".db") ) {
+            // The user not only provided a path but also a filename, we have to remove that:
+            return databaseLocation.substring(0, databaseLocation.lastIndexOf('/'));
+        }
+        return databaseLocation;
+    }
+
+    public String getSaveFileName() {
+        if ( databaseLocation.endsWith(".db") ) {
+            // The user not only provided a path but also a filename, we have to remove that:
+            return databaseLocation.substring(databaseLocation.lastIndexOf('/') + 1);
+        }
+        return SAVE_FILE_NAME;
+    }
 
     /**
      * @return True if the application should be launched without desktop UI.

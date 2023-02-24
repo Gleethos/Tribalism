@@ -49,6 +49,7 @@ class Register_Login_Integration_Spec extends GebSpec
                     .addObject(app)
                     .build()
                     .parse("--at", "saves/sqlite.db", "--port", "4242", "--start-server", "false")
+
             RootViewModel root = app.createRootViewModel() // This is the root view model of the application
         when :
             var serverVM = root.serverViewModel()

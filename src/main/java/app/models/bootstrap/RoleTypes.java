@@ -45,14 +45,7 @@ public class RoleTypes
             SkillTypes skillTypes
     ) {
 
-        String jsonText = null;
-        // We load the json file into a string:
-        try (var in = getClass().getResourceAsStream(location)) {
-            assert in != null;
-            jsonText = new String(in.readAllBytes());
-        } catch (Exception e) {
-            throw new RuntimeException("Could not load " + location);
-        }
+        String jsonText = Util.readTextFile(location);
         /*
            The json content might look something like this:
            [

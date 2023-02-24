@@ -498,6 +498,10 @@ abstract class AbstractDataBase implements DataBase {
     }
 
     protected static String _tableNameFromClass(Class<?> clazz) {
+        return _nameFromClass(clazz) + "_table";
+    }
+
+    protected static String _nameFromClass(Class<?> clazz) {
         String tableName = clazz.getName();
         // We replace the package dots with underscores:
         // This is the name of the interface but where the '.' are replaced with '_'
@@ -508,7 +512,7 @@ abstract class AbstractDataBase implements DataBase {
             throw new IllegalArgumentException(
                     "The name of the interface " + clazz.getName() + " is not a valid name for a table"
             );
-        return tableName + "_table";
+        return tableName;
     }
 
 

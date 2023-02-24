@@ -29,14 +29,7 @@ public class SkillTypes
 
     private void loadFromLocation(DataBase db, String location)
     {
-        String jsonText = null;
-        // We load the json file into a string:
-        try (var in = getClass().getResourceAsStream(location)) {
-            assert in != null;
-            jsonText = new String(in.readAllBytes());
-        } catch (Exception e) {
-            throw new RuntimeException("Could not load " + location);
-        }
+        String jsonText = Util.readTextFile(location);
         // We load the skill types from the json file into a json object.
         var json = new org.json.JSONArray(jsonText);
         // We iterate over the skill types in the json object.
