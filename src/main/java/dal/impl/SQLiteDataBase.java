@@ -26,12 +26,8 @@ public class SQLiteDataBase extends AbstractDataBase
 
     private final ModelRegistry _modelRegistry = new ModelRegistry();
 
-    public SQLiteDataBase(String location) {
-        super(location, "", "");
-    }
-
-    SQLiteDataBase() {
-        super("jdbc:sqlite:"+new File("saves/dbs").getAbsolutePath(), "", "");
+    public SQLiteDataBase(String location, QueryProcessor processor) {
+        super(location, "", "", processor);
     }
 
     @Override

@@ -4,8 +4,10 @@ import app.models.Character;
 import app.models.*;
 import app.models.bootstrap.ModelTypes;
 import dal.api.DataBase;
+import dal.api.QueryProcessor;
 import net.WebUserContext;
 import sprouts.Vars;
+import swingtree.EventProcessor;
 
 import java.util.Optional;
 
@@ -30,8 +32,31 @@ public final class AppContext
 
     public AppContext(App app) {
         this.app = app;
-        this.db = DataBase.at(app.getDatabaseLocation()+"/"+app.getSaveFileName());
+        this.db = DataBase.at(app.getDatabaseLocation()+"/"+app.getSaveFileName(), createQueryProcessor());
         this.modelTypes = new ModelTypes(db, app.getDatabaseLocation());
+    }
+
+    private QueryProcessor createQueryProcessor() {
+        var mainThread = Thread.currentThread();
+        return new QueryProcessor() {
+            @Override
+            public void process(Runnable task) {
+                if ( Thread.currentThread() == mainThread ) {
+                    task.run();
+                    return;
+                }
+                EventProcessor.DECOUPLED.registerAppEvent(task);
+            }
+
+            @Override
+            public void processNow(Runnable task) {
+                if ( Thread.currentThread() == mainThread ) {
+                    task.run();
+                    return;
+                }
+                EventProcessor.DECOUPLED.registerAndRunAppEventNow(task);
+            }
+        };
     }
 
     /**

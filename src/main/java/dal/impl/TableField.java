@@ -314,31 +314,43 @@ final class TableField {
                         propertyType.getClassLoader(),
                         new Class[]{propertyType},
                         (proxy, method, args) -> {
-                            String methodName = method.getName();
-                            try {
-                                Method proxyTypeMethod = propertyType.getMethod(methodName, method.getParameterTypes());
-                                // Then we expect the method to be a default method
-                                if (proxyTypeMethod.isDefault()) {
-                                    // A default method is a method that is defined in an interface, we can just call it
-                                    return MethodHandles.lookup()
-                                            .findSpecial(
-                                                    propertyType,
-                                                    methodName,
-                                                    MethodType.methodType(method.getReturnType(), method.getParameterTypes()),
-                                                    propertyType
-                                            )
-                                            .bindTo(proxy)
-                                            .invokeWithArguments(args);
-                                }
-                            } catch (Exception e) {
-                                // If we get here, it means that the method is not a default method
-                            }
-                            // We simply delegate to the property
-                            return method.invoke(prop, args);
+                            return _handleInvocation(proxy, method, args, prop, propertyType);
                         }
                     ),
                     prop
                 );
+    }
+
+    private Object _handleInvocation(
+        Object proxy,
+        Method method,
+        Object[] args,
+        Object prop,
+        Class<?> propertyType
+    ) throws InvocationTargetException, IllegalAccessException {
+        String methodName = method.getName();
+        try {
+            Method proxyTypeMethod = propertyType.getMethod(methodName, method.getParameterTypes());
+            // Then we expect the method to be a default method
+            if (proxyTypeMethod.isDefault()) {
+                // A default method is a method that is defined in an interface, we can just call it
+                return MethodHandles.lookup()
+                        .findSpecial(
+                                propertyType,
+                                methodName,
+                                MethodType.methodType(method.getReturnType(), method.getParameterTypes()),
+                                propertyType
+                        )
+                        .bindTo(proxy)
+                        .invokeWithArguments(args);
+            }
+        } catch (Exception e) {
+            // If we get here, it means that the method is not a default method
+        } catch (Throwable e) {
+            throw new RuntimeException(e);
+        }
+        // We simply delegate to the property
+        return method.invoke(prop, args);
     }
 
     public Optional<String> asSqlColumn() {
@@ -403,8 +415,7 @@ final class TableField {
                         _propertyType.getClassLoader(),
                         new Class[]{_propertyType},
                         (proxy, method, args) -> {
-                            // We simply delegate to the property
-                            return method.invoke(vars, args);
+                            return _handleInvocation(proxy, method, args, vars, _propertyType);
                         }
                     ),
                     vars

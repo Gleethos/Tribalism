@@ -64,9 +64,18 @@ public interface DataBase
      * @return A new {@link DataBase} instance.
      */
     static DataBase at( String path ) {
-        Objects.requireNonNull(path);
-        return new SQLiteDataBase(path);
+        return at(path, new QueryProcessor() {
+            @Override public void process(Runnable task) { task.run(); }
+            @Override public void processNow(Runnable task) { task.run(); }
+        });
     }
+
+
+    static DataBase at( String path, QueryProcessor processor ) {
+        Objects.requireNonNull(path);
+        return new SQLiteDataBase(path, processor);
+    }
+
 
     /**
      *  Creates tables for the specified model types.

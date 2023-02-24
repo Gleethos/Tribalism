@@ -18,10 +18,7 @@ public class Util {
         if (new File(path).exists())
             return readTextFileFromWorkingDirectory(path);
         // If the file does not exist in the working directory, we check if it exists in the resource folder.
-        if (new File(path).exists())
-            return readTextFileFromResourceFolder(path);
-        // If the file does not exist in the resource folder either, we throw an exception.
-        throw new RuntimeException("Could not find file at path: " + path);
+        return readTextFileFromResourceFolder(path);
     }
 
     /**

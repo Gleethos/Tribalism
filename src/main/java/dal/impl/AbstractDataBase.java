@@ -1,6 +1,7 @@
 package dal.impl;
 
 import dal.api.DataBase;
+import dal.api.QueryProcessor;
 import org.json.JSONArray;
 import org.json.JSONException;
 import org.json.JSONObject;
@@ -24,8 +25,16 @@ abstract class AbstractDataBase implements DataBase {
     private final String _url, _user, _pwd;
 
     private final Map<Thread, Connection> _connections = new HashMap<>();
+    private final QueryProcessor _processor;
 
-    AbstractDataBase(String url, String name, String password) {
+    AbstractDataBase(
+            String url,
+            String name,
+            String password,
+            QueryProcessor processor
+    ) {
+        _processor = processor;
+
         if(!url.startsWith("jdbc:sqlite:")) {
             String path = new File("").getAbsolutePath().replace("\\","/");
             url = "jdbc:sqlite:"+path+"/"+url;
@@ -76,8 +85,14 @@ abstract class AbstractDataBase implements DataBase {
         Connection con = _connections.get(Thread.currentThread());
         if ( con == null ) {
             String threadName = Thread.currentThread().getName();
-            _LOG.error("No connection found for thread '{}'!", threadName);
-            throw new RuntimeException("No connection found for thread '"+threadName+"'!");
+            String postfix = "";
+            // We check if this thread is in fact the AWT-Event-Thread, if so we use the main thread instead!
+            if ( threadName.startsWith("AWT-EventQueue-") )
+                postfix = " \nIt looks like you are trying to access the database from the GUI thread! \n" +
+                            "Maybe there is a main thread you want to use instead?";
+
+            _LOG.error("No connection found for thread '{}'!"+postfix, threadName);
+            throw new RuntimeException("No connection found for thread '"+threadName+"'!"+postfix);
         }
         return con;
     }
@@ -158,10 +173,6 @@ abstract class AbstractDataBase implements DataBase {
         return space;
     }
 
-    protected int _lastInsertID() {
-        return (Integer)_query("SELECT last_insert_rowid()").get("last_insert_rowid()").get(0);
-    }
-
     private PreparedStatement _newPreparedStatement(String sql, List<? extends Object> values) throws SQLException {
         PreparedStatement pstmt = _getConnection().prepareStatement(sql);
         if ( values != null ) {
@@ -233,9 +244,9 @@ abstract class AbstractDataBase implements DataBase {
     }
 
     protected Map<String, List<Object>> _query(String sql, List<Object> values){
-
         Map<String, List<Object>> result = new LinkedHashMap<>();
-        _for(
+        _processor.processNow(()->{
+            _for(
                 sql, values, // <=- Are used to build prepared statement when 'values' is not null!
                 rs -> {
                     try {
@@ -303,6 +314,7 @@ abstract class AbstractDataBase implements DataBase {
                         e.printStackTrace();
                     }
                 });
+        });
         return result;
     }
 
@@ -312,126 +324,59 @@ abstract class AbstractDataBase implements DataBase {
      */
     protected void _execute(String sql) {
         if(sql.isBlank()) return;
-        Connection conn = _getConnection();
-        try {
-            Statement stmt = conn.createStatement();
+        _processor.process(()->{
+            Connection conn = _getConnection();
             try {
-                stmt.execute(sql);
-                stmt.close();
+                Statement stmt = conn.createStatement();
+                try {
+                    stmt.execute(sql);
+                    stmt.close();
+                } catch (SQLException e) {
+                    stmt.close();
+                    e.printStackTrace();
+                }
             } catch (SQLException e) {
-                stmt.close();
                 e.printStackTrace();
             }
-        } catch (SQLException e) {
-            System.out.println(e.getMessage());
-        }
+        });
     }
 
     /**
      * SQL execution on connection!
-     * @param sql
+     * @param sql - SQL statement to execute
      */
     protected boolean _update( String sql, List<? extends Object> values ){
-        Connection conn = _getConnection();
-        if ( values!=null ){
-            try {
-                PreparedStatement pstmt = _newPreparedStatement(sql, values);
+        return _processor.processNowAndGet(()->{
+            Connection conn = _getConnection();
+            if ( values!=null ){
                 try {
-                    boolean state = pstmt.execute();
-                    pstmt.close();
+                    PreparedStatement pstmt = _newPreparedStatement(sql, values);
+                    try {
+                        boolean state = pstmt.execute();
+                        pstmt.close();
+                    } catch (SQLException e) {
+                        pstmt.close();
+                        return false;
+                    }
                 } catch (SQLException e) {
-                    pstmt.close();
+                    return false;
+                }
+                return true;
+            }
+            try {
+                Statement stmt = conn.createStatement();
+                try {
+                    stmt.execute(sql);
+                    stmt.close();
+                    return true;
+                } catch (SQLException e) {
+                    stmt.close();
                     return false;
                 }
             } catch (SQLException e) {
                 return false;
             }
-            return true;
-        }
-
-        try {
-            Statement stmt = conn.createStatement();
-            try {
-                stmt.execute(sql);
-                stmt.close();
-                return true;
-            } catch (SQLException e) {
-                stmt.close();
-                return false;
-            }
-        } catch (SQLException e) {
-            return false;
-        }
-    }
-
-    /**
-     * Converts a ResultSet into a JSON Object.
-     * It can be converted to a String and is sent
-     * to the client when requested (Ajax).
-     * @param rs
-     * @return
-     * @throws SQLException
-     * @throws JSONException
-     */
-    protected static JSONArray _toJSON( ResultSet rs ) throws SQLException, JSONException
-    {
-        JSONArray json = new JSONArray();
-        ResultSetMetaData rsmd = rs.getMetaData();
-
-        while( rs.next() ) {
-            int numColumns = rsmd.getColumnCount();
-            JSONObject jo = new JSONObject();
-
-            for (int i=1; i<numColumns+1; i++)
-            {
-                String column_name = rsmd.getColumnName(i);
-
-                if(rsmd.getColumnType(i)==java.sql.Types.ARRAY){
-                    jo.put(column_name, rs.getArray(column_name));
-                }
-                else if(rsmd.getColumnType(i)==java.sql.Types.BIGINT){
-                    jo.put(column_name, rs.getInt(column_name));
-                }
-                else if(rsmd.getColumnType(i)==java.sql.Types.BOOLEAN){
-                    jo.put(column_name, rs.getBoolean(column_name));
-                }
-                else if(rsmd.getColumnType(i)==java.sql.Types.BLOB){
-                    jo.put(column_name, rs.getBlob(column_name));
-                }
-                else if(rsmd.getColumnType(i)==java.sql.Types.DOUBLE){
-                    jo.put(column_name, rs.getDouble(column_name));
-                }
-                else if(rsmd.getColumnType(i)==java.sql.Types.FLOAT){
-                    jo.put(column_name, rs.getFloat(column_name));
-                }
-                else if(rsmd.getColumnType(i)==java.sql.Types.INTEGER){
-                    jo.put(column_name, rs.getInt(column_name));
-                }
-                else if(rsmd.getColumnType(i)==java.sql.Types.NVARCHAR){
-                    jo.put(column_name, rs.getNString(column_name));
-                }
-                else if(rsmd.getColumnType(i)==java.sql.Types.VARCHAR){
-                    jo.put(column_name, rs.getString(column_name));
-                }
-                else if(rsmd.getColumnType(i)==java.sql.Types.TINYINT){
-                    jo.put(column_name, rs.getInt(column_name));
-                }
-                else if(rsmd.getColumnType(i)==java.sql.Types.SMALLINT){
-                    jo.put(column_name, rs.getInt(column_name));
-                }
-                else if(rsmd.getColumnType(i)==java.sql.Types.DATE){
-                    jo.put(column_name, rs.getDate(column_name));
-                }
-                else if(rsmd.getColumnType(i)==java.sql.Types.TIMESTAMP){
-                    jo.put(column_name, rs.getTimestamp(column_name));
-                } else {
-                    jo.put(column_name, rs.getObject(column_name));
-                }
-            }
-            json.put(jo);
-        }
-        rs.close();
-        return json;
+        });
     }
 
     protected boolean doesTableExist(String tableName) {
