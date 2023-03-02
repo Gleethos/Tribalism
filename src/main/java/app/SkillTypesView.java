@@ -1,24 +1,15 @@
 package app;
 
-import app.models.SkillType;
 import com.formdev.flatlaf.FlatLightLaf;
 import swingtree.UI;
 
 import javax.swing.*;
-import java.util.HashMap;
-import java.util.Map;
 
 import static swingtree.UI.*;
 
 public class SkillTypesView extends JPanel
 {
-    private final SkillTypesViewModel viewModel;
-    private final JPanel skillListPanel = UI.of(new JPanel()).withLayout(FILL_X.and(INS(12))).getComponent();
-    private final Map<Integer, JPanel> skillTypeViewCache = new HashMap<>();
-
-
     public SkillTypesView(SkillTypesViewModel vm) {
-        this.viewModel = vm;
         of(this).withLayout(FILL.and(WRAP(2).and(INS(24))), "[grow][grow]")
         .add(ALIGN_LEFT,
             panel(FILL)
@@ -30,42 +21,13 @@ public class SkillTypesView extends JPanel
             .add(textField())
             .add(SHRINK, button("+").onClick(it -> vm.addNewSkillType()))
         )
-        .add(SPAN.and(GROW),
+        .add(SPAN.and(GROW).and(PUSH),
             panel(FILL.and(WRAP(1)))
             .add(label("Found Skill Types:"))
-            .add(GROW, scrollPane().add(skillListPanel))
+            .add(GROW.and(PUSH),
+                scrollPanels().add(vm.skillTypes())
+            )
         );
-
-        Runnable updateSkills = ()->{
-            UI.runLater(()->{
-                skillListPanel.removeAll();
-                UI.of(skillListPanel)
-                .apply( list -> {
-                    var abilities = viewModel.abilityTypes();
-                    for (SkillType skillType : viewModel.skillTypes()) {
-                        if ( !skillTypeViewCache.containsKey(skillType.id().get()) )
-                            skillTypeViewCache.put(skillType.id().get(),
-                                     panel(FILL.and(INS(12)))
-                                    .add(GROW, textField(skillType.name()))
-                                    .add(GROW, comboBox(skillType.primaryAbility(), abilities))
-                                    .add(GROW, comboBox(skillType.secondaryAbility(), abilities))
-                                    .add(GROW, comboBox(skillType.tertiaryAbility(), abilities))
-                                    .add(SHRINK.and(WRAP), button("Delete").onClick(it2 -> vm.deleteSkillType(skillType)))
-                                    .add(SHRINK, label("Description:"))
-                                    .add(GROW.and(WRAP).and(SPAN), textField(skillType.description()))
-                                    .add(GROW.and(WRAP).and(SPAN), separator())
-                                    .getComponent());
-
-                        list.add(GROW.and(WRAP), skillTypeViewCache.get(skillType.id().get()));
-                    }
-                });
-                skillListPanel.revalidate();
-                skillListPanel.repaint();
-            });
-        };
-
-        vm.skillTypes().onChange(it -> {updateSkills.run();});
-        updateSkills.run();
     }
 
 
