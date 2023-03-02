@@ -143,8 +143,8 @@ public final class App implements Runnable
                 UI.show(
                     UI.use(EventProcessor.DECOUPLED, () -> new RootView(vm))
                 );
-            } else
-                UI.joinDecoupledEventProcessor(); // We are using the Swing-Tree event processor!
+            }
+            UI.joinDecoupledEventProcessor(); // We are using the Swing-Tree event processor!
         } catch (Exception e) {
             // Something went severely wrong! What do we do?
             // Well we don't want to let our users hanging! We need to let them know what happened!
@@ -154,6 +154,7 @@ public final class App implements Runnable
             if (!isHeadless()) {
                 FlatLightLaf.setup();
                 UI.show(UI.use(EventProcessor.DECOUPLED, () -> new FatalErrorView(e)));
+                UI.joinDecoupledEventProcessor();
             }
             else System.exit(1); // We have to exit the application, otherwise it will hang!
         }

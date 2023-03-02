@@ -3,31 +3,32 @@ package app.models.bootstrap;
 import app.models.SkillType;
 import dal.api.DataBase;
 
-import java.io.File;
 import java.util.*;
 
-public class SkillTypes
+public class SkillTypes extends AbstractTypes
 {
+    private static final String FILE_NAME = "skill-types.json";
+
     private final List<SkillType> skillTypes = new ArrayList<>();
     private final Map<String, SkillType> skillTypesByName = new HashMap<>();
-    private final String workingDirectory;
 
 
     public SkillTypes(DataBase db, String workingDirectory) {
-        this.workingDirectory = workingDirectory;
+        super(workingDirectory, FILE_NAME);
         // We load the skill types in the order they are defined in the skills.json file.
         // The skills are in the resource folder at src/main/resources/app/constants/skill-types.json
-        var location = "/app/bootstrap/skill-types.json";
         // We check if the file already exists in the working directory!
         // If so, we load it from there, otherwise we load it from the resource folder.
-        if ( new File(workingDirectory + "/skill-types.json" ).exists())
-            location = workingDirectory + "/skill-types.json";
+        if ( localTypesExist() )
+            loadFromWorkingDir(db);
+        else
+            loadFromResources(db);
 
-        loadFromLocation(db, location);
-        saveAsJSONToWorkingDirectory(db);
+        saveAsJSONToWorkingDirectory(workingDirectory + "/" + FILE_NAME, db);
     }
 
-    private void loadFromLocation(DataBase db, String location)
+    @Override
+    protected void loadFromLocation(String location, DataBase db)
     {
         String jsonText = Util.readTextFile(location);
         // We load the skill types from the json file into a json object.
@@ -61,7 +62,8 @@ public class SkillTypes
         }
     }
 
-    public void saveAsJSONToWorkingDirectory(DataBase db) {
+    @Override
+    protected void saveAsJSONToWorkingDirectory(String location, DataBase db) {
         var skillTypes = db.selectAll(SkillType.class);
         var json = new org.json.JSONArray();
         for (var skillType : skillTypes) {
@@ -73,17 +75,15 @@ public class SkillTypes
             jsonSkillType.put("tertiary ability", skillType.tertiaryAbility().get());
             json.put(jsonSkillType);
         }
-        var path = workingDirectory + "/skill-types.json";
-        try (var out = new java.io.PrintWriter(path)) {
+        try (var out = new java.io.PrintWriter(location)) {
             out.println(json.toString(4));
         } catch (Exception e) {
-            throw new RuntimeException("Could not save " + path);
+            throw new RuntimeException("Could not save " + location, e);
         }
     }
 
     public Optional<SkillType> findByName(String name) {
-        var skillType = skillTypesByName.get(name);
-        return skillType == null ? Optional.empty() : Optional.of(skillType);
+        return Optional.ofNullable(skillTypesByName.get(name));
     }
 
     public List<SkillType> all() {

@@ -10,7 +10,7 @@ public class RootView extends javax.swing.JPanel
 {
     public RootView(RootViewModel vm) {
         of(this).withLayout(FILL)
-        .withPreferredSize(800, 600)
+        .withPrefSize(800, 600)
         .applyIf(vm.developerTabsAreShown(), it ->
             it.add(GROW,
                 tabbedPane()

@@ -12,7 +12,7 @@ public class RegisterView extends JPanel
         of(this).withLayout(FILL)
         .add(GROW,
             panel("alignx center, aligny center, wrap 1")
-            .withPreferredSize(625, 300)
+            .withPrefSize(625, 300)
             .add(GROW,
                 panel(FILL_X.and(WRAP(2)), "[shrink][grow]")
                 .add(label("Username"))
