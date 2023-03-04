@@ -100,6 +100,11 @@ public class ModelProperties implements Vars<Object>
     {
         if ( !_isEager )
             throw new UnsupportedOperationException("Transactional modification of lists (intermediate tables) is not supported yet.");
+        _removeAt(index);
+        return this;
+    }
+
+    private void _removeAt(int index) {
         /*
             Basically all we need to do is delete a row from the intermediate table!
             Which row? The one that contains the id of the left model and the id of the
@@ -112,7 +117,6 @@ public class ModelProperties implements Vars<Object>
         List<Object> params = List.of(leftId, rightId);
         db._update(query, params);
         ids.remove(index);
-        return this;
     }
 
     @Override
@@ -169,6 +173,63 @@ public class ModelProperties implements Vars<Object>
     }
 
     @Override
+    public Vars<Object> retainAll(Vars<Object> vars) {
+        Vars<Object> toRemove = Vars.of(this.type());
+        for ( Object o : this ) {
+            if ( !vars.contains(o) )
+                toRemove.add(o);
+        }
+        this.removeAll(toRemove);
+        return this;
+    }
+
+    @Override
+    public Vars<Object> removeLast(int count) {
+        Vars<Object> toRemove = Vars.of(this.type());
+        for ( int i = 0; i < count; i++ ) {
+            toRemove.add(this.at(this.size() - 1 - i));
+        }
+        this.removeAll(toRemove);
+        return this;
+    }
+
+    @Override
+    public Vars<Object> popLast(int count) {
+        Vars<Object> toRemove = Vars.of(this.type());
+        for ( int i = 0; i < count; i++ ) {
+            toRemove.add(this.at(this.size() - 1 - i));
+        }
+        this.removeAll(toRemove);
+        return toRemove;
+    }
+
+    @Override
+    public Vars<Object> removeFirst(int count) {
+        Vars<Object> toRemove = Vars.of(this.type());
+        for ( int i = 0; i < count; i++ ) {
+            toRemove.add(this.at(i));
+        }
+        this.removeAll(toRemove);
+        return this;
+    }
+
+    @Override
+    public Vars<Object> popFirst(int count) {
+        Vars<Object> toRemove = Vars.of(this.type());
+        for ( int i = 0; i < count; i++ ) {
+            toRemove.add(this.at(i));
+        }
+        this.removeAll(toRemove);
+        return toRemove;
+    }
+
+    @Override
+    public Vars<Object> removeAll( Vars<Object> vars ) {
+        for ( Object o : vars ) _removeAt(indexOf(o));
+        return this;
+    }
+
+    @Override
     public Vars<Object> clear()
     {
         if ( !_isEager )
@@ -193,6 +254,11 @@ public class ModelProperties implements Vars<Object>
     @Override
     public void makeDistinct() {
         throw new UnsupportedOperationException("Not supported yet."); // How to make distinct on a database?
+    }
+
+    @Override
+    public Vars<Object> revert() {
+        throw new UnsupportedOperationException("Not supported yet.");
     }
 
 }
