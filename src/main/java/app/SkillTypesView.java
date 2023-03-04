@@ -25,7 +25,7 @@ public class SkillTypesView extends JPanel
             panel(FILL.and(WRAP(1)))
             .add(label("Found Skill Types:"))
             .add(GROW.and(PUSH),
-                scrollPanels().add(vm.skillTypes())
+                scrollPanels().add(vm.skillTypes()).withPrefSize(600, 600)
             )
         );
     }
