@@ -24,15 +24,17 @@ import java.util.Map;
 public class DataBaseViewModel {
 
     private final DataBase db;
-    private final Var<Integer> numberOfTables = Var.of(0);
-    private final Var<Integer> numberUsers = Var.of(0);
-    private final Var<Integer> numberCharacters = Var.of(0);
-    private final Var<Integer> numberWorlds = Var.of(0);
+    private final Var<Integer> numberOfTables    = Var.of(0);
+    private final Var<Integer> numberUsers       = Var.of(0);
+    private final Var<Integer> numberCharacters  = Var.of(0);
+    private final Var<Integer> numberWorlds      = Var.of(0);
     private final Var<Integer> numberGameMasters = Var.of(0);
-    private final Var<String> sql = Var.of("");
-    private final Var<String> sqlFeedback = Var.of("");
-    private final Vars<String> listOfTables = Vars.of(String.class);
+    private final Var<String> sql                = Var.of("");
+    private final Var<String> sqlFeedback        = Var.of("");
+    private final Vars<String> listOfTables      = Vars.of(String.class);
     private final Map<String, List<String>> resultData = new HashMap<>();
+    private final Event onExecuteSql = Event.create();
+
 
     public DataBaseViewModel(DataBase db) {
         this.db = db;
@@ -63,7 +65,7 @@ public class DataBaseViewModel {
 
     public void executeSql() {
         resultData.clear();
-        Map<String, List<String>> result = Collections.emptyMap();
+        Map<String, List<String>> result;
         try {
             result = ((SQLiteDataBase) db).query(sql.get());
         } catch (Exception e) {
@@ -74,8 +76,6 @@ public class DataBaseViewModel {
         resultData.putAll(result);
         onExecuteSql.fire();
     }
-
-    Event onExecuteSql = Event.of();
 
     public Event sqlExecuted() { return onExecuteSql; }
 

@@ -14,10 +14,10 @@ public class FatalErrorView extends JPanel
     public FatalErrorView(Exception e)
     {
         of(this).withLayout(FILL.and(WRAP(1)))
-        .withPreferredSize(1100, 500)
+        .withPrefSize(1100, 500)
         .add(GROW,
             panel("alignx center, aligny center")
-            .withPreferredSize(825, 300)
+            .withPrefSize(825, 300)
             .add(WRAP,
                 label("A fatal error prevents the application from launching.")
             )
@@ -52,6 +52,10 @@ public class FatalErrorView extends JPanel
         StringBuilder html = new StringBuilder("<html><body>");
         html.append("<h1>").append(e.getClass().getName()).append("</h1>");
         html.append("<p>").append(e.getMessage()).append("</p>");
+        if ( e.getCause() != null ) {
+            html.append("<h2>Cause</h2>");
+            html.append("<p>").append(e.getCause().getMessage()).append("</p>");
+        }
         html.append("<h2>Stack Trace</h2>");
         html.append("<pre>");
         for ( StackTraceElement element : e.getStackTrace() )

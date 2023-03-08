@@ -139,12 +139,12 @@ public final class App implements Runnable
         try {
             var vm = createRootViewModel();
             if (!isHeadless()) {
-                FlatLightLaf.setup();
-                UI.show(
-                    UI.use(EventProcessor.DECOUPLED, () -> new RootView(vm))
-                );
-            } else
-                UI.joinDecoupledEventProcessor(); // We are using the Swing-Tree event processor!
+                UI.runLater(()->{
+                    FlatLightLaf.setup();
+                    UI.show(UI.use(EventProcessor.DECOUPLED, () -> new RootView(vm)));
+                });
+            }
+            UI.joinDecoupledEventProcessor(); // We are using the Swing-Tree event processor!
         } catch (Exception e) {
             // Something went severely wrong! What do we do?
             // Well we don't want to let our users hanging! We need to let them know what happened!
@@ -152,8 +152,11 @@ public final class App implements Runnable
             e.printStackTrace();
             // And if the application is not headless, we display something more user-friendly:
             if (!isHeadless()) {
-                FlatLightLaf.setup();
-                UI.show(UI.use(EventProcessor.DECOUPLED, () -> new FatalErrorView(e)));
+                UI.runLater(()->{
+                    FlatLightLaf.setup();
+                    UI.show(UI.use(EventProcessor.DECOUPLED, () -> new FatalErrorView(e)));
+                });
+                UI.joinDecoupledEventProcessor();
             }
             else System.exit(1); // We have to exit the application, otherwise it will hang!
         }

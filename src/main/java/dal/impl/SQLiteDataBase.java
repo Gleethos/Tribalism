@@ -48,11 +48,6 @@ public class SQLiteDataBase extends AbstractDataBase
         _dropAllTables();
     }
 
-    private void _createTableIfNotExists( Class<? extends Model<?>> model ) {
-        if ( !doesTableExist(_tableNameFromClass(model)) )
-            _modelRegistry.addTables(Collections.singletonList((Class<? extends Model<?>>) model));
-    }
-
     private void _dropTableIfExists(Class<? extends Model<?>> model) {
         if (doesTableExist(_tableNameFromClass(model)))
             dropTable(model);
@@ -267,12 +262,12 @@ public class SQLiteDataBase extends AbstractDataBase
         }
 
         int idIndex = -1;
-        for ( int i = 0; i < fieldNames.size(); i++ ) {
+        for ( int i = 0; i < fieldNames.size(); i++ )
             if ( fieldNames.get(i).equals("id") ) {
                 idIndex = i;
                 break;
             }
-        }
+
         if ( idIndex == -1 )
             throw new IllegalArgumentException("The model '" + model.getName() + "' does not have an id field!");
         else {
@@ -283,7 +278,7 @@ public class SQLiteDataBase extends AbstractDataBase
         String sql =
                 "INSERT INTO " + tableName +
                 " (" + String.join(", ", fieldNames) + ") " +
-                " VALUES (" + IntStream.range(0, fieldNames.size()).mapToObj(i -> " ? ").collect(Collectors.joining(",")) + ")";
+                "VALUES (" + IntStream.range(0, fieldNames.size()).mapToObj(i -> " ? ").collect(Collectors.joining(",")) + ")";
         boolean success = _update(sql, defaultValues);
         if ( !success )
             throw new IllegalArgumentException(

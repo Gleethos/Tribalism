@@ -12,7 +12,7 @@ public class ServerView extends JPanel
         of(this).withLayout(FILL.and(WRAP(1)))
         .add(GROW,
             panel("alignx center, aligny center, wrap 4")
-            .withPreferredSize(625, 300)
+            .withPrefSize(625, 300)
             .add(
                 label("Port:")
             )

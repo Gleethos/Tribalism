@@ -11,7 +11,7 @@ public class BootstrapView extends JPanel
         of(this).withLayout(FILL.and(WRAP(1)))
         .add(GROW,
             panel("alignx center, aligny center, wrap 4")
-            .withPreferredSize(625, 300)
+            .withPrefSize(625, 300)
             .add(GROW.and(SPAN),
                 panel("fill, alignx center, aligny center, wrap 1")
                 .add(label("Types:"))

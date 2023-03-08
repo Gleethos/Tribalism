@@ -12,14 +12,14 @@ public class RegisterViewModel implements Viewable
     private final AppContext context;
     private final ContentViewModel contentViewModel;
 
-    private final Var<String> username         ;
-    private final Var<String>  password         ;
+    private final Var<String>  username;
+    private final Var<String>  password;
     private final Var<Boolean> usernameIsValid;
     private final Var<Boolean> passwordIsValid;
     private final Var<Color>   usernameBackgroundColor;
     private final Var<Color>   passwordBackgroundColor;
-    private final Var<String>  feedback         ;
-    private final Var<Color>   feedbackColor    ;
+    private final Var<String>  feedback;
+    private final Var<Color>   feedbackColor;
     private final Var<Boolean> allInputsDisabled;
 
     public RegisterViewModel(AppContext context, ContentViewModel contentViewModel) {
@@ -76,15 +76,15 @@ public class RegisterViewModel implements Viewable
     }
 
     private String generateValidationMessage() {
-        String username = validateUsername();
-        String password = validatePassword();
+        String usernameFeedback = validateUsername();
+        String passwordFeedback = validatePassword();
 
-        if ( username.isEmpty() && password.isEmpty() )
+        if ( usernameFeedback.isEmpty() && passwordFeedback.isEmpty() )
             return "";
 
         return "Please fix the following errors:\n" +
-                username + "\n" +
-                password + "\n";
+                usernameFeedback + "\n" +
+                passwordFeedback + "\n";
     }
 
     public boolean validateAll() {

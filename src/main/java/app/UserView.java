@@ -13,7 +13,7 @@ public class UserView extends JPanel
         of(this).withLayout(FILL)
         .add(GROW,
              panel("alignx center, aligny center, wrap 2")
-            .withPreferredSize(625, 300)
+            .withPrefSize(625, 300)
             .add(GROW,
                 panel(FILL_X.and(WRAP(2)), "[grow][shrink]")
                 .add(label("Username"))
