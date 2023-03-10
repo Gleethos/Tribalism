@@ -7,9 +7,9 @@ import javax.swing.*;
 
 import static swingtree.UI.*;
 
-public class SkillTypesView extends JPanel
+public class AbilityTypesView extends JPanel
 {
-    public SkillTypesView(SkillTypesViewModel vm) {
+    public AbilityTypesView(AbilityTypesViewModel vm) {
         of(this).withLayout(FILL.and(WRAP(2).and(INS(24))), "[grow][grow]")
         .add(ALIGN_LEFT,
             panel(FILL)
@@ -18,8 +18,8 @@ public class SkillTypesView extends JPanel
         )
         .add(ALIGN_RIGHT,
             panel(FILL)
-            .add(textField(vm.newSkillTypeName()))
-            .add(SHRINK, button("+").onClick(it -> vm.addNewSkillType()))
+            .add(textField(vm.newAbilityTypeName()))
+            .add(SHRINK, button("+").onClick(it -> vm.addNewAbilityType()))
         )
         .add(SPAN.and(GROW).and(PUSH),
             panel(FILL.and(WRAP(1)))
@@ -34,9 +34,9 @@ public class SkillTypesView extends JPanel
 
     public static void main(String... args) {
         UI.runLater(()->{
-            var vm = new SkillTypesViewModel(new AppContext(new App()));
+            var vm = new AbilityTypesViewModel(new AppContext(new App()));
             FlatLightLaf.setup();
-            var view = new SkillTypesView(vm);
+            var view = new AbilityTypesView(vm);
             UI.show(view);
         });
         UI.joinDecoupledEventProcessor();

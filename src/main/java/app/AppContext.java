@@ -36,6 +36,8 @@ public final class AppContext
         this.modelTypes = new ModelTypes(db, app.getDatabaseLocation());
     }
 
+    public ModelTypes modelTypes() { return modelTypes; }
+
     private DataBaseProcessor createQueryProcessor() {
         var mainThread = Thread.currentThread();
         return new DataBaseProcessor() {

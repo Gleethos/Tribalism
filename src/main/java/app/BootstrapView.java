@@ -13,12 +13,28 @@ public class BootstrapView extends JPanel
             panel("alignx center, aligny center, wrap 4")
             .withPrefSize(625, 300)
             .add(GROW.and(SPAN),
-                panel("fill, alignx center, aligny center, wrap 1")
-                .add(label("Types:"))
-                .add(GROW_X,
+                panel("fill, alignx center, aligny center")
+                .add(WRAP.and(ALIGN_RIGHT),
+                    button("Save To Working Directory")
+                    .onMouseClick( it -> vm.saveToWorkingDir() )
+                )
+                .add(SPAN, separator())
+                .add(GROW_X.and(SPAN),
                     tabbedPane()
-                    .add(tab("Skill Types").add(vm.skillTypesViewModel().createView()))
-                    .add(tab("Abilities"))
+                    .add(
+                        tab("Abilities")
+                        .onMouseClick( it -> vm.nextFrom(BootstrapViewModel.Stage.ABILITIES))
+                        .isEnabledIf(BootstrapViewModel.Stage.ABILITIES, vm.stage())
+                        .isSelectedIf(BootstrapViewModel.Stage.ABILITIES, vm.stage())
+                        .add(vm.abilityTypesViewModel().createView())
+                    )
+                    .add(
+                        tab("Skill Types")
+                        .onMouseClick( it -> vm.nextFrom(BootstrapViewModel.Stage.SKILL_TYPES))
+                        .isEnabledIf(BootstrapViewModel.Stage.SKILL_TYPES, vm.stage())
+                        .isSelectedIf(BootstrapViewModel.Stage.SKILL_TYPES, vm.stage())
+                        .add(vm.skillTypesViewModel().createView())
+                    )
                 )
             )
         );

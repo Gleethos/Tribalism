@@ -12,13 +12,15 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
-public class RoleTypes
+public class RoleTypes extends AbstractTypes
 {
     private static final Logger log = LoggerFactory.getLogger(RoleTypes.class);
 
     private final List<Role> roles = new ArrayList<>();
     private final Map<String, Role> rolesByName = new HashMap<>();
-    private final String workingDirectory;
+
+    private final AbilityTypes abilityTypes;
+    private final SkillTypes skillTypes;
 
     public RoleTypes(
             DataBase db,
@@ -26,7 +28,9 @@ public class RoleTypes
             AbilityTypes abilityTypes,
             SkillTypes skillTypes
     ) {
-        this.workingDirectory = workingDirectory;
+        super(workingDirectory, "role-types.json");
+        this.abilityTypes = abilityTypes;
+        this.skillTypes = skillTypes;
         // We load the roles in the order they are defined in the role-types.json file.
         // The roles are in the resource folder at src/main/resources/app/constants/role-types.json
         var location = "/app/bootstrap/role-types.json";
@@ -35,7 +39,7 @@ public class RoleTypes
         if ( new File(workingDirectory + "/role-types.json" ).exists() )
             location = workingDirectory + "/role-types.json";
         loadFromLocation(db, location, abilityTypes, skillTypes);
-        saveAsJSONToWorkingDirectory(db);
+        saveAsJSONToWorkingDirectory(workingDirectory + "/role-types.json", db);
     }
 
     private void loadFromLocation(
@@ -126,7 +130,13 @@ public class RoleTypes
         }
     }
 
-    private void saveAsJSONToWorkingDirectory(DataBase db) {
+    @Override
+    protected void loadFromLocation(String location, DataBase db) {
+        loadFromLocation(db, location, abilityTypes, skillTypes);
+    }
+
+    @Override
+    protected void saveAsJSONToWorkingDirectory(String location, DataBase db) {
         var json = new JSONArray();
         for (var role : roles) {
             var jsonRole = new org.json.JSONObject();
@@ -152,7 +162,7 @@ public class RoleTypes
             jsonRole.put("skills", jsonSkills);
             json.put(jsonRole);
         }
-        try (var out = new java.io.FileWriter(workingDirectory + "/role-types.json")) {
+        try (var out = new java.io.FileWriter(location)) {
             out.write(json.toString(4));
         } catch (Exception e) {
             log.error("Failed to save 'role-types.json'!", e);

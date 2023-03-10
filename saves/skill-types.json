@@ -240,7 +240,7 @@
     {
         "primary ability": "",
         "secondary ability": "",
-        "name": "First Aide",
+        "name": "First Aid",
         "tertiary ability": "",
         "description": ""
     },
@@ -717,6 +717,13 @@
         "primary ability": "",
         "secondary ability": "",
         "name": "\u0003",
+        "tertiary ability": "",
+        "description": ""
+    },
+    {
+        "primary ability": "",
+        "secondary ability": "",
+        "name": "First Aide",
         "tertiary ability": "",
         "description": ""
     }

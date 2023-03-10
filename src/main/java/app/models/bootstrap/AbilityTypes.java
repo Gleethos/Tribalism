@@ -63,7 +63,7 @@ public class AbilityTypes extends AbstractTypes
             jsonAbilityType.put("description", abilityType.description().get());
             json.put(jsonAbilityType);
         }
-        try ( var out = new java.io.FileWriter(workingDirectory + "/" + FILE_NAME) ) {
+        try ( var out = new java.io.FileWriter(location) ) {
             out.write(json.toString(4));
         } catch (Exception e) {
             throw new RuntimeException("Could not save " + FILE_NAME + " to working directory");

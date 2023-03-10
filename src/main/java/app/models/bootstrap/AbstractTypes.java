@@ -17,17 +17,17 @@ public abstract class AbstractTypes
 
     public boolean localTypesExist() { return new File(workingDirectory + "/" + fileName ).exists(); }
 
-    public void loadFromResources(DataBase db) {
+    public final void loadFromResources(DataBase db) {
         var location = "/app/bootstrap/" + fileName;
         loadFromLocation(location, db);
     }
 
-    public void loadFromWorkingDir(DataBase db) {
+    public final void loadFromWorkingDir(DataBase db) {
         var location = this.workingDirectory + "/" + fileName;
         loadFromLocation(location, db);
     }
 
-    public void saveToWorkingDir(DataBase db) {
+    public final void saveToWorkingDir(DataBase db) {
         var path = workingDirectory + "/" + fileName;
         saveAsJSONToWorkingDirectory(path, db);
     }
