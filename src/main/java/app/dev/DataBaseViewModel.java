@@ -1,4 +1,4 @@
-package app;
+package app.dev;
 
 import app.models.Character;
 import app.models.GameMaster;
@@ -11,7 +11,6 @@ import sprouts.Var;
 import sprouts.Vars;
 
 import javax.swing.*;
-import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;

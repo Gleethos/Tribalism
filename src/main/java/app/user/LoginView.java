@@ -1,9 +1,8 @@
-package app;
+package app.user;
 
 import com.formdev.flatlaf.FlatLightLaf;
 
 import javax.swing.*;
-import java.awt.*;
 
 import static swingtree.UI.*;
 

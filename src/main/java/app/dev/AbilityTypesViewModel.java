@@ -1,7 +1,7 @@
-package app;
+package app.dev;
 
+import app.AppContext;
 import app.models.AbilityType;
-import app.models.SkillType;
 import sprouts.Vals;
 import sprouts.Var;
 import sprouts.Vars;

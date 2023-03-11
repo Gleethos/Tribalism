@@ -1,5 +1,8 @@
-package app;
+package app.user;
 
+import app.AppContext;
+import app.ContentViewModel;
+import app.UserContext;
 import sprouts.Val;
 import sprouts.Var;
 import swingtree.api.mvvm.Viewable;

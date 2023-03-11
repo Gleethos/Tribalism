@@ -26,9 +26,9 @@ function App() {
           console.log('Received content page: ' + vm.class);
 
           // Now let's check if the class is a login page
-          if (vm.class === 'app.LoginViewModel')
+          if (vm.class === 'app.user.LoginViewModel')
             setContent(<LoginView vm={vm} />); // We set the content to the login page
-          else if (vm.class === 'app.RegisterViewModel')
+          else if (vm.class === 'app.user.RegisterViewModel')
             setContent(<RegisterView vm={vm} />); // We set the content to the register page
         });
     },
