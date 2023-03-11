@@ -7,13 +7,14 @@ import javax.swing.*;
 
 public class BootstrapViewModel
 {
-    public enum Stage { SKILL_TYPES, ABILITIES, DONE }
+    public enum Stage { SKILL_TYPES, ABILITIES, ROLES, DONE }
 
     private final AppContext context;
 
     private final Var<Stage> stage = Var.of(Stage.SKILL_TYPES);
     private final SkillTypesViewModel skillTypesViewModel;
     private final AbilityTypesViewModel abilityTypesViewModel;
+    private final RoleTypesViewModel roleTypesViewModel;
 
 
 
@@ -21,6 +22,7 @@ public class BootstrapViewModel
         this.context = context;
         this.skillTypesViewModel = new SkillTypesViewModel(context);
         this.abilityTypesViewModel = new AbilityTypesViewModel(context);
+        this.roleTypesViewModel = new RoleTypesViewModel(context);
     }
 
     public Var<Stage> stage() { return stage; }
@@ -48,5 +50,9 @@ public class BootstrapViewModel
 
     public AbilityTypesViewModel abilityTypesViewModel() {
         return abilityTypesViewModel;
+    }
+
+    public RoleTypesViewModel roleTypesViewModel() {
+        return roleTypesViewModel;
     }
 }

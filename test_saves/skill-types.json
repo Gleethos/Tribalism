@@ -1,212 +1,219 @@
 [
     {
-        "primary ability": "charisma",
-        "secondary ability": "intelligence",
+        "primary ability": "",
+        "secondary ability": "",
         "name": "Act",
-        "tertiary ability": "sensing",
+        "tertiary ability": "",
         "description": ""
     },
     {
-        "primary ability": "dexterity",
-        "secondary ability": "sensing",
+        "primary ability": "",
+        "secondary ability": "",
         "name": "Aim",
-        "tertiary ability": "willpower",
+        "tertiary ability": "",
         "description": ""
     },
     {
-        "primary ability": "sensing",
-        "secondary ability": "wisdom",
+        "primary ability": "",
+        "secondary ability": "",
         "name": "Appraise Dimensions",
-        "tertiary ability": "intelligence",
+        "tertiary ability": "",
         "description": ""
     },
     {
-        "primary ability": "charisma",
-        "secondary ability": "wisdom",
+        "primary ability": "",
+        "secondary ability": "",
         "name": "Appraise Personality",
-        "tertiary ability": "intelligence",
+        "tertiary ability": "",
         "description": ""
     },
     {
-        "primary ability": "wisdom",
-        "secondary ability": "intelligence",
+        "primary ability": "",
+        "secondary ability": "",
         "name": "Appraise Worth",
-        "tertiary ability": "sensing",
+        "tertiary ability": "",
         "description": ""
     },
     {
-        "primary ability": "dexterity",
-        "secondary ability": "sensing",
+        "primary ability": "",
+        "secondary ability": "",
         "name": "Balance",
-        "tertiary ability": "constitution",
+        "tertiary ability": "",
         "description": ""
     },
     {
-        "primary ability": "charisma",
-        "secondary ability": "sensing",
+        "primary ability": "",
+        "secondary ability": "",
         "name": "Bluff",
-        "tertiary ability": "willpower",
+        "tertiary ability": "",
         "description": ""
     },
     {
-        "primary ability": "strength",
-        "secondary ability": "dexterity",
+        "primary ability": "",
+        "secondary ability": "",
+        "name": "Catch",
+        "tertiary ability": "",
+        "description": ""
+    },
+    {
+        "primary ability": "",
+        "secondary ability": "",
         "name": "Climb",
-        "tertiary ability": "constitution",
+        "tertiary ability": "",
         "description": ""
     },
     {
-        "primary ability": "wisdom",
-        "secondary ability": "intelligence",
+        "primary ability": "",
+        "secondary ability": "",
         "name": "Computer Hacking",
-        "tertiary ability": "willpower",
+        "tertiary ability": "",
         "description": ""
     },
     {
-        "primary ability": "intelligence",
-        "secondary ability": "wisdom",
+        "primary ability": "",
+        "secondary ability": "",
         "name": "Computer Programming",
-        "tertiary ability": "willpower",
+        "tertiary ability": "",
         "description": ""
     },
     {
-        "primary ability": "sensing",
-        "secondary ability": "willpower",
+        "primary ability": "",
+        "secondary ability": "",
         "name": "Concentration",
-        "tertiary ability": "constitution",
+        "tertiary ability": "",
         "description": ""
     },
     {
-        "primary ability": "charisma",
-        "secondary ability": "wisdom",
+        "primary ability": "",
+        "secondary ability": "",
         "name": "Convince",
-        "tertiary ability": "willpower",
+        "tertiary ability": "",
         "description": ""
     },
     {
-        "primary ability": "sensing",
-        "secondary ability": "wisdom",
+        "primary ability": "",
+        "secondary ability": "",
         "name": "Cook",
-        "tertiary ability": "dexterity",
+        "tertiary ability": "",
         "description": ""
     },
     {
-        "primary ability": "dexterity",
-        "secondary ability": "wisdom",
+        "primary ability": "",
+        "secondary ability": "",
         "name": "Craft",
-        "tertiary ability": "intelligence",
+        "tertiary ability": "",
         "description": ""
     },
     {
-        "primary ability": "dexterity",
-        "secondary ability": "wisdom",
+        "primary ability": "",
+        "secondary ability": "",
         "name": "Craft Cloth",
-        "tertiary ability": "sensing",
+        "tertiary ability": "",
         "description": ""
     },
     {
-        "primary ability": "wisdom",
-        "secondary ability": "intelligence",
+        "primary ability": "",
+        "secondary ability": "",
         "name": "Craft Computer",
-        "tertiary ability": "willpower",
+        "tertiary ability": "",
         "description": ""
     },
     {
-        "primary ability": "wisdom",
-        "secondary ability": "dexterity",
+        "primary ability": "",
+        "secondary ability": "",
         "name": "Craft Food",
-        "tertiary ability": "sensing",
+        "tertiary ability": "",
         "description": ""
     },
     {
-        "primary ability": "strength",
-        "secondary ability": "wisdom",
+        "primary ability": "",
+        "secondary ability": "",
         "name": "Craft Forgery",
-        "tertiary ability": "dexterity",
+        "tertiary ability": "",
         "description": ""
     },
     {
-        "primary ability": "dexterity",
-        "secondary ability": "wisdom",
+        "primary ability": "",
+        "secondary ability": "",
         "name": "Craft Glass",
-        "tertiary ability": "sensing",
+        "tertiary ability": "",
         "description": ""
     },
     {
-        "primary ability": "strength",
-        "secondary ability": "constitution",
+        "primary ability": "",
+        "secondary ability": "",
         "name": "Craft Metal",
-        "tertiary ability": "sensing",
+        "tertiary ability": "",
         "description": ""
     },
     {
-        "primary ability": "dexterity",
-        "secondary ability": "sensing",
+        "primary ability": "",
+        "secondary ability": "",
         "name": "Craft Plastic",
-        "tertiary ability": "willpower",
+        "tertiary ability": "",
         "description": ""
     },
     {
-        "primary ability": "dexterity",
-        "secondary ability": "sensing",
+        "primary ability": "",
+        "secondary ability": "",
         "name": "Craft Weapon",
-        "tertiary ability": "wisdom",
+        "tertiary ability": "",
         "description": ""
     },
     {
-        "primary ability": "strength",
-        "secondary ability": "constitution",
+        "primary ability": "",
+        "secondary ability": "",
         "name": "Craft Wood",
-        "tertiary ability": "dexterity",
+        "tertiary ability": "",
         "description": ""
     },
     {
-        "primary ability": "wisdom",
-        "secondary ability": "intelligence",
+        "primary ability": "",
+        "secondary ability": "",
         "name": "Demolition",
-        "tertiary ability": "sensing",
+        "tertiary ability": "",
         "description": ""
     },
     {
-        "primary ability": "charisma",
-        "secondary ability": "intelligence",
+        "primary ability": "",
+        "secondary ability": "",
         "name": "Diplomacy",
-        "tertiary ability": "wisdom",
+        "tertiary ability": "",
         "description": ""
     },
     {
-        "primary ability": "sensing",
-        "secondary ability": "dexterity",
+        "primary ability": "",
+        "secondary ability": "",
         "name": "Disguise",
-        "tertiary ability": "constitution",
+        "tertiary ability": "",
         "description": ""
     },
     {
-        "primary ability": "sensing",
-        "secondary ability": "dexterity",
+        "primary ability": "",
+        "secondary ability": "",
         "name": "Dodge",
-        "tertiary ability": "willpower",
+        "tertiary ability": "",
         "description": ""
     },
     {
-        "primary ability": "dexterity",
-        "secondary ability": "sensing",
+        "primary ability": "",
+        "secondary ability": "",
         "name": "Drive Bike",
-        "tertiary ability": "constitution",
+        "tertiary ability": "",
         "description": ""
     },
     {
-        "primary ability": "sensing",
-        "secondary ability": "wisdom",
+        "primary ability": "",
+        "secondary ability": "",
         "name": "Drive Car",
-        "tertiary ability": "intelligence",
+        "tertiary ability": "",
         "description": ""
     },
     {
-        "primary ability": "sensing",
-        "secondary ability": "dexterity",
+        "primary ability": "",
+        "secondary ability": "",
         "name": "Drive Tank",
-        "tertiary ability": "constitution",
+        "tertiary ability": "",
         "description": ""
     },
     {
@@ -240,7 +247,7 @@
     {
         "primary ability": "",
         "secondary ability": "",
-        "name": "First Aid",
+        "name": "First Aide",
         "tertiary ability": "",
         "description": ""
     },
@@ -709,14 +716,7 @@
     {
         "primary ability": "",
         "secondary ability": "",
-        "name": "Catch",
-        "tertiary ability": "",
-        "description": ""
-    },
-    {
-        "primary ability": "",
-        "secondary ability": "",
-        "name": "First Aide",
+        "name": "First Aid",
         "tertiary ability": "",
         "description": ""
     }

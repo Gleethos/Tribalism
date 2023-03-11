@@ -78,6 +78,11 @@ public class DataBaseViewModel {
 
     public Event sqlExecuted() { return onExecuteSql; }
 
+    public void dropAllTables() {
+        db.dropAllTables();
+        loadFromDataBase();
+    }
+
     public JComponent createView() { return new DataBaseView(this); }
 
 }

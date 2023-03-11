@@ -81,7 +81,7 @@ public class RoleTypes extends AbstractTypes
             throw e;
         }
         // We iterate over the roles in the json object.
-        for (int i = 0; i < json.length(); i++) {
+        for ( int i = 0; i < json.length(); i++ ) {
             var newRole = json.getJSONObject(i);
             var name        = newRole.getString("name");
             var description = newRole.getString("description");
@@ -90,25 +90,41 @@ public class RoleTypes extends AbstractTypes
                                     .where(Role::name).is(name)
                                     .first();
 
-            if (existingRole.isPresent()) {
-                roles.add(existingRole.get());
+            Role role;
+
+            if ( existingRole.isPresent() ) {
                 rolesByName.put(name, existingRole.get());
-                continue;
+                role = existingRole.get();
             }
-            Role role = db.create(Role.class);
-            role.name().set(name);
+            else {
+                role = db.create(Role.class);
+                role.name().set(name);
+            }
             role.description().set(description);
             roles.add(role);
             rolesByName.put(name, role);
+
             // We load the abilities for the role:
             var abilities = newRole.getJSONArray("abilities");
             for (int j = 0; j < abilities.length(); j++) {
                 var ability = abilities.getJSONObject(j);
                 var abilityName = ability.getString("name");
                 var abilityLevel = ability.getInt("level");
-                var abilityType = abilityTypes.findByName(abilityName).orElseThrow();
-                var newAbility = db.create(Ability.class);
-                newAbility.type().set(abilityType);
+                Ability newAbility;
+                // We check if the ability already exists in the role:
+                var existingAbility = role.abilities()
+                                            .stream()
+                                            .filter(a -> a.type().get().name().get().equals(abilityName))
+                                            .findFirst();
+
+                if ( existingAbility.isPresent() )
+                    newAbility = existingAbility.get();
+                else {
+                    var abilityType = abilityTypes.findByName(abilityName).orElseThrow();
+                    newAbility = db.create(Ability.class);
+                    newAbility.type().set(abilityType);
+                    role.abilities().add(newAbility);
+                }
                 newAbility.level().set(abilityLevel);
             }
 
@@ -120,9 +136,23 @@ public class RoleTypes extends AbstractTypes
                 var skillLevel = skill.getInt("level");
                 var isProficient = skill.getBoolean("proficient");
                 var learnability = skill.getDouble("learnability");
-                var skillType  = skillTypes.findByName(skillName).orElseThrow();
-                var newSkill   = db.create(Skill.class);
-                newSkill.type().set(skillType);
+                Skill newSkill;
+
+                // We check if the skill already exists in the role:
+                var existingSkill = role.skills()
+                                            .stream()
+                                            .filter(s -> s.type().get().name().get().equals(skillName))
+                                            .findFirst();
+
+                if ( existingSkill.isPresent() )
+                    newSkill = existingSkill.get();
+                else {
+                    var skillType  = skillTypes.findByName(skillName).orElseThrow();
+                    newSkill = db.create(Skill.class);
+                    newSkill.type().set(skillType);
+                    role.skills().add(newSkill);
+                }
+
                 newSkill.level().set(skillLevel);
                 newSkill.isProficient().set(isProficient);
                 newSkill.learnability().set(learnability);

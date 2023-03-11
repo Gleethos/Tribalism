@@ -37,7 +37,7 @@ public class DataBaseView extends JPanel
                 )
             )
         )
-        .add(GROW,
+        .add(GROW.and(WRAP),
             panel(FILL_X.and(WRAP(2)))
             .add(SHRINK, label("Users:"))
             .add(SHRINK, label(vm.numberUsers().viewAsString()))
@@ -53,7 +53,19 @@ public class DataBaseView extends JPanel
             .add(GROW.and(SPAN),
                 UI.list(vm.listOfTables())
             )
-        );
+        )
+        .add(SPAN.and(ALIGN_RIGHT), button("Drop All Tables").onClick(it -> {
+            // We warn the user before dropping all tables.
+            // Swing confirm dialog:
+            var result = JOptionPane.showConfirmDialog(
+                                    this,
+                                    "Are you sure you want to drop all tables?",
+                                    "Drop all tables",
+                                    JOptionPane.YES_NO_OPTION
+                                );
+            if (result == JOptionPane.YES_OPTION)
+                vm.dropAllTables();
+        }));
     }
 
 }
