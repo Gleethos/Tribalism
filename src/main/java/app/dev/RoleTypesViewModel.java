@@ -84,10 +84,10 @@ public class RoleTypesViewModel
 
         private Object view = null;
 
-        public RoleTypeViewModel(RoleTypesViewModel parent, Role Role) {
+        public RoleTypeViewModel(RoleTypesViewModel parent, Role role) {
             this.parent = parent;
-            this.role = Role;
-            var skillVMList  = Role.skills()
+            this.role = role;
+            var skillVMList  = role.skills()
                                 .stream()
                                 .map(SkillViewModel::new)
                                 .toList();
@@ -112,7 +112,10 @@ public class RoleTypesViewModel
                     .add(UI.SHRINK, UI.label("Description:"))
                     .add(UI.GROW.and(UI.PUSH), UI.textField(role.description()))
                     .add(UI.SHRINK.and(UI.WRAP), UI.button("Delete").onClick(it2 -> delete()))
-                    .add(UI.GROW.and(UI.WRAP).and(UI.SPAN), UI.scrollPanels().add(skillViewModels))
+                    .add(UI.GROW.and(UI.WRAP).and(UI.SPAN),
+                        UI.scrollPanels().withPrefHeight(142)
+                        .add(skillViewModels)
+                    )
                     .add(UI.GROW.and(UI.WRAP).and(UI.SPAN), UI.separator())
                     .getComponent();
 
@@ -146,11 +149,12 @@ public class RoleTypesViewModel
 
             SkillType type = skill.type().get();
             view = UI.panel(UI.FILL.and(UI.INS(12)))
-                    .add(UI.GROW, UI.textField(type.name()))
+                    .add(UI.GROW, UI.label(type.name()).makeBold())
                     .add(UI.GROW, UI.label(type.primaryAbility()))
                     .add(UI.GROW, UI.label(type.secondaryAbility()))
                     .add(UI.GROW, UI.label(type.tertiaryAbility()))
-                    .add(UI.SHRINK, UI.checkBox("Proficient:", skill.isProficient()))
+                    .add(UI.SHRINK, UI.label("Proficient:"))
+                    .add(UI.SHRINK, UI.checkBox("", skill.isProficient()))
                     .add(UI.SHRINK, UI.label("Learnability:"))
                     .add(UI.SHRINK, UI.spinner(skill.learnability()).withStepSize(0.5))
                     .add(UI.SHRINK, UI.label("Level:"))
