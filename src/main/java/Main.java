@@ -1,5 +1,6 @@
 import app.App;
 import com.beust.jcommander.JCommander;
+import dal.api.DataBase;
 
 /**
  *  The main class which is used to start the application when exported as a JAR file.

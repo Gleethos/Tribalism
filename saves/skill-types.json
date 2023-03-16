@@ -210,521 +210,514 @@
         "description": ""
     },
     {
-        "primary ability": "",
-        "secondary ability": "",
+        "primary ability": "strength",
+        "secondary ability": "strength",
         "name": "Drive Tractor",
-        "tertiary ability": "",
+        "tertiary ability": "strength",
         "description": ""
     },
     {
-        "primary ability": "",
-        "secondary ability": "",
+        "primary ability": "strength",
+        "secondary ability": "strength",
         "name": "Drive Truck",
-        "tertiary ability": "",
+        "tertiary ability": "strength",
         "description": ""
     },
     {
-        "primary ability": "",
-        "secondary ability": "",
+        "primary ability": "strength",
+        "secondary ability": "strength",
         "name": "Electronics",
-        "tertiary ability": "",
+        "tertiary ability": "strength",
         "description": ""
     },
     {
-        "primary ability": "",
-        "secondary ability": "",
+        "primary ability": "strength",
+        "secondary ability": "strength",
         "name": "Escape Artist",
-        "tertiary ability": "",
+        "tertiary ability": "strength",
         "description": ""
     },
     {
-        "primary ability": "",
-        "secondary ability": "",
+        "primary ability": "strength",
+        "secondary ability": "strength",
         "name": "First Aid",
-        "tertiary ability": "",
+        "tertiary ability": "strength",
         "description": ""
     },
     {
-        "primary ability": "",
-        "secondary ability": "",
+        "primary ability": "strength",
+        "secondary ability": "strength",
         "name": "Fishing",
-        "tertiary ability": "",
+        "tertiary ability": "strength",
         "description": ""
     },
     {
-        "primary ability": "",
-        "secondary ability": "",
+        "primary ability": "strength",
+        "secondary ability": "strength",
         "name": "Fly Helicopter",
-        "tertiary ability": "",
+        "tertiary ability": "strength",
         "description": ""
     },
     {
-        "primary ability": "",
-        "secondary ability": "",
+        "primary ability": "strength",
+        "secondary ability": "strength",
         "name": "Fly Passenger Plane",
-        "tertiary ability": "",
+        "tertiary ability": "strength",
         "description": ""
     },
     {
-        "primary ability": "",
-        "secondary ability": "",
+        "primary ability": "strength",
+        "secondary ability": "strength",
         "name": "Gather Information",
-        "tertiary ability": "",
+        "tertiary ability": "strength",
         "description": ""
     },
     {
-        "primary ability": "",
-        "secondary ability": "",
+        "primary ability": "strength",
+        "secondary ability": "strength",
         "name": "Handle Animal",
-        "tertiary ability": "",
+        "tertiary ability": "strength",
         "description": ""
     },
     {
-        "primary ability": "",
-        "secondary ability": "",
+        "primary ability": "strength",
+        "secondary ability": "strength",
         "name": "Hide",
-        "tertiary ability": "",
+        "tertiary ability": "strength",
         "description": ""
     },
     {
-        "primary ability": "",
-        "secondary ability": "",
+        "primary ability": "strength",
+        "secondary ability": "strength",
         "name": "Intimidate",
-        "tertiary ability": "",
+        "tertiary ability": "strength",
         "description": ""
     },
     {
-        "primary ability": "",
-        "secondary ability": "",
+        "primary ability": "strength",
+        "secondary ability": "strength",
         "name": "Jump",
-        "tertiary ability": "",
+        "tertiary ability": "strength",
         "description": ""
     },
     {
-        "primary ability": "",
-        "secondary ability": "",
+        "primary ability": "strength",
+        "secondary ability": "strength",
         "name": "Knowledge (architecture)",
-        "tertiary ability": "",
+        "tertiary ability": "strength",
         "description": ""
     },
     {
-        "primary ability": "",
-        "secondary ability": "",
+        "primary ability": "strength",
+        "secondary ability": "strength",
         "name": "Knowledge (biology)",
-        "tertiary ability": "",
+        "tertiary ability": "strength",
         "description": ""
     },
     {
-        "primary ability": "",
-        "secondary ability": "",
+        "primary ability": "strength",
+        "secondary ability": "strength",
         "name": "Knowledge (chemistry)",
-        "tertiary ability": "",
+        "tertiary ability": "strength",
         "description": ""
     },
     {
-        "primary ability": "",
-        "secondary ability": "",
+        "primary ability": "strength",
+        "secondary ability": "strength",
         "name": "Knowledge (computer)",
-        "tertiary ability": "",
+        "tertiary ability": "strength",
         "description": ""
     },
     {
-        "primary ability": "",
-        "secondary ability": "",
+        "primary ability": "strength",
+        "secondary ability": "strength",
         "name": "Knowledge (engineering)",
-        "tertiary ability": "",
+        "tertiary ability": "strength",
         "description": ""
     },
     {
-        "primary ability": "",
-        "secondary ability": "",
+        "primary ability": "strength",
+        "secondary ability": "strength",
         "name": "Knowledge (geography)",
-        "tertiary ability": "",
+        "tertiary ability": "strength",
         "description": ""
     },
     {
-        "primary ability": "",
-        "secondary ability": "",
+        "primary ability": "strength",
+        "secondary ability": "strength",
         "name": "Knowledge (history)",
-        "tertiary ability": "",
+        "tertiary ability": "strength",
         "description": ""
     },
     {
-        "primary ability": "",
-        "secondary ability": "",
+        "primary ability": "strength",
+        "secondary ability": "strength",
         "name": "Knowledge (local)",
-        "tertiary ability": "",
+        "tertiary ability": "strength",
         "description": ""
     },
     {
-        "primary ability": "",
-        "secondary ability": "",
+        "primary ability": "strength",
+        "secondary ability": "strength",
         "name": "Knowledge (medicine)",
-        "tertiary ability": "",
+        "tertiary ability": "strength",
         "description": ""
     },
     {
-        "primary ability": "",
-        "secondary ability": "",
+        "primary ability": "strength",
+        "secondary ability": "strength",
         "name": "Knowledge (nature)",
-        "tertiary ability": "",
+        "tertiary ability": "strength",
         "description": ""
     },
     {
-        "primary ability": "",
-        "secondary ability": "",
+        "primary ability": "strength",
+        "secondary ability": "strength",
         "name": "Knowledge (physics)",
-        "tertiary ability": "",
+        "tertiary ability": "strength",
         "description": ""
     },
     {
-        "primary ability": "",
-        "secondary ability": "",
+        "primary ability": "strength",
+        "secondary ability": "strength",
         "name": "Knowledge (aircraft)",
-        "tertiary ability": "",
+        "tertiary ability": "strength",
         "description": ""
     },
     {
-        "primary ability": "",
-        "secondary ability": "",
+        "primary ability": "strength",
+        "secondary ability": "strength",
         "name": "Knowledge (religion)",
-        "tertiary ability": "",
+        "tertiary ability": "strength",
         "description": ""
     },
     {
-        "primary ability": "",
-        "secondary ability": "",
+        "primary ability": "strength",
+        "secondary ability": "strength",
         "name": "Learn By Act",
-        "tertiary ability": "",
+        "tertiary ability": "strength",
         "description": ""
     },
     {
-        "primary ability": "",
-        "secondary ability": "",
+        "primary ability": "strength",
+        "secondary ability": "strength",
         "name": "Learn By Book",
-        "tertiary ability": "",
+        "tertiary ability": "strength",
         "description": ""
     },
     {
-        "primary ability": "",
-        "secondary ability": "",
+        "primary ability": "strength",
+        "secondary ability": "strength",
         "name": "Listen",
-        "tertiary ability": "",
+        "tertiary ability": "strength",
         "description": ""
     },
     {
-        "primary ability": "",
-        "secondary ability": "",
+        "primary ability": "strength",
+        "secondary ability": "strength",
         "name": "Mechanics",
-        "tertiary ability": "",
+        "tertiary ability": "strength",
         "description": ""
     },
     {
-        "primary ability": "",
-        "secondary ability": "",
+        "primary ability": "strength",
+        "secondary ability": "strength",
         "name": "Move Silently",
-        "tertiary ability": "",
+        "tertiary ability": "strength",
         "description": ""
     },
     {
-        "primary ability": "",
-        "secondary ability": "",
+        "primary ability": "strength",
+        "secondary ability": "strength",
         "name": "Open Lock",
-        "tertiary ability": "",
+        "tertiary ability": "strength",
         "description": ""
     },
     {
-        "primary ability": "",
-        "secondary ability": "",
+        "primary ability": "strength",
+        "secondary ability": "strength",
         "name": "Patience",
-        "tertiary ability": "",
+        "tertiary ability": "strength",
         "description": ""
     },
     {
-        "primary ability": "",
-        "secondary ability": "",
+        "primary ability": "strength",
+        "secondary ability": "strength",
         "name": "Perform Instrument",
-        "tertiary ability": "",
+        "tertiary ability": "strength",
         "description": ""
     },
     {
-        "primary ability": "",
-        "secondary ability": "",
+        "primary ability": "strength",
+        "secondary ability": "strength",
         "name": "Perform Trick",
-        "tertiary ability": "",
+        "tertiary ability": "strength",
         "description": ""
     },
     {
-        "primary ability": "",
-        "secondary ability": "",
+        "primary ability": "strength",
+        "secondary ability": "strength",
         "name": "Persuade",
-        "tertiary ability": "",
+        "tertiary ability": "strength",
         "description": ""
     },
     {
-        "primary ability": "",
-        "secondary ability": "",
+        "primary ability": "strength",
+        "secondary ability": "strength",
         "name": "Pick Pocket",
-        "tertiary ability": "",
+        "tertiary ability": "strength",
         "description": ""
     },
     {
-        "primary ability": "",
-        "secondary ability": "",
+        "primary ability": "strength",
+        "secondary ability": "strength",
         "name": "Pilot",
-        "tertiary ability": "",
+        "tertiary ability": "strength",
         "description": ""
     },
     {
-        "primary ability": "",
-        "secondary ability": "",
+        "primary ability": "strength",
+        "secondary ability": "strength",
         "name": "Play Game",
-        "tertiary ability": "",
+        "tertiary ability": "strength",
         "description": ""
     },
     {
-        "primary ability": "",
-        "secondary ability": "",
+        "primary ability": "strength",
+        "secondary ability": "strength",
         "name": "Play Instrument",
-        "tertiary ability": "",
+        "tertiary ability": "strength",
         "description": ""
     },
     {
-        "primary ability": "",
-        "secondary ability": "",
+        "primary ability": "strength",
+        "secondary ability": "strength",
         "name": "Play Trick",
-        "tertiary ability": "",
+        "tertiary ability": "strength",
         "description": ""
     },
     {
-        "primary ability": "",
-        "secondary ability": "",
+        "primary ability": "strength",
+        "secondary ability": "strength",
         "name": "Repair",
-        "tertiary ability": "",
+        "tertiary ability": "strength",
         "description": ""
     },
     {
-        "primary ability": "",
-        "secondary ability": "",
+        "primary ability": "strength",
+        "secondary ability": "strength",
         "name": "Ride Animal",
-        "tertiary ability": "",
+        "tertiary ability": "strength",
         "description": ""
     },
     {
-        "primary ability": "",
-        "secondary ability": "",
+        "primary ability": "strength",
+        "secondary ability": "strength",
         "name": "Read",
-        "tertiary ability": "",
+        "tertiary ability": "strength",
         "description": ""
     },
     {
-        "primary ability": "",
-        "secondary ability": "",
+        "primary ability": "strength",
+        "secondary ability": "strength",
         "name": "Search",
-        "tertiary ability": "",
+        "tertiary ability": "strength",
         "description": ""
     },
     {
-        "primary ability": "",
-        "secondary ability": "",
+        "primary ability": "strength",
+        "secondary ability": "strength",
         "name": "Sense Motive",
-        "tertiary ability": "",
+        "tertiary ability": "strength",
         "description": ""
     },
     {
-        "primary ability": "",
-        "secondary ability": "",
+        "primary ability": "strength",
+        "secondary ability": "strength",
         "name": "Sing",
-        "tertiary ability": "",
+        "tertiary ability": "strength",
         "description": ""
     },
     {
-        "primary ability": "",
-        "secondary ability": "",
+        "primary ability": "strength",
+        "secondary ability": "strength",
         "name": "Sleight of Hand",
-        "tertiary ability": "",
+        "tertiary ability": "strength",
         "description": ""
     },
     {
-        "primary ability": "",
-        "secondary ability": "",
+        "primary ability": "strength",
+        "secondary ability": "strength",
         "name": "Smell",
-        "tertiary ability": "",
+        "tertiary ability": "strength",
         "description": ""
     },
     {
-        "primary ability": "",
-        "secondary ability": "",
+        "primary ability": "strength",
+        "secondary ability": "strength",
         "name": "Speak Language",
-        "tertiary ability": "",
+        "tertiary ability": "strength",
         "description": ""
     },
     {
-        "primary ability": "",
-        "secondary ability": "",
+        "primary ability": "strength",
+        "secondary ability": "strength",
         "name": "Sneak",
-        "tertiary ability": "",
+        "tertiary ability": "strength",
         "description": ""
     },
     {
-        "primary ability": "",
-        "secondary ability": "",
+        "primary ability": "strength",
+        "secondary ability": "strength",
         "name": "Spot",
-        "tertiary ability": "",
+        "tertiary ability": "strength",
         "description": ""
     },
     {
-        "primary ability": "",
-        "secondary ability": "",
+        "primary ability": "strength",
+        "secondary ability": "strength",
         "name": "Surgery",
-        "tertiary ability": "",
+        "tertiary ability": "strength",
         "description": ""
     },
     {
-        "primary ability": "",
-        "secondary ability": "",
+        "primary ability": "strength",
+        "secondary ability": "strength",
         "name": "Survival",
-        "tertiary ability": "",
+        "tertiary ability": "strength",
         "description": ""
     },
     {
-        "primary ability": "",
-        "secondary ability": "",
+        "primary ability": "strength",
+        "secondary ability": "strength",
         "name": "Swim",
-        "tertiary ability": "",
+        "tertiary ability": "strength",
         "description": ""
     },
     {
-        "primary ability": "",
-        "secondary ability": "",
+        "primary ability": "strength",
+        "secondary ability": "strength",
         "name": "Throw Far",
-        "tertiary ability": "",
+        "tertiary ability": "strength",
         "description": ""
     },
     {
-        "primary ability": "",
-        "secondary ability": "",
+        "primary ability": "strength",
+        "secondary ability": "strength",
         "name": "Throw Precise",
-        "tertiary ability": "",
+        "tertiary ability": "strength",
         "description": ""
     },
     {
-        "primary ability": "",
-        "secondary ability": "",
+        "primary ability": "strength",
+        "secondary ability": "strength",
         "name": "Track",
-        "tertiary ability": "",
+        "tertiary ability": "strength",
         "description": ""
     },
     {
-        "primary ability": "",
-        "secondary ability": "",
+        "primary ability": "strength",
+        "secondary ability": "strength",
         "name": "Tumble",
-        "tertiary ability": "",
+        "tertiary ability": "strength",
         "description": ""
     },
     {
-        "primary ability": "",
-        "secondary ability": "",
+        "primary ability": "strength",
+        "secondary ability": "strength",
         "name": "Use Rope",
-        "tertiary ability": "",
+        "tertiary ability": "strength",
         "description": ""
     },
     {
-        "primary ability": "",
-        "secondary ability": "",
+        "primary ability": "strength",
+        "secondary ability": "strength",
         "name": "Use Computer",
-        "tertiary ability": "",
+        "tertiary ability": "strength",
         "description": ""
     },
     {
-        "primary ability": "",
-        "secondary ability": "",
+        "primary ability": "strength",
+        "secondary ability": "strength",
         "name": "Vigilance",
-        "tertiary ability": "",
+        "tertiary ability": "strength",
         "description": ""
     },
     {
-        "primary ability": "",
-        "secondary ability": "",
+        "primary ability": "strength",
+        "secondary ability": "strength",
         "name": "Wrestle",
-        "tertiary ability": "",
+        "tertiary ability": "strength",
         "description": ""
     },
     {
-        "primary ability": "",
-        "secondary ability": "",
+        "primary ability": "strength",
+        "secondary ability": "strength",
         "name": "Write",
-        "tertiary ability": "",
+        "tertiary ability": "strength",
         "description": ""
     },
     {
-        "primary ability": "",
-        "secondary ability": "",
+        "primary ability": "strength",
+        "secondary ability": "strength",
         "name": "Weapon Blade/Blunt",
-        "tertiary ability": "",
+        "tertiary ability": "strength",
         "description": ""
     },
     {
-        "primary ability": "",
-        "secondary ability": "",
+        "primary ability": "strength",
+        "secondary ability": "strength",
         "name": "Weapon Bows",
-        "tertiary ability": "",
+        "tertiary ability": "strength",
         "description": ""
     },
     {
-        "primary ability": "",
-        "secondary ability": "",
+        "primary ability": "strength",
+        "secondary ability": "strength",
         "name": "Weapon Brawl",
-        "tertiary ability": "",
+        "tertiary ability": "strength",
         "description": ""
     },
     {
-        "primary ability": "",
-        "secondary ability": "",
+        "primary ability": "strength",
+        "secondary ability": "strength",
         "name": "Weapon Guns",
-        "tertiary ability": "",
+        "tertiary ability": "strength",
         "description": ""
     },
     {
-        "primary ability": "",
-        "secondary ability": "",
+        "primary ability": "strength",
+        "secondary ability": "strength",
         "name": "Weapon Speer",
-        "tertiary ability": "",
+        "tertiary ability": "strength",
         "description": ""
     },
     {
-        "primary ability": "",
-        "secondary ability": "",
+        "primary ability": "strength",
+        "secondary ability": "strength",
         "name": "Weapon Stick",
-        "tertiary ability": "",
+        "tertiary ability": "strength",
         "description": ""
     },
     {
-        "primary ability": "",
-        "secondary ability": "",
+        "primary ability": "strength",
+        "secondary ability": "strength",
         "name": "Weapon Throwing",
-        "tertiary ability": "",
+        "tertiary ability": "strength",
         "description": ""
     },
     {
-        "primary ability": "",
-        "secondary ability": "",
+        "primary ability": "strength",
+        "secondary ability": "strength",
         "name": "Catch",
-        "tertiary ability": "",
+        "tertiary ability": "strength",
         "description": ""
     },
     {
-        "primary ability": "",
-        "secondary ability": "",
-        "name": "\u0003",
-        "tertiary ability": "",
-        "description": ""
-    },
-    {
-        "primary ability": "",
-        "secondary ability": "",
+        "primary ability": "strength",
+        "secondary ability": "strength",
         "name": "First Aide",
-        "tertiary ability": "",
+        "tertiary ability": "strength",
         "description": ""
     }
 ]

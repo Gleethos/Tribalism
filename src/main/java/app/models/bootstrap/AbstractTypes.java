@@ -1,6 +1,7 @@
 package app.models.bootstrap;
 
 import dal.api.DataBase;
+import sprouts.Result;
 
 import java.io.File;
 
@@ -35,4 +36,6 @@ public abstract class AbstractTypes
     protected abstract void loadFromLocation(String location, DataBase db);
 
     protected abstract void saveAsJSONToWorkingDirectory(String location, DataBase db);
+
+    protected abstract Result<Boolean> isDataBaseStateMatchingWorkingDirectory(DataBase db);
 }

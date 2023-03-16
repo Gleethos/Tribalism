@@ -1,10 +1,16 @@
 package app.models.bootstrap;
 
-import app.models.*;
+import app.models.Ability;
+import app.models.Role;
+import app.models.Skill;
+import app.models.SkillType;
 import dal.api.DataBase;
 import org.json.JSONArray;
+import org.json.JSONObject;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import sprouts.Problem;
+import sprouts.Result;
 
 import java.io.File;
 import java.util.ArrayList;
@@ -33,13 +39,14 @@ public class RoleTypes extends AbstractTypes
         this.skillTypes = skillTypes;
         // We load the roles in the order they are defined in the role-types.json file.
         // The roles are in the resource folder at src/main/resources/app/constants/role-types.json
-        var location = "/app/bootstrap/role-types.json";
         // We check if the file already exists in the working directory!
         // If so, we load it from there, otherwise we load it from the resource folder.
-        if ( new File(workingDirectory + "/role-types.json" ).exists() )
-            location = workingDirectory + "/role-types.json";
-        loadFromLocation(db, location, abilityTypes, skillTypes);
-        saveAsJSONToWorkingDirectory(workingDirectory + "/role-types.json", db);
+        if ( localTypesExist() )
+            loadFromWorkingDir(db);
+        else
+            loadFromResources(db);
+
+        saveAsJSONToWorkingDirectory(workingDirectory + "/" + fileName, db);
     }
 
     private void loadFromLocation(
@@ -48,7 +55,6 @@ public class RoleTypes extends AbstractTypes
             AbilityTypes abilityTypes,
             SkillTypes skillTypes
     ) {
-
         String jsonText = Util.readTextFile(location);
         /*
            The json content might look something like this:
@@ -197,6 +203,129 @@ public class RoleTypes extends AbstractTypes
         } catch (Exception e) {
             log.error("Failed to save 'role-types.json'!", e);
         }
+    }
+
+    @Override
+    protected Result<Boolean> isDataBaseStateMatchingWorkingDirectory(DataBase db) {
+        List<Problem> problems = new ArrayList<>();
+        List<Problem> warnings = new ArrayList<>();
+        List<Role> foundInDB = db.selectAll(Role.class);
+        List<Role> checked = new ArrayList<>();
+        String jsonText = Util.readTextFile(workingDirectory + "/" + fileName);
+        // We load the roles from the json file into a json object.
+        JSONArray json;
+        try {
+            json = new org.json.JSONArray(jsonText);
+        } catch (Exception e) {
+            log.error("Failed to parse 'role-types.json'!", e);
+            throw e;
+        }
+        // We iterate over the roles in the json object.
+        for ( int i = 0; i < json.length(); i++ ) {
+            var newRole = json.getJSONObject(i);
+            var name        = newRole.getString("name");
+            var description = newRole.getString("description");
+            var abilities   = newRole.getJSONArray("abilities");
+            var skills      = newRole.getJSONArray("skills");
+
+            // First we check if the role already exists in the database:
+            boolean found = false;
+            for ( var roleType : foundInDB ) {
+                if ( roleType.name().is(name) ) {
+                    found = true;
+                    if ( !roleType.description().is(description) )
+                        warnings.add(Problem.of("Role Type Inconsistency", "Role type '" + name + "' has a different description in the database than in the json file!"));
+                    checked.add(roleType);
+                    // We check if the skills are the same:
+                    problems.addAll(checkJSONSkills(skills, roleType));
+                    // We check if the abilities are the same:
+                    problems.addAll(checkJSONAbilities(abilities, roleType));
+                    break;
+                }
+            }
+            if ( !found )
+                problems.add(Problem.of("Role Type Missing","Role type '" + name + "' is in the json file but not in the database!"));
+        }
+
+        // Now we check if there are any role types in the database that are not in the json file:
+        for ( var roleType : foundInDB )
+            if ( !checked.contains(roleType) )
+                problems.add(Problem.of("Role Type Missing","Role type '" + roleType.name().get() + "' is in the database but not in the json file!"));
+
+        if ( problems.isEmpty() )
+            return Result.of(true, warnings);
+        else {
+            problems.addAll(warnings);
+            return Result.of(false, problems);
+        }
+    }
+
+    private List<Problem> checkJSONSkills(JSONArray jsonSkills, Role role) {
+        List<Problem> problems = new ArrayList<>();
+        List<Skill> found = new ArrayList<>();
+        List<Skill> foundInDB = role.skills().toList();
+        for (int j = 0; j < jsonSkills.length(); j++) {
+            var jsonSkill = jsonSkills.getJSONObject(j);
+            var skillName = jsonSkill.getString("name");
+            var skillLevel = jsonSkill.getInt("level");
+            var isProficient = jsonSkill.getBoolean("proficient");
+            var learnability = jsonSkill.getDouble("learnability");
+            // We check if the skill already exists in the role:
+            boolean foundSkill = false;
+
+            for ( var skill : foundInDB ) {
+                if ( skill.type().get().name().is(skillName) ) {
+                    foundSkill = true;
+                    found.add(skill);
+                    if ( skill.level().get() != skillLevel )
+                        problems.add(Problem.of("Skill Inconsistency", "Skill '" + skillName + "' in role '" + role.name().get() + "' has a different level in the database than in the json file!"));
+                    if ( skill.isProficient().get() != isProficient )
+                        problems.add(Problem.of("Skill Inconsistency", "Skill '" + skillName + "' in role '" + role.name().get() + "' has a different proficiency in the database than in the json file!"));
+                    if ( skill.learnability().get() != learnability )
+                        problems.add(Problem.of("Skill Inconsistency", "Skill '" + skillName + "' in role '" + role.name().get() + "' has a different learnability in the database than in the json file!"));
+                    break;
+                }
+            }
+            if ( !foundSkill )
+                problems.add(Problem.of("Skill Missing", "Skill '" + skillName + "' in role '" + role.name().get() + "' is in the json file but not in the database!"));
+        }
+        // Now we check if there are any skills in the database that are not in the json file:
+        for ( var skill : foundInDB )
+            if ( !found.contains(skill) )
+                problems.add(Problem.of("Skill Missing", "Skill '" + skill.type().get().name().get() + "' in role '" + role.name().get() + "' is in the database but not in the json file!"));
+
+        return problems;
+    }
+
+    private List<Problem> checkJSONAbilities(JSONArray jsonAbilities, Role role) {
+        List<Problem> problems = new ArrayList<>();
+        List<Ability> found = new ArrayList<>();
+        List<Ability> foundInDB = role.abilities().toList();
+        for (int j = 0; j < jsonAbilities.length(); j++) {
+            var jsonAbility = jsonAbilities.getJSONObject(j);
+            var abilityName = jsonAbility.getString("name");
+            var abilityLevel = jsonAbility.getInt("level");
+            // We check if the ability already exists in the role:
+            boolean foundAbility = false;
+
+            for ( var ability : foundInDB ) {
+                if ( ability.type().get().name().is(abilityName) ) {
+                    foundAbility = true;
+                    found.add(ability);
+                    if ( ability.level().get() != abilityLevel )
+                        problems.add(Problem.of("Ability Inconsistency", "Ability '" + abilityName + "' in role '" + role.name().get() + "' has a different level in the database than in the json file!"));
+                    break;
+                }
+            }
+            if ( !foundAbility )
+                problems.add(Problem.of("Ability Missing", "Ability '" + abilityName + "' in role '" + role.name().get() + "' is in the json file but not in the database!"));
+        }
+        // Now we check if there are any abilities in the database that are not in the json file:
+        for ( var ability : foundInDB )
+            if ( !found.contains(ability) )
+                problems.add(Problem.of("Ability Missing", "Ability '" + ability.type().get().name().get() + "' in role '" + role.name().get() + "' is in the database but not in the json file!"));
+
+        return problems;
     }
 
     public List<Role> all() {

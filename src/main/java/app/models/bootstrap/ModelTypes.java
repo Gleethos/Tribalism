@@ -3,6 +3,7 @@ package app.models.bootstrap;
 import app.models.*;
 import app.models.Character;
 import dal.api.DataBase;
+import sprouts.Result;
 
 public class ModelTypes
 {
@@ -25,8 +26,26 @@ public class ModelTypes
                 Role.class
         );
         abilityTypes = new AbilityTypes(db, workingDirectory);
-        skillTypes   = new SkillTypes(db, workingDirectory);
+        skillTypes   = new SkillTypes(db, workingDirectory, abilityTypes);
         roleTypes    = new RoleTypes(db, workingDirectory, abilityTypes, skillTypes);
+        _verifyLocalWorkingDirConsistency(db);
+    }
+
+    private void _verifyLocalWorkingDirConsistency(DataBase db) {
+        Result<Boolean> abilitiesMatch = abilityTypes.isDataBaseStateMatchingWorkingDirectory(db);
+        Result<Boolean> skillsMatch    = skillTypes.isDataBaseStateMatchingWorkingDirectory(db);
+        Result<Boolean> rolesMatch     = roleTypes.isDataBaseStateMatchingWorkingDirectory(db);
+
+        if ( abilitiesMatch.is(false) || skillsMatch.is(false) || rolesMatch.is(false) ) {
+            StringBuilder errorMessages = new StringBuilder();
+            for ( var problem : abilitiesMatch.problems() ) errorMessages.append(problem).append("\n");
+            for ( var problem : skillsMatch.problems() ) errorMessages.append(problem).append("\n");
+            for ( var problem : rolesMatch.problems() ) errorMessages.append(problem).append("\n");
+            throw new RuntimeException(
+                "Local working directory is not consistent with database state!\n\n" +
+                errorMessages + "\n"
+            );
+        }
     }
 
     public AbilityTypes abilityTypes() {
