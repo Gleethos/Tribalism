@@ -7,6 +7,19 @@ import sprouts.Result;
 
 import java.util.*;
 
+/**
+ *  To let the application know about all the ability types that exist in the game,
+ *  this class loads and verifies the ability types from the ability-types.json file
+ *  as well as inside the database.
+ *  <p>
+ *  The first time the application is run, the ability types are loaded from the
+ *  ability-types.json file in the resource folder. The ability types are then copied
+ *  to the working directory and also persisted inside the game database.
+ *  The reason for that is simple, the existence of the json file in the working
+ *  directory indicates that the application has been run and set up at least once,
+ *  so when it encounters the file, it can then verify the consistency of the
+ *  ability types inside the database.
+ */
 public class AbilityTypes extends AbstractTypes
 {
     private static final String FILE_NAME = "ability-types.json";

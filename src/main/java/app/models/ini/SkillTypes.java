@@ -9,6 +9,19 @@ import sprouts.Result;
 
 import java.util.*;
 
+/**
+ *  To let the application know about all the skill types that exist in the game,
+ *  this class loads and verifies the skill types from the skill-types.json file
+ *  as well as inside the database.
+ *
+ *  The first time the application is run, the skill types are loaded from the
+ *  skill-types.json file in the resource folder. The skill types are then copied
+ *  to the working directory and also persisted inside the game database.
+ *  The reason for that is simple, the existence of the json file in the working
+ *  directory indicates that the application has been run and set up at least once,
+ *  so when it encounters the file, it can then verify the consistency of the
+ *  skill types inside the database.
+ */
 public class SkillTypes extends AbstractTypes
 {
     private static final String FILE_NAME = "skill-types.json";

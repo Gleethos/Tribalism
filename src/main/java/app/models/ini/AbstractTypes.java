@@ -5,6 +5,12 @@ import sprouts.Result;
 
 import java.io.File;
 
+/**
+ *  This class is the base class for all the types classes, which determine the initial
+ *  state of the games working directory and database.
+ *  It contains the common functionality for loading, saving and verifying the types
+ *  in the working directory and the database.
+ */
 public abstract class AbstractTypes
 {
     protected final String workingDirectory;

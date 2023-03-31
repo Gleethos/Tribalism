@@ -15,6 +15,19 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
+/**
+ *  To let the application know about all the role types that exist in the game,
+ *  this class loads and verifies the skill types from the role-types.json file
+ *  as well as inside the database.
+ *  <p>
+ *  The first time the application is run, the role types are loaded from the
+ *  role-types.json file in the resource folder. The role types are then copied
+ *  to the working directory and also persisted inside the game database.
+ *  The reason for that is simple, the existence of the json file in the working
+ *  directory indicates that the application has been run and set up at least once,
+ *  so when it encounters the file, it can then verify the consistency of the
+ *  role types inside the database.
+ */
 public class RoleTypes extends AbstractTypes
 {
     private static final Logger log = LoggerFactory.getLogger(RoleTypes.class);
