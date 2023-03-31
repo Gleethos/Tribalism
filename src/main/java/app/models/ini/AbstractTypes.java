@@ -1,4 +1,4 @@
-package app.models.bootstrap;
+package app.models.ini;
 
 import dal.api.DataBase;
 import sprouts.Result;
@@ -19,7 +19,7 @@ public abstract class AbstractTypes
     public boolean localTypesExist() { return new File(workingDirectory + "/" + fileName ).exists(); }
 
     public final void loadFromResources(DataBase db) {
-        var location = "/app/bootstrap/" + fileName;
+        var location = "/app/ini/" + fileName;
         loadFromLocation(location, db);
     }
 

@@ -1,18 +1,15 @@
-package app.models.bootstrap;
+package app.models.ini;
 
 import app.models.Ability;
 import app.models.Role;
 import app.models.Skill;
-import app.models.SkillType;
 import dal.api.DataBase;
 import org.json.JSONArray;
-import org.json.JSONObject;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import sprouts.Problem;
 import sprouts.Result;
 
-import java.io.File;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;

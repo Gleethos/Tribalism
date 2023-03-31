@@ -14,6 +14,18 @@ public class BootstrapView extends JPanel
             .withPrefSize(725, 300)
             .add(GROW.and(SPAN),
                 panel("fill, alignx center, aligny center")
+                .add(ALIGN_RIGHT,
+                    button("Clear DataBase")
+                    .onMouseClick( it -> vm.clearDataBase() )
+                )
+                .add(ALIGN_RIGHT,
+                    button("Load from Resource")
+                    .onMouseClick( it -> vm.loadFromResource() )
+                )
+                .add(ALIGN_RIGHT,
+                    button("Load from Working Directory")
+                    .onMouseClick( it -> vm.loadFromWorkingDir() )
+                )
                 .add(WRAP.and(ALIGN_RIGHT),
                     button("Save To Working Directory")
                     .onMouseClick( it -> vm.saveToWorkingDir() )

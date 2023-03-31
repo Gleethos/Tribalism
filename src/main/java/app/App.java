@@ -154,7 +154,7 @@ public final class App implements Runnable
             if (!isHeadless()) {
                 UI.runLater(()->{
                     FlatLightLaf.setup();
-                    UI.show(UI.use(EventProcessor.DECOUPLED, () -> new FatalErrorView(e)));
+                    UI.showUsing(EventProcessor.DECOUPLED, f -> new FatalErrorView(e));
                 });
                 UI.joinDecoupledEventProcessor();
             }

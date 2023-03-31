@@ -701,23 +701,23 @@
     },
     {
         "primary ability": "strength",
-        "secondary ability": "strength",
+        "secondary ability": "dexterity",
         "name": "Weapon Throwing",
-        "tertiary ability": "strength",
+        "tertiary ability": "constitution",
         "description": ""
     },
     {
-        "primary ability": "strength",
-        "secondary ability": "strength",
+        "primary ability": "dexterity",
+        "secondary ability": "sensing",
         "name": "Catch",
-        "tertiary ability": "strength",
-        "description": ""
+        "tertiary ability": "constitution",
+        "description": "To get and hold (something that has been in motion) in a hand, the hands, a container, or an implement. "
     },
     {
-        "primary ability": "strength",
-        "secondary ability": "strength",
+        "primary ability": "wisdom",
+        "secondary ability": "intelligence",
         "name": "First Aide",
-        "tertiary ability": "strength",
-        "description": ""
+        "tertiary ability": "willpower",
+        "description": "First aid is the first and immediate assistance given to any person with either a minor or serious illness or injury, with care provided to preserve life, prevent the condition from worsening, or to promote recovery."
     }
 ]

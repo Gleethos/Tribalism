@@ -1,11 +1,10 @@
 package app;
 
 import app.models.*;
-import app.models.bootstrap.ModelTypes;
+import app.models.ini.ModelTypes;
 import dal.api.DataBase;
 import dal.api.DataBaseProcessor;
 import net.WebUserContext;
-import sprouts.Result;
 import sprouts.Vars;
 import swingtree.EventProcessor;
 

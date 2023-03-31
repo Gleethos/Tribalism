@@ -38,6 +38,18 @@ public class BootstrapViewModel
         stage.set(clickedStage);
     }
 
+    public void clearDataBase() {
+        context.db().dropAllTables();
+    }
+
+    public void loadFromResource() {
+        context.modelTypes().loadFromResources(context.db());
+    }
+
+    public void loadFromWorkingDir() {
+        context.modelTypes().loadFromWorkingDirectory(context.db());
+    }
+
     public void saveToWorkingDir() {
         context.modelTypes().saveToWorkingDirectory(context.db());
     }

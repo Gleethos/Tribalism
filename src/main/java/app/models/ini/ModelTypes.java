@@ -1,4 +1,4 @@
-package app.models.bootstrap;
+package app.models.ini;
 
 import app.models.*;
 import app.models.Character;
@@ -24,7 +24,7 @@ public class ModelTypes
                 Skill.class,
                 SkillType.class,
                 Role.class
-        );
+            );
         abilityTypes = new AbilityTypes(db, workingDirectory);
         skillTypes   = new SkillTypes(db, workingDirectory, abilityTypes);
         roleTypes    = new RoleTypes(db, workingDirectory, abilityTypes, skillTypes);

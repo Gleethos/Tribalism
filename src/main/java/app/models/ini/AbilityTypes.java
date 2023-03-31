@@ -1,4 +1,4 @@
-package app.models.bootstrap;
+package app.models.ini;
 
 import app.models.AbilityType;
 import dal.api.DataBase;
@@ -30,7 +30,7 @@ public class AbilityTypes extends AbstractTypes
     }
 
     @Override
-    protected void loadFromLocation(String location, DataBase db ) {
+    protected void loadFromLocation( String location, DataBase db ) {
         String jsonText = Util.readTextFile(location);
         // We load the ability types from the json file into a json object.
         var json = new org.json.JSONArray(jsonText);

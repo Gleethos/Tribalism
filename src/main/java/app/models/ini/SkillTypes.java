@@ -1,4 +1,4 @@
-package app.models.bootstrap;
+package app.models.ini;
 
 import app.models.SkillType;
 import dal.api.DataBase;
@@ -64,7 +64,7 @@ public class SkillTypes extends AbstractTypes
             checkJson(json.getJSONObject(i));
 
         // We iterate over the skill types in the json object again and add them to the database.
-        for (int i = 0; i < json.length(); i++) {
+        for ( int i = 0; i < json.length(); i++ ) {
             var newType = json.getJSONObject(i);
             var name        = newType.getString("name");
             var description = newType.getString("description");
@@ -79,12 +79,13 @@ public class SkillTypes extends AbstractTypes
 
             SkillType skillType;
 
-            if (existingSkillType.isPresent()) {
+            if ( existingSkillType.isPresent() ) {
                 skillType = existingSkillType.get();
                 skillTypes.add(existingSkillType.get());
                 skillTypesByName.put(name, existingSkillType.get());
             }
-            else skillType = db.create(SkillType.class);
+            else
+                skillType = db.create(SkillType.class);
 
             skillType.name().set(name);
             skillType.description().set(description);
@@ -100,7 +101,7 @@ public class SkillTypes extends AbstractTypes
     protected void saveAsJSONToWorkingDirectory(String location, DataBase db) {
         var skillTypes = db.selectAll(SkillType.class);
         var json = new org.json.JSONArray();
-        for (var skillType : skillTypes) {
+        for ( var skillType : skillTypes ) {
             var jsonSkillType = new org.json.JSONObject();
             jsonSkillType.put("name",              skillType.name().get());
             jsonSkillType.put("description",       skillType.description().get());
@@ -133,7 +134,7 @@ public class SkillTypes extends AbstractTypes
         }
 
         // Let's check if the ability types we find are valid:
-        for (int i = 0; i < json.length(); i++)
+        for ( int i = 0; i < json.length(); i++ )
             try {
                 checkJson(json.getJSONObject(i));
             } catch (Exception e) {
@@ -141,7 +142,7 @@ public class SkillTypes extends AbstractTypes
             }
 
         // We iterate over the roles in the json object.
-        for (int i = 0; i < json.length(); i++) {
+        for ( int i = 0; i < json.length(); i++ ) {
             var newType = json.getJSONObject(i);
             var name        = newType.getString("name");
             var description = newType.getString("description");
@@ -152,7 +153,7 @@ public class SkillTypes extends AbstractTypes
             // First we check if the role already exists in the database:
             boolean found = false;
             for ( var skillType : foundInDB ) {
-                if (skillType.name().get().equals(name)) {
+                if ( skillType.name().get().equals(name) ) {
                     found = true;
                     checked.add(skillType);
                     if (!skillType.description().get().equals(description))
