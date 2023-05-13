@@ -1,5 +1,7 @@
-package app;
+package app.dev;
 
+import app.App;
+import app.AppContext;
 import com.formdev.flatlaf.FlatLightLaf;
 import swingtree.UI;
 
@@ -18,7 +20,7 @@ public class SkillTypesView extends JPanel
         )
         .add(ALIGN_RIGHT,
             panel(FILL)
-            .add(textField())
+            .add(textField(vm.newSkillTypeName()))
             .add(SHRINK, button("+").onClick(it -> vm.addNewSkillType()))
         )
         .add(SPAN.and(GROW).and(PUSH),

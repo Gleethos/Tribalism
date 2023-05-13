@@ -4,7 +4,11 @@ import static swingtree.UI.*;
 
 /**
  *  Basically a tabbed pane with a tab for different main views.
- *  The most important ones are the content view and the server view.
+ *  The most important ones are the content view which is the main view of the application
+ *  which is the only one shown in the user mode (production mode).
+ *  The root view is only shown in the development mode.
+ *  To start the application in the development mode, run the application with the
+ *  "--show-dev-views true" argument.
  */
 public class RootView extends javax.swing.JPanel
 {

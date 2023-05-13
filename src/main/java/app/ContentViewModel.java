@@ -1,5 +1,7 @@
 package app;
 
+import app.user.LoginViewModel;
+import app.user.RegisterViewModel;
 import sprouts.Val;
 import sprouts.Var;
 import swingtree.api.mvvm.Viewable;

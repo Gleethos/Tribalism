@@ -1,4 +1,4 @@
-package app.models.bootstrap;
+package app.models.ini;
 
 import java.io.File;
 import java.nio.file.Files;

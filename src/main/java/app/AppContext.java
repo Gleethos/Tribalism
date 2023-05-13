@@ -1,7 +1,7 @@
 package app;
 
 import app.models.*;
-import app.models.bootstrap.ModelTypes;
+import app.models.ini.ModelTypes;
 import dal.api.DataBase;
 import dal.api.DataBaseProcessor;
 import net.WebUserContext;
@@ -35,6 +35,8 @@ public final class AppContext
         this.db = DataBase.at(app.getDatabaseLocation()+"/"+app.getSaveFileName(), createQueryProcessor());
         this.modelTypes = new ModelTypes(db, app.getDatabaseLocation());
     }
+
+    public ModelTypes modelTypes() { return modelTypes; }
 
     private DataBaseProcessor createQueryProcessor() {
         var mainThread = Thread.currentThread();

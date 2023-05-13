@@ -2,7 +2,7 @@ package integration
 
 import app.App
 import app.RootViewModel
-import app.ServerViewModel
+import app.dev.ServerViewModel
 import com.beust.jcommander.JCommander
 import geb.spock.GebSpec
 import spock.lang.Ignore

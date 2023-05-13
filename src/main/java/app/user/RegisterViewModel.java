@@ -1,5 +1,7 @@
-package app;
+package app.user;
 
+import app.AppContext;
+import app.ContentViewModel;
 import app.models.User;
 import sprouts.Val;
 import sprouts.Var;

@@ -1,4 +1,4 @@
-package app;
+package app.user;
 
 import javax.swing.*;
 

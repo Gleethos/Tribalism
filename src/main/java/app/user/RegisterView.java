@@ -1,8 +1,6 @@
-package app;
+package app.user;
 
 import javax.swing.*;
-
-import java.awt.*;
 
 import static swingtree.UI.*;
 

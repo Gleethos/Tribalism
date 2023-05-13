@@ -1,5 +1,6 @@
-package app;
+package app.user;
 
+import app.AppContext;
 import app.models.Character;
 import sprouts.Var;
 

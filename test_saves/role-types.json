@@ -1,6 +1,652 @@
 [{
-    "abilities": [],
-    "skills": [],
+    "abilities": [
+        {
+            "level": -1,
+            "name": "strength"
+        },
+        {
+            "level": -1,
+            "name": "dexterity"
+        },
+        {
+            "level": 0,
+            "name": "constitution"
+        },
+        {
+            "level": 3,
+            "name": "intelligence"
+        },
+        {
+            "level": 2,
+            "name": "wisdom"
+        },
+        {
+            "level": 0,
+            "name": "charisma"
+        },
+        {
+            "level": 1,
+            "name": "sensing"
+        },
+        {
+            "level": 2,
+            "name": "willpower"
+        }
+    ],
+    "skills": [
+        {
+            "level": 0,
+            "name": "Act",
+            "learnability": 0.5,
+            "proficient": false
+        },
+        {
+            "level": 0,
+            "name": "Aim",
+            "learnability": 0.5,
+            "proficient": false
+        },
+        {
+            "level": 0,
+            "name": "Appraise Dimensions",
+            "learnability": 0.5,
+            "proficient": false
+        },
+        {
+            "level": 0,
+            "name": "Appraise Personality",
+            "learnability": 0.5,
+            "proficient": false
+        },
+        {
+            "level": 0,
+            "name": "Appraise Worth",
+            "learnability": 0.5,
+            "proficient": true
+        },
+        {
+            "level": 0,
+            "name": "Balance",
+            "learnability": 0.5,
+            "proficient": false
+        },
+        {
+            "level": 0,
+            "name": "Bluff",
+            "learnability": 0.5,
+            "proficient": false
+        },
+        {
+            "level": 0,
+            "name": "Catch",
+            "learnability": 0.5,
+            "proficient": false
+        },
+        {
+            "level": 0,
+            "name": "Climb",
+            "learnability": 0.5,
+            "proficient": false
+        },
+        {
+            "level": 0,
+            "name": "Computer Hacking",
+            "learnability": 1,
+            "proficient": false
+        },
+        {
+            "level": 0,
+            "name": "Computer Programming",
+            "learnability": 1,
+            "proficient": false
+        },
+        {
+            "level": 0,
+            "name": "Concentration",
+            "learnability": 2,
+            "proficient": false
+        },
+        {
+            "level": 0,
+            "name": "Convince",
+            "learnability": 0.5,
+            "proficient": false
+        },
+        {
+            "level": 0,
+            "name": "Cook",
+            "learnability": 0.5,
+            "proficient": false
+        },
+        {
+            "level": 0,
+            "name": "Craft",
+            "learnability": 0.5,
+            "proficient": false
+        },
+        {
+            "level": 0,
+            "name": "Craft Cloth",
+            "learnability": 0.5,
+            "proficient": false
+        },
+        {
+            "level": 0,
+            "name": "Craft Computer",
+            "learnability": 1,
+            "proficient": false
+        },
+        {
+            "level": 0,
+            "name": "Craft Food",
+            "learnability": 0.5,
+            "proficient": false
+        },
+        {
+            "level": 0,
+            "name": "Craft Forgery",
+            "learnability": 0.5,
+            "proficient": false
+        },
+        {
+            "level": 0,
+            "name": "Craft Glass",
+            "learnability": 0.5,
+            "proficient": false
+        },
+        {
+            "level": 0,
+            "name": "Craft Metal",
+            "learnability": 0.5,
+            "proficient": false
+        },
+        {
+            "level": 0,
+            "name": "Craft Plastic",
+            "learnability": 1,
+            "proficient": false
+        },
+        {
+            "level": 0,
+            "name": "Craft Weapon",
+            "learnability": 0.5,
+            "proficient": false
+        },
+        {
+            "level": 0,
+            "name": "Craft Wood",
+            "learnability": 0.5,
+            "proficient": false
+        },
+        {
+            "level": 0,
+            "name": "Demolition",
+            "learnability": 0.5,
+            "proficient": false
+        },
+        {
+            "level": 0,
+            "name": "Diplomacy",
+            "learnability": 0.5,
+            "proficient": false
+        },
+        {
+            "level": 0,
+            "name": "Disguise",
+            "learnability": 0.5,
+            "proficient": false
+        },
+        {
+            "level": 0,
+            "name": "Dodge",
+            "learnability": 0.5,
+            "proficient": false
+        },
+        {
+            "level": 0,
+            "name": "Drive Bike",
+            "learnability": 0.5,
+            "proficient": false
+        },
+        {
+            "level": 0,
+            "name": "Drive Car",
+            "learnability": 0.5,
+            "proficient": false
+        },
+        {
+            "level": 0,
+            "name": "Drive Tank",
+            "learnability": 0.5,
+            "proficient": false
+        },
+        {
+            "level": 0,
+            "name": "Drive Tractor",
+            "learnability": 0.5,
+            "proficient": false
+        },
+        {
+            "level": 0,
+            "name": "Drive Truck",
+            "learnability": 0.5,
+            "proficient": false
+        },
+        {
+            "level": 0,
+            "name": "Electronics",
+            "learnability": 1,
+            "proficient": false
+        },
+        {
+            "level": 0,
+            "name": "Escape Artist",
+            "learnability": 0.5,
+            "proficient": false
+        },
+        {
+            "level": 0,
+            "name": "First Aide",
+            "learnability": 0.5,
+            "proficient": false
+        },
+        {
+            "level": 0,
+            "name": "Fishing",
+            "learnability": 0.5,
+            "proficient": false
+        },
+        {
+            "level": 0,
+            "name": "Fly Helicopter",
+            "learnability": 0.5,
+            "proficient": false
+        },
+        {
+            "level": 0,
+            "name": "Fly Passenger Plane",
+            "learnability": 0.5,
+            "proficient": false
+        },
+        {
+            "level": 0,
+            "name": "Gather Information",
+            "learnability": 0.5,
+            "proficient": false
+        },
+        {
+            "level": 0,
+            "name": "Handle Animal",
+            "learnability": 0.5,
+            "proficient": false
+        },
+        {
+            "level": 0,
+            "name": "Hide",
+            "learnability": 0.5,
+            "proficient": false
+        },
+        {
+            "level": 0,
+            "name": "Intimidate",
+            "learnability": 0.5,
+            "proficient": false
+        },
+        {
+            "level": 0,
+            "name": "Jump",
+            "learnability": 0.5,
+            "proficient": false
+        },
+        {
+            "level": 0,
+            "name": "Knowledge (architecture)",
+            "learnability": 0.5,
+            "proficient": false
+        },
+        {
+            "level": 0,
+            "name": "Knowledge (biology)",
+            "learnability": 0.5,
+            "proficient": false
+        },
+        {
+            "level": 0,
+            "name": "Knowledge (chemistry)",
+            "learnability": 0.5,
+            "proficient": false
+        },
+        {
+            "level": 0,
+            "name": "Knowledge (computer)",
+            "learnability": 1,
+            "proficient": false
+        },
+        {
+            "level": 0,
+            "name": "Knowledge (engineering)",
+            "learnability": 0.5,
+            "proficient": false
+        },
+        {
+            "level": 0,
+            "name": "Knowledge (geography)",
+            "learnability": 0.5,
+            "proficient": false
+        },
+        {
+            "level": 0,
+            "name": "Knowledge (history)",
+            "learnability": 0.5,
+            "proficient": false
+        },
+        {
+            "level": 0,
+            "name": "Knowledge (local)",
+            "learnability": 0.5,
+            "proficient": false
+        },
+        {
+            "level": 0,
+            "name": "Knowledge (medicine)",
+            "learnability": 0.5,
+            "proficient": false
+        },
+        {
+            "level": 0,
+            "name": "Knowledge (nature)",
+            "learnability": 0.5,
+            "proficient": false
+        },
+        {
+            "level": 0,
+            "name": "Knowledge (physics)",
+            "learnability": 0.5,
+            "proficient": false
+        },
+        {
+            "level": 0,
+            "name": "Knowledge (aircraft)",
+            "learnability": 0.5,
+            "proficient": false
+        },
+        {
+            "level": 0,
+            "name": "Knowledge (religion)",
+            "learnability": 0.5,
+            "proficient": false
+        },
+        {
+            "level": 0,
+            "name": "Learn By Act",
+            "learnability": 0.5,
+            "proficient": false
+        },
+        {
+            "level": 0,
+            "name": "Learn By Book",
+            "learnability": 0.5,
+            "proficient": false
+        },
+        {
+            "level": 0,
+            "name": "Listen",
+            "learnability": 0.5,
+            "proficient": false
+        },
+        {
+            "level": 0,
+            "name": "Mechanics",
+            "learnability": 0.5,
+            "proficient": false
+        },
+        {
+            "level": 0,
+            "name": "Move Silently",
+            "learnability": 0.5,
+            "proficient": false
+        },
+        {
+            "level": 0,
+            "name": "Open Lock",
+            "learnability": 0.5,
+            "proficient": false
+        },
+        {
+            "level": 0,
+            "name": "Patience",
+            "learnability": 0.5,
+            "proficient": false
+        },
+        {
+            "level": 0,
+            "name": "Perform Instrument",
+            "learnability": 0.5,
+            "proficient": false
+        },
+        {
+            "level": 0,
+            "name": "Perform Trick",
+            "learnability": 0.5,
+            "proficient": false
+        },
+        {
+            "level": 0,
+            "name": "Persuade",
+            "learnability": 0.5,
+            "proficient": false
+        },
+        {
+            "level": 0,
+            "name": "Pick Pocket",
+            "learnability": 0.5,
+            "proficient": false
+        },
+        {
+            "level": 0,
+            "name": "Pilot",
+            "learnability": 0.5,
+            "proficient": false
+        },
+        {
+            "level": 0,
+            "name": "Play Game",
+            "learnability": 0.5,
+            "proficient": false
+        },
+        {
+            "level": 0,
+            "name": "Play Instrument",
+            "learnability": 0.5,
+            "proficient": false
+        },
+        {
+            "level": 0,
+            "name": "Play Trick",
+            "learnability": 0.5,
+            "proficient": false
+        },
+        {
+            "level": 0,
+            "name": "Repair",
+            "learnability": 0.5,
+            "proficient": false
+        },
+        {
+            "level": 0,
+            "name": "Ride Animal",
+            "learnability": 0.5,
+            "proficient": false
+        },
+        {
+            "level": 0,
+            "name": "Read",
+            "learnability": 0.5,
+            "proficient": false
+        },
+        {
+            "level": 0,
+            "name": "Search",
+            "learnability": 0.5,
+            "proficient": false
+        },
+        {
+            "level": 0,
+            "name": "Sense Motive",
+            "learnability": 0.5,
+            "proficient": false
+        },
+        {
+            "level": 0,
+            "name": "Sing",
+            "learnability": 0.5,
+            "proficient": false
+        },
+        {
+            "level": 0,
+            "name": "Sleight of Hand",
+            "learnability": 0.5,
+            "proficient": false
+        },
+        {
+            "level": 0,
+            "name": "Smell",
+            "learnability": 0.5,
+            "proficient": false
+        },
+        {
+            "level": 0,
+            "name": "Speak Language",
+            "learnability": 0.5,
+            "proficient": false
+        },
+        {
+            "level": 0,
+            "name": "Sneak",
+            "learnability": 0.5,
+            "proficient": false
+        },
+        {
+            "level": 0,
+            "name": "Spot",
+            "learnability": 0.5,
+            "proficient": false
+        },
+        {
+            "level": 0,
+            "name": "Surgery",
+            "learnability": 0.5,
+            "proficient": false
+        },
+        {
+            "level": 0,
+            "name": "Survival",
+            "learnability": 0.5,
+            "proficient": false
+        },
+        {
+            "level": 0,
+            "name": "Swim",
+            "learnability": 0.5,
+            "proficient": false
+        },
+        {
+            "level": 0,
+            "name": "Throw Far",
+            "learnability": 0.5,
+            "proficient": false
+        },
+        {
+            "level": 0,
+            "name": "Throw Precise",
+            "learnability": 0.5,
+            "proficient": false
+        },
+        {
+            "level": 0,
+            "name": "Track",
+            "learnability": 0.5,
+            "proficient": false
+        },
+        {
+            "level": 0,
+            "name": "Tumble",
+            "learnability": 0.5,
+            "proficient": false
+        },
+        {
+            "level": 0,
+            "name": "Use Rope",
+            "learnability": 0.5,
+            "proficient": false
+        },
+        {
+            "level": 0,
+            "name": "Use Computer",
+            "learnability": 0.5,
+            "proficient": false
+        },
+        {
+            "level": 0,
+            "name": "Vigilance",
+            "learnability": 0.5,
+            "proficient": false
+        },
+        {
+            "level": 0,
+            "name": "Wrestle",
+            "learnability": 0.5,
+            "proficient": false
+        },
+        {
+            "level": 0,
+            "name": "Write",
+            "learnability": 0.5,
+            "proficient": false
+        },
+        {
+            "level": 0,
+            "name": "Weapon Blade/Blunt",
+            "learnability": 0.5,
+            "proficient": false
+        },
+        {
+            "level": 0,
+            "name": "Weapon Bows",
+            "learnability": 0.5,
+            "proficient": false
+        },
+        {
+            "level": 0,
+            "name": "Weapon Brawl",
+            "learnability": 0.5,
+            "proficient": false
+        },
+        {
+            "level": 0,
+            "name": "Weapon Guns",
+            "learnability": 0.5,
+            "proficient": false
+        },
+        {
+            "level": 0,
+            "name": "Weapon Speer",
+            "learnability": 0.5,
+            "proficient": false
+        },
+        {
+            "level": 0,
+            "name": "Weapon Stick",
+            "learnability": 0.5,
+            "proficient": false
+        },
+        {
+            "level": 0,
+            "name": "Weapon Throwing",
+            "learnability": 0.5,
+            "proficient": false
+        }
+    ],
     "name": "Accountant",
     "description": "Accountants are responsible for keeping track of a company's finances. They prepare financial reports, analyze financial information, and make recommendations based on their findings."
 }]

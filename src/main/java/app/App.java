@@ -148,13 +148,13 @@ public final class App implements Runnable
         } catch (Exception e) {
             // Something went severely wrong! What do we do?
             // Well we don't want to let our users hanging! We need to let them know what happened!
-            // So first we print it:
+            // So first we print it to the console (if the application is headless, this will be the only output):
             e.printStackTrace();
             // And if the application is not headless, we display something more user-friendly:
             if (!isHeadless()) {
                 UI.runLater(()->{
                     FlatLightLaf.setup();
-                    UI.show(UI.use(EventProcessor.DECOUPLED, () -> new FatalErrorView(e)));
+                    UI.showUsing(EventProcessor.DECOUPLED, f -> new FatalErrorView(e));
                 });
                 UI.joinDecoupledEventProcessor();
             }

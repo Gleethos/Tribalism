@@ -51,10 +51,10 @@ public class FatalErrorView extends JPanel
     private String nicelyHtmlFormattedError(Exception e) {
         StringBuilder html = new StringBuilder("<html><body>");
         html.append("<h1>").append(e.getClass().getName()).append("</h1>");
-        html.append("<p>").append(e.getMessage()).append("</p>");
+        html.append("<p>").append(e.getMessage().replace("\n", "<br>")).append("</p>");
         if ( e.getCause() != null ) {
             html.append("<h2>Cause</h2>");
-            html.append("<p>").append(e.getCause().getMessage()).append("</p>");
+            html.append("<p>").append(e.getCause().getMessage().replace("\n", "<br>")).append("</p>");
         }
         html.append("<h2>Stack Trace</h2>");
         html.append("<pre>");

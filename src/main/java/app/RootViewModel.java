@@ -1,5 +1,9 @@
 package app;
 
+import app.dev.BootstrapViewModel;
+import app.dev.DataBaseViewModel;
+import app.dev.ServerViewModel;
+
 import java.util.Objects;
 
 public class RootViewModel
@@ -10,11 +14,12 @@ public class RootViewModel
     private final DataBaseViewModel dataBaseViewModel;
     private final BootstrapViewModel bootstrapViewModel;
 
+
     public RootViewModel( AppContext context ) {
         this.context = Objects.requireNonNull(context);
-        this.serverViewModel = new ServerViewModel(context);
-        this.mainViewModel = new ContentViewModel(context);
-        this.dataBaseViewModel = new DataBaseViewModel(context.db());
+        this.serverViewModel    = new ServerViewModel(context);
+        this.mainViewModel      = new ContentViewModel(context);
+        this.dataBaseViewModel  = new DataBaseViewModel(context.db());
         this.bootstrapViewModel = new BootstrapViewModel(context);
     }
 

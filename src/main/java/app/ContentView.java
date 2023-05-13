@@ -6,6 +6,13 @@ import javax.swing.*;
 
 import static swingtree.UI.*;
 
+/**
+ *  When the application is started in the development mode, this view is shown
+ *  under the "Content" tab which is where the user content of the application
+ *  is shown!
+ *  In the user mode (production mode), the content view is the root view of the
+ *  application, all the development views are not shown.
+ */
 public class ContentView extends JPanel {
 
     public ContentView(ContentViewModel vm) {

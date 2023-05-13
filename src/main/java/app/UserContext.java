@@ -1,6 +1,7 @@
 package app;
 
 import app.models.User;
+import app.user.UserViewModel;
 
 /**
  *  This is a compositional sub context of the {@link AppContext} which is responsible for

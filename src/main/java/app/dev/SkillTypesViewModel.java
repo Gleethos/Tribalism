@@ -1,5 +1,6 @@
-package app;
+package app.dev;
 
+import app.AppContext;
 import app.models.AbilityType;
 import app.models.SkillType;
 import sprouts.Vals;
@@ -21,8 +22,10 @@ import java.util.List;
 public class SkillTypesViewModel
 {
     private final AppContext appContext;
+
     private final Vars<SkillTypeViewModel> skillTypes = Vars.of(SkillTypeViewModel.class);
     private final Var<String> searchKey = Var.of("");
+    private final Var<String> newSkillTypeName = Var.of("");
 
 
     public SkillTypesViewModel(AppContext appContext) {
@@ -58,8 +61,11 @@ public class SkillTypesViewModel
 
     public Var<String> searchKey() { return searchKey; }
 
+    public Var<String> newSkillTypeName() { return newSkillTypeName; }
+
     public void addNewSkillType() {
         var newSkillType = appContext.db().create(app.models.SkillType.class);
+        newSkillType.name().set(newSkillTypeName.get());
         var vm = new SkillTypeViewModel(this, newSkillType);
         skillTypes.add(vm);
     }
@@ -70,6 +76,7 @@ public class SkillTypesViewModel
     }
 
     JComponent createView() { return new SkillTypesView(this); }
+
 
     private static class SkillTypeViewModel implements ViewableEntry
     {
