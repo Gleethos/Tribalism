@@ -1,17 +1,14 @@
 package app.dev;
 
 import app.AppContext;
-import app.models.AbilityType;
 import app.models.Role;
 import app.models.SkillType;
-import sprouts.Vals;
 import sprouts.Var;
 import sprouts.Vars;
 import swingtree.UI;
-import swingtree.api.mvvm.ViewableEntry;
+import swingtree.api.mvvm.EntryViewModel;
 
 import javax.swing.*;
-import java.util.List;
 
 /**
  *  This is the view model for the {@link Role} model, which is used to represent
@@ -74,7 +71,7 @@ public class RoleTypesViewModel
     JComponent createView() { return new RoleTypesView(this); }
 
 
-    private static class RoleTypeViewModel implements ViewableEntry
+    public static class RoleTypeViewModel implements EntryViewModel
     {
         private final RoleTypesViewModel parent;
         private final Role role;
@@ -103,7 +100,6 @@ public class RoleTypesViewModel
 
         @Override public Var<Integer> position() { return position; }
 
-        @Override
         public <V> V createView(Class<V> viewType) {
             if ( this.view != null ) return viewType.cast(view);
 
@@ -114,7 +110,7 @@ public class RoleTypesViewModel
                     .add(UI.SHRINK.and(UI.WRAP), UI.button("Delete").onClick(it2 -> delete()))
                     .add(UI.GROW.and(UI.WRAP).and(UI.SPAN),
                         UI.scrollPanels().withPrefHeight(142)
-                        .add(skillViewModels)
+                        .add(skillViewModels, svm -> UI.of(svm.createView(JComponent.class)))
                     )
                     .add(UI.GROW.and(UI.WRAP).and(UI.SPAN), UI.separator())
                     .getComponent();
@@ -124,7 +120,7 @@ public class RoleTypesViewModel
     }
 
 
-    private static class SkillViewModel implements ViewableEntry
+    private static class SkillViewModel implements EntryViewModel
     {
         private final app.models.Skill skill;
         private final Var<Boolean> selected = Var.of(false);
@@ -142,7 +138,6 @@ public class RoleTypesViewModel
 
         @Override public Var<Integer> position() { return position; }
 
-        @Override
         public <V> V createView(Class<V> viewType) {
 
             if ( this.view != null ) return viewType.cast(view);

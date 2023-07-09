@@ -1,11 +1,11 @@
 package net;
 
+import app.Viewable;
 import org.json.JSONArray;
 import org.json.JSONObject;
 import sprouts.Action;
 import sprouts.Val;
 import sprouts.Var;
-import swingtree.api.mvvm.Viewable;
 
 import java.util.List;
 

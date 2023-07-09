@@ -1,9 +1,7 @@
 package dal.impl;
 
 import dal.api.Model;
-import sprouts.Action;
-import sprouts.Val;
-import sprouts.Var;
+import sprouts.*;
 import swingtree.api.mvvm.*;
 
 import java.util.*;
@@ -185,7 +183,7 @@ class ModelProperty implements Var<Object>
     @Override public Class<Object> type() { return (Class<Object>) _propertyValueType; }
 
     @Override
-    public Val<Object> onSet(Action<Val<Object>> displayAction) {
+    public Var<Object> onSet(Action<Val<Object>> displayAction) {
         _showActions.add(displayAction);
         return this;
     }
@@ -221,4 +219,14 @@ class ModelProperty implements Var<Object>
     public Object getSetVal() { return _value; }
 
     public String getFieldName() { return _fieldName; }
+
+    @Override
+    public Noticeable subscribe(Listener listener) {
+        throw new IllegalStateException(); // TODO
+    }
+
+    @Override
+    public Noticeable unsubscribe(Listener listener) {
+        throw new IllegalStateException(); // TODO
+    }
 }

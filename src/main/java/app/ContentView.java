@@ -1,6 +1,7 @@
 package app;
 
 import com.formdev.flatlaf.FlatLightLaf;
+import swingtree.UI;
 
 import javax.swing.*;
 
@@ -18,7 +19,7 @@ public class ContentView extends JPanel {
     public ContentView(ContentViewModel vm) {
         of(this).withLayout(FILL.and(WRAP(1)))
         .add(GROW.and(PUSH),
-            vm.content()
+            vm.content(), content -> UI.of(content.createView(JComponent.class))
         );
     }
 

@@ -1,11 +1,12 @@
 package app.user;
 
 import app.UserContext;
+import app.Viewable;
 import app.models.Character;
 import sprouts.Vals;
 import sprouts.Var;
 import sprouts.Vars;
-import swingtree.api.mvvm.Viewable;
+
 
 import java.util.ArrayList;
 import java.util.List;

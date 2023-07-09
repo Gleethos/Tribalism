@@ -7,7 +7,8 @@ import sprouts.Vals;
 import sprouts.Var;
 import sprouts.Vars;
 import swingtree.UI;
-import swingtree.api.mvvm.ViewableEntry;
+import swingtree.UIForAnySwing;
+import swingtree.api.mvvm.EntryViewModel;
 
 import javax.swing.*;
 import java.util.List;
@@ -78,7 +79,7 @@ public class SkillTypesViewModel
     JComponent createView() { return new SkillTypesView(this); }
 
 
-    private static class SkillTypeViewModel implements ViewableEntry
+    public static class SkillTypeViewModel implements EntryViewModel
     {
         private final SkillTypesViewModel parent;
         private final app.models.SkillType skillType;
@@ -100,7 +101,7 @@ public class SkillTypesViewModel
 
         @Override public Var<Integer> position() { return position; }
 
-        @Override
+
         public <V> V createView(Class<V> viewType) {
             var abilities = parent.abilityTypes();
             if ( this.view != null ) return viewType.cast(view);

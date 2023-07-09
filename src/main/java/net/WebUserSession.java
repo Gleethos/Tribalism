@@ -1,12 +1,12 @@
 package net;
 
+import app.Viewable;
 import org.json.JSONObject;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import sprouts.Action;
 import sprouts.Val;
-import swingtree.EventProcessor;
-import swingtree.api.mvvm.Viewable;
+import swingtree.threading.EventProcessor;
 
 import java.awt.*;
 import java.lang.reflect.InvocationTargetException;

@@ -261,4 +261,13 @@ public class ModelProperties implements Vars<Object>
         throw new UnsupportedOperationException("Not supported yet.");
     }
 
+    @Override
+    public Noticeable subscribe(Listener listener) {
+        throw new IllegalStateException(); // TODO
+    }
+
+    @Override
+    public Noticeable unsubscribe(Listener listener) {
+        throw new IllegalStateException(); // TODO
+    }
 }

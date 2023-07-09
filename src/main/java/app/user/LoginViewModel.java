@@ -5,7 +5,7 @@ import app.ContentViewModel;
 import app.UserContext;
 import sprouts.Val;
 import sprouts.Var;
-import swingtree.api.mvvm.Viewable;
+import app.Viewable;
 
 import javax.swing.*;
 import java.awt.*;

@@ -4,6 +4,7 @@ import app.App;
 import app.AppContext;
 import com.formdev.flatlaf.FlatLightLaf;
 import swingtree.UI;
+import swingtree.threading.EventProcessor;
 
 import javax.swing.*;
 
@@ -27,7 +28,8 @@ public class AbilityTypesView extends JPanel
             panel(FILL.and(WRAP(1)))
             .add(label("Found Skill Types:"))
             .add(GROW.and(PUSH),
-                scrollPanels().add(vm.skillTypes()).withPrefSize(600, 600)
+                scrollPanels().withPrefSize(600, 600)
+                .add(vm.skillTypes(), stm -> UI.of(stm.createView(JComponent.class)))
             )
         );
     }
@@ -41,7 +43,7 @@ public class AbilityTypesView extends JPanel
             var view = new AbilityTypesView(vm);
             UI.show(view);
         });
-        UI.joinDecoupledEventProcessor();
+        EventProcessor.DECOUPLED.join();
     }
 
 }
