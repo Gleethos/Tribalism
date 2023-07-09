@@ -132,6 +132,7 @@ task appNpmBuild(type: NpmTask) {
 
 // Copies the project to the service folder
 task copyWebAppToWebRoot(type: Copy) {
+    dependsOn appNpmBuild
     from "$REACT_SKIN_LOCATION/build"
     into 'src/main/resources/web/.'
 }
@@ -148,7 +149,6 @@ task buildWebApp(type: NpmTask) {
 }
 
 appNpmBuild.dependsOn npmInstall
-copyWebAppToWebRoot.dependsOn appNpmBuild
 compileJava.dependsOn copyWebAppToWebRoot
 
 // A task which starts the 'Main' class of the project with a certain set of arguments
