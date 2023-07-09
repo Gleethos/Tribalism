@@ -29,7 +29,7 @@ public class RoleTypesView extends JPanel
             .add(label("Found Role Types:"))
             .add(GROW.and(PUSH),
                 scrollPanels().withPrefSize(600, 600)
-                .add(vm.roleTypes(), rtm -> UI.of(rtm.createView(JComponent.class)))
+                .add(vm.roleTypes(), rtm -> UI.of(rtm.createView()))
             )
         );
     }

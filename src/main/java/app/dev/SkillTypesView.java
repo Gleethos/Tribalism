@@ -29,7 +29,7 @@ public class SkillTypesView extends JPanel
             .add(label("Found Skill Types:"))
             .add(GROW.and(PUSH),
                 scrollPanels().withPrefSize(600, 600)
-                .add(vm.skillTypes(), skill -> UI.of(skill.createView(JComponent.class)))
+                .add(vm.skillTypes(), skill -> UI.of(skill.createView()))
             )
         );
     }

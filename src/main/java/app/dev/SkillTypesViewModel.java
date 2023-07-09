@@ -1,6 +1,7 @@
 package app.dev;
 
 import app.AppContext;
+import app.common.StickyRef;
 import app.models.AbilityType;
 import app.models.SkillType;
 import sprouts.Vals;
@@ -86,7 +87,7 @@ public class SkillTypesViewModel
         private final Var<Boolean> selected = Var.of(false);
         private final Var<Integer> position = Var.of(0);
 
-        private Object view = null;
+        private final StickyRef viewCache = new StickyRef();
 
         public SkillTypeViewModel(SkillTypesViewModel parent, app.models.SkillType skillType) {
             this.parent = parent;
@@ -102,11 +103,10 @@ public class SkillTypesViewModel
         @Override public Var<Integer> position() { return position; }
 
 
-        public <V> V createView(Class<V> viewType) {
+        public JComponent createView() {
             var abilities = parent.abilityTypes();
-            if ( this.view != null ) return viewType.cast(view);
-
-            view = UI.panel(UI.FILL.and(UI.INS(12)))
+            return viewCache.get(()->
+                    UI.panel(UI.FILL.and(UI.INS(12)))
                     .add(UI.GROW, UI.textField(skillType.name()))
                     .add(UI.GROW, UI.comboBox(skillType.primaryAbility(), abilities))
                     .add(UI.GROW, UI.comboBox(skillType.secondaryAbility(), abilities))
@@ -115,9 +115,8 @@ public class SkillTypesViewModel
                     .add(UI.SHRINK, UI.label("Description:"))
                     .add(UI.GROW.and(UI.WRAP).and(UI.SPAN), UI.textField(skillType.description()))
                     .add(UI.GROW.and(UI.WRAP).and(UI.SPAN), UI.separator())
-                    .getComponent();
-
-            return viewType.cast(view);
+                    .getComponent()
+                );
         }
     }
 

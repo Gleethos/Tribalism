@@ -1,6 +1,7 @@
 package app.dev;
 
 import app.AppContext;
+import app.common.StickyRef;
 import app.models.AbilityType;
 import sprouts.Vals;
 import sprouts.Var;
@@ -84,7 +85,7 @@ public class AbilityTypesViewModel
         private final Var<Boolean> selected = Var.of(false);
         private final Var<Integer> position = Var.of(0);
 
-        private Object view = null;
+        private StickyRef viewCache = new StickyRef();
 
         public AbilityTypeViewModel(AbilityTypesViewModel parent, AbilityType abilityType) {
             this.parent = parent;
@@ -99,19 +100,16 @@ public class AbilityTypesViewModel
 
         @Override public Var<Integer> position() { return position; }
 
-        public <V> V createView(Class<V> viewType) {
-
-            if ( this.view != null ) return viewType.cast(view);
-
-            view = UI.panel(UI.FILL.and(UI.INS(12)))
+        public JComponent createView() {
+            return viewCache.get(()->
+                    UI.panel(UI.FILL.and(UI.INS(12)))
                     .add(UI.WIDTH(90,120,220), UI.textField(abilityType.name()))
                     .add(UI.SHRINK, UI.label("Description:"))
                     .add(UI.GROW.and(UI.PUSH), UI.textField(abilityType.description()))
                     .add(UI.SHRINK, UI.button("Delete").onClick(it2 -> delete()))
                     .add(UI.GROW.and(UI.WRAP).and(UI.SPAN), UI.separator())
-                    .getComponent();
-
-            return viewType.cast(view);
+                    .getComponent()
+                );
         }
     }
 

@@ -1,6 +1,7 @@
 package app.dev;
 
 import app.AppContext;
+import app.common.StickyRef;
 import app.models.Role;
 import app.models.SkillType;
 import sprouts.Var;
@@ -79,7 +80,7 @@ public class RoleTypesViewModel
         private final Var<Integer> position = Var.of(0);
         private final Vars<SkillViewModel> skillViewModels = Vars.of(SkillViewModel.class);
 
-        private Object view = null;
+        private StickyRef viewCache = new StickyRef();
 
         public RoleTypeViewModel(RoleTypesViewModel parent, Role role) {
             this.parent = parent;
@@ -100,22 +101,20 @@ public class RoleTypesViewModel
 
         @Override public Var<Integer> position() { return position; }
 
-        public <V> V createView(Class<V> viewType) {
-            if ( this.view != null ) return viewType.cast(view);
-
-            view = UI.panel(UI.FILL.and(UI.INS(12)))
-                    .add(UI.WIDTH(90,120,220), UI.textField(role.name()))
-                    .add(UI.SHRINK, UI.label("Description:"))
-                    .add(UI.GROW.and(UI.PUSH), UI.textField(role.description()))
-                    .add(UI.SHRINK.and(UI.WRAP), UI.button("Delete").onClick(it2 -> delete()))
-                    .add(UI.GROW.and(UI.WRAP).and(UI.SPAN),
-                        UI.scrollPanels().withPrefHeight(142)
-                        .add(skillViewModels, svm -> UI.of(svm.createView(JComponent.class)))
-                    )
-                    .add(UI.GROW.and(UI.WRAP).and(UI.SPAN), UI.separator())
-                    .getComponent();
-
-            return viewType.cast(view);
+        public JComponent createView() {
+            return this.viewCache.get(()->
+                        UI.panel(UI.FILL.and(UI.INS(12)))
+                        .add(UI.WIDTH(90,120,220), UI.textField(role.name()))
+                        .add(UI.SHRINK, UI.label("Description:"))
+                        .add(UI.GROW.and(UI.PUSH), UI.textField(role.description()))
+                        .add(UI.SHRINK.and(UI.WRAP), UI.button("Delete").onClick(it2 -> delete()))
+                        .add(UI.GROW.and(UI.WRAP).and(UI.SPAN),
+                            UI.scrollPanels().withPrefHeight(142)
+                            .add(skillViewModels, svm -> UI.of(svm.createView(JComponent.class)))
+                        )
+                        .add(UI.GROW.and(UI.WRAP).and(UI.SPAN), UI.separator())
+                        .getComponent()
+                    );
         }
     }
 
