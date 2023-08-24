@@ -111,7 +111,15 @@ public class SkillTypesViewModel
                     .add(UI.GROW, UI.comboBox(skillType.primaryAbility(), abilities))
                     .add(UI.GROW, UI.comboBox(skillType.secondaryAbility(), abilities))
                     .add(UI.GROW, UI.comboBox(skillType.tertiaryAbility(), abilities))
-                    .add(UI.SHRINK.and(UI.WRAP), UI.button("Delete").onClick(it2 -> delete()))
+                    .add(UI.SHRINK.and(UI.WRAP),
+                        UI.button("Delete").onClick( it -> {
+                            UI.run(()->{
+                                boolean yes = UI.confirm("Delete Skill Type", "Are you sure you want to delete this skill type?");
+                                if ( yes )
+                                    delete();
+                            });
+                        })
+                    )
                     .add(UI.SHRINK, UI.label("Description:"))
                     .add(UI.GROW.and(UI.WRAP).and(UI.SPAN), UI.textField(skillType.description()))
                     .add(UI.GROW.and(UI.WRAP).and(UI.SPAN), UI.separator())

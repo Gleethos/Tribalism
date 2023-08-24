@@ -26,7 +26,7 @@ public class AbilityTypesView extends JPanel
         )
         .add(SPAN.and(GROW).and(PUSH),
             panel(FILL.and(WRAP(1)))
-            .add(label("Found Skill Types:"))
+            .add(label("Found Ability Types:"))
             .add(GROW.and(PUSH),
                 scrollPanels().withPrefSize(600, 600)
                 .add(vm.skillTypes(), stm -> UI.of(stm.createView()))

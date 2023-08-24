@@ -85,7 +85,7 @@ public class AbilityTypesViewModel
         private final Var<Boolean> selected = Var.of(false);
         private final Var<Integer> position = Var.of(0);
 
-        private StickyRef viewCache = new StickyRef();
+        private final StickyRef viewCache = new StickyRef();
 
         public AbilityTypeViewModel(AbilityTypesViewModel parent, AbilityType abilityType) {
             this.parent = parent;
@@ -106,7 +106,15 @@ public class AbilityTypesViewModel
                     .add(UI.WIDTH(90,120,220), UI.textField(abilityType.name()))
                     .add(UI.SHRINK, UI.label("Description:"))
                     .add(UI.GROW.and(UI.PUSH), UI.textField(abilityType.description()))
-                    .add(UI.SHRINK, UI.button("Delete").onClick(it2 -> delete()))
+                    .add(UI.SHRINK,
+                        UI.button("Delete").onClick( it -> {
+                            UI.run(()-> {
+                                boolean yes = UI.confirm("Delete Ability Type", "Are you sure you want to delete this ability type?");
+                                if (yes)
+                                    delete();
+                            });
+                        })
+                    )
                     .add(UI.GROW.and(UI.WRAP).and(UI.SPAN), UI.separator())
                     .getComponent()
                 );
