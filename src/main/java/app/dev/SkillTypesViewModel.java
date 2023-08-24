@@ -72,9 +72,24 @@ public class SkillTypesViewModel
         skillTypes.add(vm);
     }
 
-    public void deleteSkillType(app.models.SkillType skillType) {
-        skillTypes.removeIfItem( vm -> vm.skillType() == skillType );
-        appContext.db().delete(skillType);
+    public Confirmation deleteSkillType(app.models.SkillType skillType) {
+        return new Confirmation() {
+            @Override public String title() { return "Delete Skill Type"; }
+            @Override public String question() {
+                return "Are you sure you want to delete the skill type: " + skillType.name().get() + "?" +
+                        "This will also delete all skills of this type.";
+            }
+            @Override public void yes() {
+                skillTypes.removeIfItem( vm -> vm.skillType() == skillType );
+                var db = appContext.db();
+                var foundSkills = db.select(app.models.Skill.class)
+                                        .where(app.models.Skill::type)
+                                        .is(skillType)
+                                        .asList();
+                db.delete(skillType);
+                db.delete(foundSkills);
+            }
+        };
     }
 
     JComponent createView() { return new SkillTypesView(this); }
@@ -96,7 +111,7 @@ public class SkillTypesViewModel
 
         public app.models.SkillType skillType() { return skillType; }
 
-        public void delete() {parent.deleteSkillType(skillType);}
+        public Confirmation delete() { return parent.deleteSkillType(skillType); }
 
         @Override public Var<Boolean> isSelected() { return selected; }
 
@@ -115,8 +130,14 @@ public class SkillTypesViewModel
                         UI.button("Delete").onClick( it -> {
                             UI.run(()->{
                                 boolean yes = UI.confirm("Delete Skill Type", "Are you sure you want to delete this skill type?");
-                                if ( yes )
-                                    delete();
+                                if ( yes ) {
+                                    var confirmation = delete();
+                                    var reallyYes = UI.confirm(confirmation.title(), confirmation.question());
+                                    if ( reallyYes )
+                                        confirmation.yes();
+                                    else
+                                        confirmation.no();
+                                }
                             });
                         })
                     )
