@@ -9,15 +9,16 @@ import FatalErrorView from "./views/FatalErrorView";
 
 
 const backend = Backend.at('ws://localhost:8080/websocket');
-const errorEvents : any[] = [];
-backend.onError((event) => { errorEvents.push(event); })
 
 function App() {
   const [content, setContent] = useState<any>(null);
+  const [errorEvents] = useState<any[]>([]);
+  backend.onError((event) => { errorEvents.push(event); })
   backend.connectToViewModel(
       'app.ContentViewModel-0', // The "main" view model where the application starts
       (session: Session, contentVM: ViewModel | any) => {
-
+          // We clear the error log
+            errorEvents.splice(0, errorEvents.length);
           // Relevant fields:
           const clazz = contentVM.class;
           const state = contentVM.state;
@@ -35,7 +36,7 @@ function App() {
                   else if (vm.class === 'app.user.RegisterViewModel')
                       setContent(<RegisterView vm={vm}/>); // We set the content to the register page
                   else
-                      setContent(<FatalErrorView vm={vm} errorEvents={errorEvents}/>); // We set the content to the error page
+                      setContent(<FatalErrorView data={{vm: vm, errorEvents: errorEvents}}/>); // We set the content to the error page
               });
       },
   );
@@ -54,24 +55,7 @@ function App() {
   // If we don't have content we probably failed to bind to the start page of the MVVM server!
   // So we display an error log;
   return (
-    <div className='App relative'>
-        <header>
-            <title>ERROR!</title>
-        </header>
-        <div style={{margin:'40px', position: 'absolute', left: '50%', top: '50%', transform: 'translate(-50%, -50%)'}}>
-            <h1>ERROR!</h1>
-            <div style={{height: '20px'}}>
-                <p>
-                    <span style={{color: 'red'}}>
-                        Failed to bind to the start page of the MVVM server!
-                    </span>
-                </p>
-            </div>
-            <div id='main-content' className='App-body'>
-                <pre>{errorEvents.map((e) => e.toString()).join('\n')}</pre>
-            </div>
-        </div>
-    </div>
+      <FatalErrorView data={{vm: null, errorEvents: errorEvents}}/>
   );
 }
 

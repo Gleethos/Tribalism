@@ -49,27 +49,24 @@ export class Backend
   }
 
   onError(newErrorHandler: (error: any) => void) {
-    const old = this.logError;
     this.logError = (error: any) => {
-                  old(error);
-                  newErrorHandler(error);
-                };
+                        newErrorHandler(error);
+                        console.error(error);
+                    };
   }
 
   onWarning(newWarningHandler: (warning: any) => void) {
-    const old = this.logWarning;
     this.logWarning = (warning: any) => {
-                      old(warning);
-                      newWarningHandler(warning);
-                    }
+                        console.warn(warning);
+                        newWarningHandler(warning);
+                      }
   }
 
   onLog(newLogHandler: (message: any) => void) {
-    const old = this.log;
     this.log = (message: any) => {
-            old(message);
-            newLogHandler(message);
-          };
+              newLogHandler(message);
+              console.log(message);
+            };
   }
 
   /**
