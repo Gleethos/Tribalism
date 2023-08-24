@@ -13,6 +13,7 @@ import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Objects;
 import java.util.function.Supplier;
 
 /**
@@ -248,6 +249,7 @@ public class WebUserSession
 
 
     public JSONObject toJson(Object vm) {
+        Objects.requireNonNull(vm);
         JSONObject json = new JSONObject();
         for ( var property : ReflectionUtil.findPropertiesInViewModel(vm) )
             json.put(property.id(), jsonFromProperty(property));
