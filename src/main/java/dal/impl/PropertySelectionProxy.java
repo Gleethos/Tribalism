@@ -4,8 +4,26 @@ import java.lang.reflect.InvocationHandler;
 import java.lang.reflect.Method;
 import java.util.List;
 import java.util.Optional;
+import java.util.function.Function;
 
-public class PropertySelectionProxy implements InvocationHandler
+/**
+ *  This proxy delegates a {@link dal.api.Model} sub-interface
+ *  to give a user the ability to select a particular {@link sprouts.Val} or {@link sprouts.Var} property
+ *  defined in the sub-interface as part of the {@link dal.api.DataBase} API.
+ *  <p>
+ *  A typical example would be the {@link dal.api.Where#where(Function)} method, which will
+ *  expose a "selector model" to the user that allows to select a property of the model
+ *  by using a method reference.
+ *  <p>
+ *  This might look something like this:
+ *  <pre>{@code
+ *    var foods = db.select(Food.class)
+ *                  .where(Food::name)
+ *                  .is("Chana Masala")
+ *                  .asList()
+ *  }</pre>
+ */
+class PropertySelectionProxy implements InvocationHandler
 {
     private final ModelTable _modelTable;
     private TableField _selection = null;
