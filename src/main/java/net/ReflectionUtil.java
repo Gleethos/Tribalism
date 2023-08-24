@@ -166,7 +166,11 @@ public class ReflectionUtil {
             Object vm,
             Action<Val<Object>> observer
     ) {
-        ReflectionUtil.findPropertiesInViewModel(vm).forEach(p -> p.onSet(observer) );
+        ReflectionUtil.findPropertiesInViewModel(vm).forEach(p -> {
+            p.onSet(observer);
+            if ( p instanceof Var<Object> var )
+                var.onAct(observer);
+        } );
     }
 
     static JSONArray getMethodsForViewModel(Object vm) {
