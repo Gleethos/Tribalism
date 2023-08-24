@@ -438,4 +438,8 @@ final class TableField {
                 );
     }
 
+    @Override public String toString() {
+        return "TableField[" + "name=" + getName() + ", type=" + _propertyValueType + ", kind=" + _kind + ']';
+    }
+
 }

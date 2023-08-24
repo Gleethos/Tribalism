@@ -22,7 +22,7 @@ public class PropertySelectionProxy implements InvocationHandler
     ) throws Throwable {
         List<TableField> fields = _modelTable.getFields();
         for (TableField field : fields) {
-            if (field.getName().equals(method.getName())) {
+            if (field.getMethodName().equals(method.getName())) {
                 _selection = field;
                 Class<?> propType = field.getPropType();
                 // We return a proxy that will return the value of the property
