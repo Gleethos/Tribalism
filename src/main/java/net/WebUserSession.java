@@ -102,6 +102,9 @@ public class WebUserSession
         String vmId = json.getString(Constants.VM_ID);
         JSONObject vmJson = new JSONObject();
         var vm = webUserContext.get(vmId);
+        if ( vm == null )
+            throw new RuntimeException("No view model with ID '" + vmId + "' found in web user session with ID '" + socket.creationTime() + "'!");
+
         vmJson.put(Constants.EVENT_TYPE, Constants.RETURN_GET_VM);
         vmJson.put(Constants.EVENT_PAYLOAD, toJson(vm));
         bindTo(vm, vmId);
