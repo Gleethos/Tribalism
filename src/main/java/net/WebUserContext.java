@@ -11,13 +11,16 @@ import java.util.*;
  */
 public class WebUserContext
 {
+    private final String _httpSession;
     private final Map<Class, Map<Integer, WeakReference<Object>>> _viewModels = new HashMap<>();
     private final Map<Object, VMID<?>> _vmids = new WeakHashMap<>();
     private final List<String> _pendingMessages = new ArrayList<>();
     private Object rootViewModel = null; // A strong reference, so it can not be garbage collected.
 
 
-    public WebUserContext() {}
+    public WebUserContext(String sessionID) {
+        _httpSession = sessionID;
+    }
 
     public void addPendingMessage(String message) { _pendingMessages.add(message); }
 
@@ -47,11 +50,17 @@ public class WebUserContext
             clazz = Class.forName(type);
         } catch (ClassNotFoundException e) {
             e.printStackTrace();
-            throw new IllegalArgumentException("Failed to find class '" + type + "'!");
+            throw new IllegalArgumentException(
+                        "Failed to find view model class '" + type + "' in " +
+                        "web user context with session id '" + _httpSession + "'!"
+                    );
         }
         Map<Integer, WeakReference<Object>> instances = _viewModels.get(clazz);
         if ( instances == null )
-            throw new IllegalArgumentException("Failed to recognize view model class '" + type + "'!");
+            throw new IllegalArgumentException(
+                    "Failed to recognize view model class '" + type + "' in " +
+                    "web user context with session id '" + _httpSession + "'!"
+                );
 
         WeakReference<Object> instance = instances.get(instanceId);
         if ( instance != null ) {
@@ -59,7 +68,8 @@ public class WebUserContext
             if ( viewModel != null ) return (T) viewModel;
             else
                 throw new IllegalArgumentException(
-                        "Found a view model entry with id '" + id + "', but the view model reference is null!\n" +
+                        "Found a view model entry with id '" + id + "' in web user context with id " + _httpSession + ", " +
+                        "but the weak view model reference to it is null!\n" +
                         "This means that the view model was garbage collected, but the entry was not removed from the context!\n" +
                         "Available view model entries: " +
                                 _viewModels.keySet()
@@ -70,17 +80,18 @@ public class WebUserContext
                     );
         }
         throw new IllegalArgumentException(
-                "Failed to find view model with id '" + id + "'!\n" +
+                "Failed to find view model with id '" + id + "' in " +
+                "web user context with session id '" + _httpSession + "'!\n" +
                 "Available view models: " +
                         _viewModels.keySet()
                                 .stream()
                                 .map(Class::getName)
                                 .reduce((a,b) -> a + ", " + b)
                                 .orElse("none")
-        );
+            );
     }
 
-    private <T> void _put(VMID<T> id, T viewModel ) {
+    private <T> void _put( VMID<T> id, T viewModel ) {
         _viewModels.computeIfAbsent(id.type(), k -> new HashMap<>()).put(id.id(), new WeakReference<>(viewModel));
         _vmids.put(viewModel, id);
         if ( rootViewModel == null )

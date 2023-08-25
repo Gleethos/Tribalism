@@ -59,7 +59,7 @@ public class ConnectionServlet extends WebSocketServlet
             // Ok so let's see if we already have a user context for this user:
             if ( !userContexts.containsKey(httpSession.getId()) ) {
                 // If not, we create a new one:
-                userContext = new WebUserContext();
+                userContext = new WebUserContext(httpSession.getId());
                 userContext.put(new ContentViewModel(appContext));
                 appContext.registerWebUserContext(userContext);
                 userContexts.put(httpSession.getId(), userContext);
