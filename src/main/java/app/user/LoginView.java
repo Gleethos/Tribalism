@@ -53,27 +53,7 @@ public class LoginView extends JPanel
                 .add(label("Don't have an account?"))
                 .add(button("Switch to Register").onClick( it -> vm.switchToRegister() ))
             )
-        )
-        .onMouseMove( it -> {
-            it.animateOnce(1.5, TimeUnit.SECONDS, state -> {
-                double r = 30 * state.fadeIn();
-                double x = it.getEvent().getX() - r / 2.0;
-                double y = it.getEvent().getY() - r / 2.0;
-                it.paint(state, g -> {
-                    g.setColor(new Color(1f, 1f, 0f, (float) state.fadeOut() * 0.7f));
-                    g.fillOval((int) x, (int) y, (int) r, (int) r);
-                });
-            });
-        })
-        .onMouseClick( it -> it.animateOnce(3, TimeUnit.SECONDS, state -> {
-            double r = 400 * state.fadeIn();
-            double x = it.getEvent().getX() - r / 2;
-            double y = it.getEvent().getY() - r / 2;
-            it.paint(state, g -> {
-                g.setColor(new Color(1f, 1f, 0f, (float) state.fadeOut()));
-                g.fillOval((int) x, (int) y, (int) r, (int) r);
-            });
-        }));
+        );
     }
 
 

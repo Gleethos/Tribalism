@@ -42,9 +42,4 @@ public final class ContentViewModel
         content.set(new LoginViewModel(context, this));
     }
 
-    /**
-     * @return A view for the swing side of the application.
-     */
-    public JComponent createView() { return new ContentView(this); }
-
 }
