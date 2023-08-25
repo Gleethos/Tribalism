@@ -5,11 +5,11 @@ import app.ContentViewModel;
 import app.models.User;
 import sprouts.Val;
 import sprouts.Var;
-import app.Viewable;
+import app.ViewModel;
 
 import java.awt.*;
 
-public class RegisterViewModel implements Viewable
+public class RegisterViewModel implements ViewModel
 {
     private final AppContext context;
     private final ContentViewModel contentViewModel;
@@ -177,11 +177,6 @@ public class RegisterViewModel implements Viewable
         feedbackColor.set(Color.BLACK);
         allInputsDisabled.set(false);
         validateAll();
-    }
-
-    @Override
-    public <V> V createView(Class<V> viewType) {
-        return viewType.cast(new RegisterView(this));
     }
 
 }

@@ -1,6 +1,6 @@
 package net;
 
-import app.Viewable;
+import app.ViewModel;
 import org.json.JSONObject;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -281,7 +281,7 @@ public class WebUserSession
                 new JSONObject()
                         .put(Constants.PROP_TYPE_NAME, type.getName())
                         .put(Constants.PROP_TYPE_STATES, knownStates)
-                        .put(Constants.TYPE_IS_VM, Viewable.class.isAssignableFrom(type))
+                        .put(Constants.TYPE_IS_VM, ViewModel.class.isAssignableFrom(type))
         );
 
         return json;
@@ -302,15 +302,15 @@ public class WebUserSession
             return prop.get();
         else if ( prop.type() == Enum.class )
             return ((Enum)prop.get()).name();
-        else if (Viewable.class.isAssignableFrom(prop.type())) {
-            Viewable viewable = (Viewable) prop.get();
-            if ( !webUserContext.hasVM(viewable) ) {
-                webUserContext.put(viewable);
-                bindTo(viewable, webUserContext.vmIdOf(viewable).toString());
+        else if (ViewModel.class.isAssignableFrom(prop.type())) {
+            ViewModel viewModel = (ViewModel) prop.get();
+            if ( !webUserContext.hasVM(viewModel) ) {
+                webUserContext.put(viewModel);
+                bindTo(viewModel, webUserContext.vmIdOf(viewModel).toString());
             }
 
             // We do not send the entire viewable object, but only the id
-            return webUserContext.vmIdOf(viewable).toString();
+            return webUserContext.vmIdOf(viewModel).toString();
         }
         else if ( prop.type() == Color.class ) {
             // In the frontend colors are usually hex strings

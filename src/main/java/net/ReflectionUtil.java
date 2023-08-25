@@ -1,6 +1,6 @@
 package net;
 
-import app.Viewable;
+import app.ViewModel;
 import org.json.JSONArray;
 import org.json.JSONObject;
 import sprouts.Action;
@@ -202,7 +202,7 @@ public class ReflectionUtil {
                 for ( var param : method.getParameters() )
                     args.put(Constants.METHOD_ARG_NAME, param.getName())
                             .put(Constants.METHOD_ARG_TYPE, param.getType().getSimpleName())
-                            .put(Constants.TYPE_IS_VM, Viewable.class.isAssignableFrom(method.getReturnType()));
+                            .put(Constants.TYPE_IS_VM, ViewModel.class.isAssignableFrom(method.getReturnType()));
 
                 publicMethods.put(
                         new JSONObject()
@@ -211,7 +211,7 @@ public class ReflectionUtil {
                                 .put(Constants.METHOD_RETURNS,
                                         new JSONObject()
                                                 .put(Constants.TYPE_NAME, returnType)
-                                                .put(Constants.TYPE_IS_VM, Viewable.class.isAssignableFrom(method.getReturnType()))
+                                                .put(Constants.TYPE_IS_VM, ViewModel.class.isAssignableFrom(method.getReturnType()))
                                 )
                 );
             } catch (Exception e) {
