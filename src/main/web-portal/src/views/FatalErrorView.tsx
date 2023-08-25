@@ -1,7 +1,7 @@
 import React from 'react';
 import Button from '../components/atoms/Button';
 
-function FatalErrorView(props: {data: {vm: any, errorEvents: any[]}}) {
+function FatalErrorView(props: {data: {vm: string, errorEvents: any[]}}) {
     const {vm, errorEvents} = props.data;
     /*
         - A big heading saying "FATAL ERROR!"
@@ -22,10 +22,10 @@ function FatalErrorView(props: {data: {vm: any, errorEvents: any[]}}) {
                 <div style={{height: '20px'}}>
                     <p>
                         <span style={{color: 'red'}}>
-                            Failed to bind to the start page of the MVVM server!
+                            Failed to bind to the {vm} page of the MVVM server!
                         </span>
                         <br/>
-                        Check the error log below for more information!
+                        {errorEvents.length > 0 ? 'Check the error log below for more information!' : ''}
                     </p>
                 </div>
                 <div style={{overflow: 'scroll', border: '1px solid black', borderRadius: '8px', backgroundColor: 'salmon'}}>

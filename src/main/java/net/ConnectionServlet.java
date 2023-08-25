@@ -37,13 +37,13 @@ public class ConnectionServlet extends WebSocketServlet
     @Override
     public void configure(WebSocketServletFactory factory) {
         // set a 1000-second idle timeout (16 minutes)
-        factory.getPolicy().setIdleTimeout(1_000_000); 
+        factory.getPolicy().setIdleTimeout(1_000_000);
         // Now we register the socket creator, which establishes a long-lived web-socket based connection
         factory.setCreator((req, res)->{
             /*
                 Ok, so a websocket does not really have a session (req.getSession() is null),
                 which is a problem, because we want to establish a long-lived connection
-                which event persists after the user has reload the page or restarted the browser...
+                which even persists after the user has reload the page or restarted the browser...
                 So what we do is simply use the session from the http request which is
                 used to serve the initial React frontend page.
                 But how do we get the session from the http request?
