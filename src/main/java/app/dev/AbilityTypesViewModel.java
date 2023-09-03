@@ -125,10 +125,10 @@ public class AbilityTypesViewModel
                     .add(UI.SHRINK,
                         UI.button("Delete").onClick( it -> {
                             UI.run(()-> {
-                                boolean yes = UI.confirm("Delete Ability Type", "Are you sure you want to delete this ability type?");
-                                if ( yes ) {
+                                var answer = UI.confirm("Delete Ability Type", "Are you sure you want to delete this ability type?");
+                                if ( answer.isYes() ) {
                                     var confirmation = delete();
-                                    boolean reallyYes = UI.confirm(confirmation.title(), confirmation.question());
+                                    boolean reallyYes = UI.confirm(confirmation.title(), confirmation.question()).isYes();
                                     if ( reallyYes )
                                         confirmation.yes();
                                     else

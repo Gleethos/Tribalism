@@ -10,6 +10,7 @@ import sprouts.Vars;
 import swingtree.UI;
 import swingtree.UIForAnySwing;
 import swingtree.api.mvvm.EntryViewModel;
+import swingtree.dialogs.ConfirmAnswer;
 
 import javax.swing.*;
 import java.util.List;
@@ -129,10 +130,10 @@ public class SkillTypesViewModel
                     .add(UI.SHRINK.and(UI.WRAP),
                         UI.button("Delete").onClick( it -> {
                             UI.run(()->{
-                                boolean yes = UI.confirm("Delete Skill Type", "Are you sure you want to delete this skill type?");
-                                if ( yes ) {
+                                var answer = UI.confirm("Delete Skill Type", "Are you sure you want to delete this skill type?");
+                                if ( answer.isYes() ) {
                                     var confirmation = delete();
-                                    var reallyYes = UI.confirm(confirmation.title(), confirmation.question());
+                                    var reallyYes = UI.confirm(confirmation.title(), confirmation.question()).isYes();
                                     if ( reallyYes )
                                         confirmation.yes();
                                     else
