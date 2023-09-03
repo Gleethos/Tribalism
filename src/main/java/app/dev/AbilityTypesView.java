@@ -29,7 +29,30 @@ public class AbilityTypesView extends JPanel
             .add(label("Found Ability Types:"))
             .add(GROW.and(PUSH),
                 scrollPanels().withPrefSize(600, 600)
-                .add(vm.skillTypes(), stm -> UI.of(stm.createView()))
+                .add(vm.skillTypes(), stm ->
+                    stm.getViewCache().get(()->
+                        UI.panel(UI.FILL.and(UI.INS(12)))
+                        .add(UI.WIDTH(90,120,220), UI.textField(stm.abilityType().name()))
+                        .add(UI.SHRINK, UI.label("Description:"))
+                        .add(UI.GROW.and(UI.PUSH), UI.textField(stm.abilityType().description()))
+                        .add(UI.SHRINK,
+                            UI.button("Delete").onClick( it -> {
+                                UI.run(()-> {
+                                    var answer = UI.confirm("Delete Ability Type", "Are you sure you want to delete this ability type?");
+                                    if ( answer.isYes() ) {
+                                        var confirmation = stm.delete();
+                                        boolean reallyYes = UI.confirm(confirmation.title(), confirmation.question()).isYes();
+                                        if ( reallyYes )
+                                            confirmation.yes();
+                                        else
+                                            confirmation.no();
+                                    }
+                                });
+                            })
+                        )
+                        .add(UI.GROW.and(UI.WRAP).and(UI.SPAN), UI.separator())
+                    )
+                )
             )
         );
     }

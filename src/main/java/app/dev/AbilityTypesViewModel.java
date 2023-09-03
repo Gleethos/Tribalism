@@ -108,6 +108,8 @@ public class AbilityTypesViewModel
             this.abilityType = abilityType;
         }
 
+        public StickyRef getViewCache() { return viewCache; }
+
         public AbilityType abilityType() { return abilityType; }
 
         public Confirmation delete() { return parent.deleteAbilityType(abilityType); }
@@ -115,32 +117,6 @@ public class AbilityTypesViewModel
         @Override public Var<Boolean> isSelected() { return selected; }
 
         @Override public Var<Integer> position() { return position; }
-
-        public JComponent createView() {
-            return viewCache.get(()->
-                    UI.panel(UI.FILL.and(UI.INS(12)))
-                    .add(UI.WIDTH(90,120,220), UI.textField(abilityType.name()))
-                    .add(UI.SHRINK, UI.label("Description:"))
-                    .add(UI.GROW.and(UI.PUSH), UI.textField(abilityType.description()))
-                    .add(UI.SHRINK,
-                        UI.button("Delete").onClick( it -> {
-                            UI.run(()-> {
-                                var answer = UI.confirm("Delete Ability Type", "Are you sure you want to delete this ability type?");
-                                if ( answer.isYes() ) {
-                                    var confirmation = delete();
-                                    boolean reallyYes = UI.confirm(confirmation.title(), confirmation.question()).isYes();
-                                    if ( reallyYes )
-                                        confirmation.yes();
-                                    else
-                                        confirmation.no();
-                                }
-                            });
-                        })
-                    )
-                    .add(UI.GROW.and(UI.WRAP).and(UI.SPAN), UI.separator())
-                    .getComponent()
-                );
-        }
     }
 
 }

@@ -118,36 +118,9 @@ public class SkillTypesViewModel
 
         @Override public Var<Integer> position() { return position; }
 
+        public Vals<String> abilities() { return parent.abilityTypes(); }
 
-        public JComponent createView() {
-            var abilities = parent.abilityTypes();
-            return viewCache.get(()->
-                    UI.panel(UI.FILL.and(UI.INS(12)))
-                    .add(UI.GROW, UI.textField(skillType.name()))
-                    .add(UI.GROW, UI.comboBox(skillType.primaryAbility(), abilities))
-                    .add(UI.GROW, UI.comboBox(skillType.secondaryAbility(), abilities))
-                    .add(UI.GROW, UI.comboBox(skillType.tertiaryAbility(), abilities))
-                    .add(UI.SHRINK.and(UI.WRAP),
-                        UI.button("Delete").onClick( it -> {
-                            UI.run(()->{
-                                var answer = UI.confirm("Delete Skill Type", "Are you sure you want to delete this skill type?");
-                                if ( answer.isYes() ) {
-                                    var confirmation = delete();
-                                    var reallyYes = UI.confirm(confirmation.title(), confirmation.question()).isYes();
-                                    if ( reallyYes )
-                                        confirmation.yes();
-                                    else
-                                        confirmation.no();
-                                }
-                            });
-                        })
-                    )
-                    .add(UI.SHRINK, UI.label("Description:"))
-                    .add(UI.GROW.and(UI.WRAP).and(UI.SPAN), UI.textField(skillType.description()))
-                    .add(UI.GROW.and(UI.WRAP).and(UI.SPAN), UI.separator())
-                    .getComponent()
-                );
-        }
+        public StickyRef getViewCache() { return viewCache; }
     }
 
 }
