@@ -1,6 +1,7 @@
 package app;
 
-import javax.swing.*;
+import javax.swing.JPanel;
+import java.util.Optional;
 
 import static swingtree.UI.*;
 
@@ -49,19 +50,29 @@ public class FatalErrorView extends JPanel
      * @return The formatted HTML string
      */
     private String nicelyHtmlFormattedError(Exception e) {
-        StringBuilder html = new StringBuilder("<html><body>");
-        html.append("<h1>").append(e.getClass().getName()).append("</h1>");
-        html.append("<p>").append(e.getMessage().replace("\n", "<br>")).append("</p>");
-        if ( e.getCause() != null ) {
-            html.append("<h2>Cause</h2>");
-            html.append("<p>").append(e.getCause().getMessage().replace("\n", "<br>")).append("</p>");
+        try {
+            return "<html><body>" + _recursivelyHtmlFormattedError(e) + "</body></html>";
+        } catch (Exception reallyEmbarrasingException) {
+            return nicelyHtmlFormattedError(reallyEmbarrasingException);
         }
+    }
+
+    private String _recursivelyHtmlFormattedError(Exception e) {
+        StringBuilder html = new StringBuilder();
+        String message = Optional.ofNullable(e.getMessage()).orElse("No message");
+        html.append("<h1>").append(e.getClass().getName()).append("</h1>");
+        html.append("<p>").append(message.replace("\n", "<br>")).append("</p>");
+
         html.append("<h2>Stack Trace</h2>");
         html.append("<pre>");
         for ( StackTraceElement element : e.getStackTrace() )
             html.append(element.toString()).append("<br>");
         html.append("</pre>");
-        html.append("</body></html>");
+        if ( e.getCause() instanceof Exception ) {
+            html.append("<h2>Cause:</h2>");
+            // We are using recursion here to print the cause of the cause of the cause...
+            html.append(nicelyHtmlFormattedError((Exception) e.getCause()));
+        }
         return html.toString();
     }
 }

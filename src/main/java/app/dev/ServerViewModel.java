@@ -50,7 +50,7 @@ public class ServerViewModel
         });
         this.status = Var.of(Status.OFFLINE);
         this.buttonText = Var.of("Start");
-        this.statusText = Var.of("");
+        this.statusText = Var.of("Offline");
         this.context = context;
         this.server = null;
         if ( context.app().isStartServer() )
@@ -95,7 +95,7 @@ public class ServerViewModel
         server = null;
         status.set(Status.OFFLINE);
         buttonText.set("Start");
-        statusText.set("");
+        statusText.set("Offline");
     }
 
     public void start() {
@@ -147,7 +147,5 @@ public class ServerViewModel
             }
         }
     }
-
-    public JComponent createView() { return new ServerView(this); }
 
 }

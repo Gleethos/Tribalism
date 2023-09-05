@@ -25,7 +25,7 @@ dependencies {
     implementation 'org.eclipse.jetty:jetty-server:9.4.48.v20220622'
 
     implementation group: 'org.xerial', name: 'sqlite-jdbc', version: '3.36.0.3'
-    implementation group: 'io.github.globaltcad', name: 'swing-tree', version:'14d0da2'
+    implementation group: 'io.github.globaltcad', name: 'swing-tree', version:'0.7.0'
 
     //implementation 'org.apache.groovy:groovy:3.0.9'
     testImplementation 'org.junit.jupiter:junit-jupiter-api:5.8.1'
@@ -132,6 +132,7 @@ task appNpmBuild(type: NpmTask) {
 
 // Copies the project to the service folder
 task copyWebAppToWebRoot(type: Copy) {
+    dependsOn appNpmBuild
     from "$REACT_SKIN_LOCATION/build"
     into 'src/main/resources/web/.'
 }
@@ -148,7 +149,6 @@ task buildWebApp(type: NpmTask) {
 }
 
 appNpmBuild.dependsOn npmInstall
-copyWebAppToWebRoot.dependsOn appNpmBuild
 compileJava.dependsOn copyWebAppToWebRoot
 
 // A task which starts the 'Main' class of the project with a certain set of arguments

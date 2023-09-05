@@ -1,17 +1,15 @@
 package app.dev;
 
 import app.AppContext;
-import app.models.AbilityType;
+import app.common.StickyRef;
 import app.models.Role;
 import app.models.SkillType;
-import sprouts.Vals;
 import sprouts.Var;
 import sprouts.Vars;
 import swingtree.UI;
-import swingtree.api.mvvm.ViewableEntry;
+import swingtree.api.mvvm.EntryViewModel;
 
 import javax.swing.*;
-import java.util.List;
 
 /**
  *  This is the view model for the {@link Role} model, which is used to represent
@@ -74,7 +72,7 @@ public class RoleTypesViewModel
     JComponent createView() { return new RoleTypesView(this); }
 
 
-    private static class RoleTypeViewModel implements ViewableEntry
+    public static class RoleTypeViewModel implements EntryViewModel
     {
         private final RoleTypesViewModel parent;
         private final Role role;
@@ -82,7 +80,7 @@ public class RoleTypesViewModel
         private final Var<Integer> position = Var.of(0);
         private final Vars<SkillViewModel> skillViewModels = Vars.of(SkillViewModel.class);
 
-        private Object view = null;
+        private StickyRef viewCache = new StickyRef();
 
         public RoleTypeViewModel(RoleTypesViewModel parent, Role role) {
             this.parent = parent;
@@ -103,28 +101,25 @@ public class RoleTypesViewModel
 
         @Override public Var<Integer> position() { return position; }
 
-        @Override
-        public <V> V createView(Class<V> viewType) {
-            if ( this.view != null ) return viewType.cast(view);
-
-            view = UI.panel(UI.FILL.and(UI.INS(12)))
-                    .add(UI.WIDTH(90,120,220), UI.textField(role.name()))
-                    .add(UI.SHRINK, UI.label("Description:"))
-                    .add(UI.GROW.and(UI.PUSH), UI.textField(role.description()))
-                    .add(UI.SHRINK.and(UI.WRAP), UI.button("Delete").onClick(it2 -> delete()))
-                    .add(UI.GROW.and(UI.WRAP).and(UI.SPAN),
-                        UI.scrollPanels().withPrefHeight(142)
-                        .add(skillViewModels)
-                    )
-                    .add(UI.GROW.and(UI.WRAP).and(UI.SPAN), UI.separator())
-                    .getComponent();
-
-            return viewType.cast(view);
+        public JComponent createView() {
+            return this.viewCache.get(()->
+                        UI.panel(UI.FILL.and(UI.INS(12)))
+                        .add(UI.WIDTH(90,120,220), UI.textField(role.name()))
+                        .add(UI.SHRINK, UI.label("Description:"))
+                        .add(UI.GROW.and(UI.PUSH), UI.textField(role.description()))
+                        .add(UI.SHRINK.and(UI.WRAP), UI.button("Delete").onClick(it2 -> delete()))
+                        .add(UI.GROW.and(UI.WRAP).and(UI.SPAN),
+                            UI.scrollPanels().withPrefHeight(142)
+                            .add(skillViewModels, svm -> UI.of(svm.createView(JComponent.class)))
+                        )
+                        .add(UI.GROW.and(UI.WRAP).and(UI.SPAN), UI.separator())
+                        .getComponent()
+                    );
         }
     }
 
 
-    private static class SkillViewModel implements ViewableEntry
+    private static class SkillViewModel implements EntryViewModel
     {
         private final app.models.Skill skill;
         private final Var<Boolean> selected = Var.of(false);
@@ -142,7 +137,6 @@ public class RoleTypesViewModel
 
         @Override public Var<Integer> position() { return position; }
 
-        @Override
         public <V> V createView(Class<V> viewType) {
 
             if ( this.view != null ) return viewType.cast(view);

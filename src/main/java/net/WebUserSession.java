@@ -1,18 +1,19 @@
 package net;
 
+import app.ViewModel;
 import org.json.JSONObject;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import sprouts.Action;
 import sprouts.Val;
-import swingtree.EventProcessor;
-import swingtree.api.mvvm.Viewable;
+import swingtree.threading.EventProcessor;
 
 import java.awt.*;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Objects;
 import java.util.function.Supplier;
 
 /**
@@ -101,6 +102,9 @@ public class WebUserSession
         String vmId = json.getString(Constants.VM_ID);
         JSONObject vmJson = new JSONObject();
         var vm = webUserContext.get(vmId);
+        if ( vm == null )
+            throw new RuntimeException("No view model with ID '" + vmId + "' found in web user session with ID '" + socket.creationTime() + "'!");
+
         vmJson.put(Constants.EVENT_TYPE, Constants.RETURN_GET_VM);
         vmJson.put(Constants.EVENT_PAYLOAD, toJson(vm));
         bindTo(vm, vmId);
@@ -248,6 +252,7 @@ public class WebUserSession
 
 
     public JSONObject toJson(Object vm) {
+        Objects.requireNonNull(vm);
         JSONObject json = new JSONObject();
         for ( var property : ReflectionUtil.findPropertiesInViewModel(vm) )
             json.put(property.id(), jsonFromProperty(property));
@@ -276,7 +281,7 @@ public class WebUserSession
                 new JSONObject()
                         .put(Constants.PROP_TYPE_NAME, type.getName())
                         .put(Constants.PROP_TYPE_STATES, knownStates)
-                        .put(Constants.TYPE_IS_VM, Viewable.class.isAssignableFrom(type))
+                        .put(Constants.TYPE_IS_VM, ViewModel.class.isAssignableFrom(type))
         );
 
         return json;
@@ -297,15 +302,15 @@ public class WebUserSession
             return prop.get();
         else if ( prop.type() == Enum.class )
             return ((Enum)prop.get()).name();
-        else if (Viewable.class.isAssignableFrom(prop.type())) {
-            Viewable viewable = (Viewable) prop.get();
-            if ( !webUserContext.hasVM(viewable) ) {
-                webUserContext.put(viewable);
-                bindTo(viewable, webUserContext.vmIdOf(viewable).toString());
+        else if (ViewModel.class.isAssignableFrom(prop.type())) {
+            ViewModel viewModel = (ViewModel) prop.get();
+            if ( !webUserContext.hasVM(viewModel) ) {
+                webUserContext.put(viewModel);
+                bindTo(viewModel, webUserContext.vmIdOf(viewModel).toString());
             }
 
             // We do not send the entire viewable object, but only the id
-            return webUserContext.vmIdOf(viewable).toString();
+            return webUserContext.vmIdOf(viewModel).toString();
         }
         else if ( prop.type() == Color.class ) {
             // In the frontend colors are usually hex strings

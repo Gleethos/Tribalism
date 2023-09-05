@@ -1,13 +1,16 @@
 package app.dev;
 
 import app.AppContext;
+import app.common.StickyRef;
 import app.models.AbilityType;
 import app.models.SkillType;
 import sprouts.Vals;
 import sprouts.Var;
 import sprouts.Vars;
 import swingtree.UI;
-import swingtree.api.mvvm.ViewableEntry;
+import swingtree.UIForAnySwing;
+import swingtree.api.mvvm.EntryViewModel;
+import swingtree.dialogs.ConfirmAnswer;
 
 import javax.swing.*;
 import java.util.List;
@@ -70,22 +73,37 @@ public class SkillTypesViewModel
         skillTypes.add(vm);
     }
 
-    public void deleteSkillType(app.models.SkillType skillType) {
-        skillTypes.removeIfItem( vm -> vm.skillType() == skillType );
-        appContext.db().delete(skillType);
+    public Confirmation deleteSkillType(app.models.SkillType skillType) {
+        return new Confirmation() {
+            @Override public String title() { return "Delete Skill Type"; }
+            @Override public String question() {
+                return "Are you sure you want to delete the skill type: " + skillType.name().get() + "?" +
+                        "This will also delete all skills of this type.";
+            }
+            @Override public void yes() {
+                skillTypes.removeIfItem( vm -> vm.skillType() == skillType );
+                var db = appContext.db();
+                var foundSkills = db.select(app.models.Skill.class)
+                                        .where(app.models.Skill::type)
+                                        .is(skillType)
+                                        .asList();
+                db.delete(skillType);
+                db.delete(foundSkills);
+            }
+        };
     }
 
     JComponent createView() { return new SkillTypesView(this); }
 
 
-    private static class SkillTypeViewModel implements ViewableEntry
+    public static class SkillTypeViewModel implements EntryViewModel
     {
         private final SkillTypesViewModel parent;
         private final app.models.SkillType skillType;
         private final Var<Boolean> selected = Var.of(false);
         private final Var<Integer> position = Var.of(0);
 
-        private Object view = null;
+        private final StickyRef viewCache = new StickyRef();
 
         public SkillTypeViewModel(SkillTypesViewModel parent, app.models.SkillType skillType) {
             this.parent = parent;
@@ -94,30 +112,15 @@ public class SkillTypesViewModel
 
         public app.models.SkillType skillType() { return skillType; }
 
-        public void delete() {parent.deleteSkillType(skillType);}
+        public Confirmation delete() { return parent.deleteSkillType(skillType); }
 
         @Override public Var<Boolean> isSelected() { return selected; }
 
         @Override public Var<Integer> position() { return position; }
 
-        @Override
-        public <V> V createView(Class<V> viewType) {
-            var abilities = parent.abilityTypes();
-            if ( this.view != null ) return viewType.cast(view);
+        public Vals<String> abilities() { return parent.abilityTypes(); }
 
-            view = UI.panel(UI.FILL.and(UI.INS(12)))
-                    .add(UI.GROW, UI.textField(skillType.name()))
-                    .add(UI.GROW, UI.comboBox(skillType.primaryAbility(), abilities))
-                    .add(UI.GROW, UI.comboBox(skillType.secondaryAbility(), abilities))
-                    .add(UI.GROW, UI.comboBox(skillType.tertiaryAbility(), abilities))
-                    .add(UI.SHRINK.and(UI.WRAP), UI.button("Delete").onClick(it2 -> delete()))
-                    .add(UI.SHRINK, UI.label("Description:"))
-                    .add(UI.GROW.and(UI.WRAP).and(UI.SPAN), UI.textField(skillType.description()))
-                    .add(UI.GROW.and(UI.WRAP).and(UI.SPAN), UI.separator())
-                    .getComponent();
-
-            return viewType.cast(view);
-        }
+        public StickyRef getViewCache() { return viewCache; }
     }
 
 }

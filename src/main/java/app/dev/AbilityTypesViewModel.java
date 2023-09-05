@@ -1,12 +1,13 @@
 package app.dev;
 
 import app.AppContext;
+import app.common.StickyRef;
 import app.models.AbilityType;
 import sprouts.Vals;
 import sprouts.Var;
 import sprouts.Vars;
 import swingtree.UI;
-import swingtree.api.mvvm.ViewableEntry;
+import swingtree.api.mvvm.EntryViewModel;
 
 import javax.swing.*;
 import java.util.List;
@@ -69,51 +70,53 @@ public class AbilityTypesViewModel
         abilityTypes.add(vm);
     }
 
-    public void deleteAbilityType(AbilityType abilityType) {
-        abilityTypes.removeIfItem(vm -> vm.abilityType() == abilityType );
-        appContext.db().delete(abilityType);
+    public Confirmation deleteAbilityType(AbilityType abilityType) {
+        return new Confirmation() {
+            @Override public String title() { return "Delete Ability Type"; }
+            @Override public String question() {
+                return "Are you sure you want to delete the ability type: " + abilityType.name().get() + "?" +
+                       "This will also delete all abilities associated with this type!";
+            }
+            @Override
+            public void yes() {
+                abilityTypes.removeIfItem(vm -> vm.abilityType() == abilityType );
+                var db = appContext.db();
+                var foundAbilities = db.select(app.models.Ability.class)
+                                           .where(app.models.Ability::type)
+                                           .is(abilityType)
+                                           .asList();
+                db.delete(abilityType);
+                db.delete(foundAbilities);
+            }
+        };
     }
 
     JComponent createView() { return new AbilityTypesView(this); }
 
 
-    private static class AbilityTypeViewModel implements ViewableEntry
+    public static class AbilityTypeViewModel implements EntryViewModel
     {
         private final AbilityTypesViewModel parent;
         private final AbilityType abilityType;
         private final Var<Boolean> selected = Var.of(false);
         private final Var<Integer> position = Var.of(0);
 
-        private Object view = null;
+        private final StickyRef viewCache = new StickyRef();
 
         public AbilityTypeViewModel(AbilityTypesViewModel parent, AbilityType abilityType) {
             this.parent = parent;
             this.abilityType = abilityType;
         }
 
+        public StickyRef getViewCache() { return viewCache; }
+
         public AbilityType abilityType() { return abilityType; }
 
-        public void delete() {parent.deleteAbilityType(abilityType);}
+        public Confirmation delete() { return parent.deleteAbilityType(abilityType); }
 
         @Override public Var<Boolean> isSelected() { return selected; }
 
         @Override public Var<Integer> position() { return position; }
-
-        @Override
-        public <V> V createView(Class<V> viewType) {
-
-            if ( this.view != null ) return viewType.cast(view);
-
-            view = UI.panel(UI.FILL.and(UI.INS(12)))
-                    .add(UI.WIDTH(90,120,220), UI.textField(abilityType.name()))
-                    .add(UI.SHRINK, UI.label("Description:"))
-                    .add(UI.GROW.and(UI.PUSH), UI.textField(abilityType.description()))
-                    .add(UI.SHRINK, UI.button("Delete").onClick(it2 -> delete()))
-                    .add(UI.GROW.and(UI.WRAP).and(UI.SPAN), UI.separator())
-                    .getComponent();
-
-            return viewType.cast(view);
-        }
     }
 
 }

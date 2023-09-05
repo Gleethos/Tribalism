@@ -83,6 +83,4 @@ public class DataBaseViewModel {
         loadFromDataBase();
     }
 
-    public JComponent createView() { return new DataBaseView(this); }
-
 }

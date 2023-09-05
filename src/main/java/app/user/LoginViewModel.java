@@ -5,12 +5,11 @@ import app.ContentViewModel;
 import app.UserContext;
 import sprouts.Val;
 import sprouts.Var;
-import swingtree.api.mvvm.Viewable;
+import app.ViewModel;
 
-import javax.swing.*;
 import java.awt.*;
 
-public class LoginViewModel implements Viewable
+public class LoginViewModel implements ViewModel
 {
     private final AppContext context;
     private final ContentViewModel contentViewModel;
@@ -118,11 +117,4 @@ public class LoginViewModel implements Viewable
         contentViewModel.showRegister();
     }
 
-    @Override
-    public <V> V createView(Class<V> viewType) {
-        if ( JComponent.class.isAssignableFrom(viewType) )
-            return viewType.cast(new LoginView(this));
-        else
-            throw new IllegalArgumentException("Unsupported view type: " + viewType);
-    }
 }

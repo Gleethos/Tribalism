@@ -349,8 +349,24 @@ final class TableField {
         } catch (Throwable e) {
             throw new RuntimeException(e);
         }
-        // We simply delegate to the property
-        return method.invoke(prop, args);
+        try {
+            // Here we delegate to the property
+            return method.invoke(prop, args);
+            /*
+                The method here might be one of the following:
+                - get()
+                - orElseNull()
+                - set(T value)
+                - isEmpty()
+                - ... see Val & Var interfaces for more ...
+            */
+        } catch (InvocationTargetException e) {
+            // We don't really care about the InvocationTargetException, we just want to throw the cause exception:
+            if (e.getCause() instanceof RuntimeException)
+                throw (RuntimeException) e.getCause();
+            else
+                throw new RuntimeException(e.getCause());
+        }
     }
 
     public Optional<String> asSqlColumn() {
@@ -420,6 +436,10 @@ final class TableField {
                     ),
                     vars
                 );
+    }
+
+    @Override public String toString() {
+        return "TableField[" + "name=" + getName() + ", type=" + _propertyValueType + ", kind=" + _kind + ']';
     }
 
 }

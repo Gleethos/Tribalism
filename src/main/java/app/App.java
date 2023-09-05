@@ -2,7 +2,7 @@ package app;
 
 import com.beust.jcommander.Parameter;
 import com.formdev.flatlaf.FlatLightLaf;
-import swingtree.EventProcessor;
+import swingtree.threading.EventProcessor;
 import swingtree.UI;
 
 /**
@@ -144,7 +144,7 @@ public final class App implements Runnable
                     UI.show(UI.use(EventProcessor.DECOUPLED, () -> new RootView(vm)));
                 });
             }
-            UI.joinDecoupledEventProcessor(); // We are using the Swing-Tree event processor!
+            EventProcessor.DECOUPLED.join(); // We are using the Swing-Tree event processor!
         } catch (Exception e) {
             // Something went severely wrong! What do we do?
             // Well we don't want to let our users hanging! We need to let them know what happened!
@@ -156,7 +156,7 @@ public final class App implements Runnable
                     FlatLightLaf.setup();
                     UI.showUsing(EventProcessor.DECOUPLED, f -> new FatalErrorView(e));
                 });
-                UI.joinDecoupledEventProcessor();
+                EventProcessor.DECOUPLED.join();
             }
             else System.exit(1); // We have to exit the application, otherwise it will hang!
         }

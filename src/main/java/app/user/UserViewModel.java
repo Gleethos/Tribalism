@@ -1,11 +1,12 @@
 package app.user;
 
 import app.UserContext;
+import app.ViewModel;
 import app.models.Character;
 import sprouts.Vals;
 import sprouts.Var;
 import sprouts.Vars;
-import swingtree.api.mvvm.Viewable;
+
 
 import java.util.ArrayList;
 import java.util.List;
@@ -14,7 +15,7 @@ import java.util.Optional;
 /**
  *  Models the state and logic of the view a user has on their profile.
  */
-public class UserViewModel implements Viewable
+public class UserViewModel implements ViewModel
 {
     private final UserContext user;
 
@@ -45,11 +46,6 @@ public class UserViewModel implements Viewable
     public void safeModifications() {
         user.applyAndSaveNewUserName(username.get());
         user.applyAndSaveNewPassword(password.get());
-    }
-
-    @Override
-    public <V> V createView(Class<V> viewType) {
-        return (V) new UserView(this);
     }
 
     public Var<String> username() {

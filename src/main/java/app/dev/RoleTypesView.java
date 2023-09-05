@@ -4,6 +4,7 @@ import app.App;
 import app.AppContext;
 import com.formdev.flatlaf.FlatLightLaf;
 import swingtree.UI;
+import swingtree.threading.EventProcessor;
 
 import javax.swing.*;
 
@@ -27,7 +28,8 @@ public class RoleTypesView extends JPanel
             panel(FILL.and(WRAP(1)))
             .add(label("Found Role Types:"))
             .add(GROW.and(PUSH),
-                scrollPanels().add(vm.roleTypes()).withPrefSize(600, 600)
+                scrollPanels().withPrefSize(600, 600)
+                .add(vm.roleTypes(), rtm -> UI.of(rtm.createView()))
             )
         );
     }
@@ -41,7 +43,7 @@ public class RoleTypesView extends JPanel
             var view = new RoleTypesView(vm);
             UI.show(view);
         });
-        UI.joinDecoupledEventProcessor();
+        EventProcessor.DECOUPLED.join();
     }
 
 }
