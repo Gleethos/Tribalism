@@ -2,8 +2,13 @@ package app;
 
 import com.beust.jcommander.Parameter;
 import com.formdev.flatlaf.FlatLightLaf;
+import swingtree.style.SVGIcon;
 import swingtree.threading.EventProcessor;
 import swingtree.UI;
+
+import javax.swing.*;
+import java.awt.event.WindowAdapter;
+import java.awt.event.WindowEvent;
 
 /**
  *  The start class of the application which simply holds the startup parameters and
@@ -141,7 +146,36 @@ public final class App implements Runnable
             if (!isHeadless()) {
                 UI.runLater(()->{
                     FlatLightLaf.setup();
-                    UI.show(UI.use(EventProcessor.DECOUPLED, () -> new RootView(vm)));
+                    UI.use(EventProcessor.DECOUPLED, () ->
+                        UI.frame("Tribalism")
+                        .peek( f -> {
+                            try {
+                                // On close, we ask the user if they really want to close the application:
+                                // If the user says yes, we close the application and exit.
+                                f.setDefaultCloseOperation(WindowConstants.DO_NOTHING_ON_CLOSE);
+                                var icon = UI.findIcon("/web/static/icons/skull.svg").orElseThrow();
+                                ((SVGIcon) icon).setIconHeight(32);
+                                ((SVGIcon) icon).setIconWidth(32);
+                                f.setIconImage(icon.getImage());
+                            } catch (Exception e) {
+                                e.printStackTrace();
+                            }
+                        })
+                        .onClose( it -> {
+                            var answer = UI.confirmWarning()
+                                        .title("Close Application")
+                                        .message("Are you sure you want to close the application?")
+                                        .show();
+
+                            if ( answer.isYes() ) {
+                                // The user wants to close the application, so we close it:
+                                it.get().dispose();
+                                System.exit(0);
+                            }
+                        })
+                        .add(new RootView(vm))
+                    )
+                    .show();
                 });
             }
             EventProcessor.DECOUPLED.join(); // We are using the Swing-Tree event processor!
