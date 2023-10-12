@@ -1,5 +1,7 @@
 package app.engine;
 
+import app.engine.primitives.BoundingBox;
+
 public class RealVoxel
 {
     private final VoxelData _voxelData;

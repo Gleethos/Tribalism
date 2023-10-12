@@ -1,4 +1,4 @@
-package app.engine;
+package app.engine.primitives;
 
 public class BoundingBox
 {

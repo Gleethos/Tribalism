@@ -3,6 +3,7 @@ package app.user;
 import app.AppContext;
 import app.ContentViewModel;
 import app.UserContext;
+import sprouts.From;
 import sprouts.Val;
 import sprouts.Var;
 import app.ViewModel;
@@ -30,8 +31,8 @@ public class LoginViewModel implements ViewModel
     public LoginViewModel(AppContext context, ContentViewModel contentViewModel) {
         this.context = context;
         this.contentViewModel = contentViewModel;
-        this.username = Var.of("").withId("username").onAct( it -> validate() );
-        this.password = Var.of("").withId("password").onAct( it -> validate() );
+        this.username = Var.of("").withId("username").onChange(From.VIEW, it -> validate() );
+        this.password = Var.of("").withId("password").onChange(From.VIEW,  it -> validate() );
         this.feedback = Var.of("").withId("feedback");
         this.usernameIsValid = Var.of(false).withId("usernameIsValid");
         this.passwordIsValid = Var.of(false).withId("passwordIsValid");

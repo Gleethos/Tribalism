@@ -1,4 +1,7 @@
-package app.engine;
+package app.engine.entities;
+
+import app.engine.primitives.BoundingBox;
+import app.engine.primitives.VecF64;
 
 /**
  *  Implementations of this ought to be immutable!

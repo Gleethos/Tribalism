@@ -2,6 +2,8 @@ package dal.impl;
 
 import dal.api.Model;
 import sprouts.*;
+import sprouts.Observable;
+import sprouts.Observer;
 
 import java.util.*;
 
@@ -262,12 +264,12 @@ public class ModelProperties implements Vars<Object>
     }
 
     @Override
-    public Noticeable subscribe(Listener listener) {
+    public Observable subscribe(Observer listener) {
         throw new IllegalStateException(); // TODO
     }
 
     @Override
-    public Noticeable unsubscribe(Listener listener) {
+    public Observable unsubscribe(Observer listener) {
         throw new IllegalStateException(); // TODO
     }
 }

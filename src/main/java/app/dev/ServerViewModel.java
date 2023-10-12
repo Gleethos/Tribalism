@@ -7,6 +7,7 @@ import org.eclipse.jetty.server.ServerConnector;
 import org.eclipse.jetty.servlet.DefaultServlet;
 import org.eclipse.jetty.servlet.ServletContextHandler;
 import org.eclipse.jetty.servlet.ServletHolder;
+import sprouts.From;
 import sprouts.Val;
 import sprouts.Var;
 
@@ -39,7 +40,7 @@ public class ServerViewModel
     public ServerViewModel(AppContext context) {
         this.port = Var.of(context.app().getServerPort());
         this.portIsValid = Var.of(true);
-        this.portString = Var.of(port.itemAsString()).onAct( it -> {
+        this.portString = Var.of(port.itemAsString()).onChange(From.VIEW, it -> {
             try {
                 port.set(Integer.parseInt(it.get()));
                 portIsValid.set(true);
@@ -48,7 +49,7 @@ public class ServerViewModel
                 portIsValid.set(false);
             }
         });
-        this.status = Var.of(Status.OFFLINE);
+        this.status     = Var.of(Status.OFFLINE);
         this.buttonText = Var.of("Start");
         this.statusText = Var.of("Offline");
         this.context = context;

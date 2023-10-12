@@ -1,5 +1,9 @@
 package app.engine;
 
+import app.engine.entities.Entity;
+import app.engine.primitives.BoundingBox;
+import app.engine.primitives.VecF64;
+
 import java.util.Objects;
 
 /**
@@ -22,7 +26,14 @@ public class VoxelChunkTree
         VoxelData[] children = new VoxelData[64 * 64 * 64];
         for ( int i = 0; i < children.length; i++ )
             children[i] = VoxelData.none();
-        _EMPTY = new VoxelChunkTree(children, new Entity[0], 0, 0);
+
+        _EMPTY = new VoxelChunkTree(
+                        children,
+                        new Entity[0],
+                        0,
+                        0,
+                        TrackRecord.none()
+                    );
     }
 
     public static VoxelChunkTree empty() { return _EMPTY; }
@@ -37,15 +48,33 @@ public class VoxelChunkTree
     private final long _allEntities;
     private final long _modifiedVoxels;
 
+    private final TrackRecord _trackRecord;
 
-    private VoxelChunkTree(VoxelData[] children, Entity[] entities, long allEntities, long modifiedVoxels ) {
-        _children = Objects.requireNonNull(children);
-        _entities = Objects.requireNonNull(entities);
-        _allEntities = allEntities;
+
+    private VoxelChunkTree(
+        VoxelData[] children,
+        Entity[]    entities,
+        long        allEntities,
+        long        modifiedVoxels,
+        TrackRecord trackRecord
+    ) {
+        _children       = Objects.requireNonNull(children);
+        _entities       = Objects.requireNonNull(entities);
+        _allEntities    = allEntities;
         _modifiedVoxels = modifiedVoxels;
+        _trackRecord    = Objects.requireNonNull(trackRecord);
     }
 
-    public VoxelChunkTree withVoxel(VoxelData voxelData, int x, int y, int z ) {
+    private VoxelChunkTree with(
+        VoxelData[] children,
+        Entity[]    entities,
+        long        allEntities,
+        long        modifiedVoxels
+    ) {
+        return new VoxelChunkTree(children, entities, allEntities, modifiedVoxels, _trackRecord.withPrevious(this));
+    }
+
+    public VoxelChunkTree withVoxel( VoxelData voxelData, int x, int y, int z ) {
         if ( x < 0 || x >= _width || y < 0 || y >= _height || z < 0 || z >= _depth )
             throw new IllegalArgumentException("Voxel coordinates out of bounds!");
 
@@ -63,7 +92,7 @@ public class VoxelChunkTree
 
         children[ x + y * _width + z * _width * _height ] = voxelData;
 
-        return new VoxelChunkTree(children, _entities, _allEntities, modifiedVoxels);
+        return with(children, _entities, _allEntities, modifiedVoxels);
     }
 
     private int _indexOfEntity( Entity entity ) {
@@ -79,10 +108,10 @@ public class VoxelChunkTree
         if ( index != -1 )
             return this;
 
-        Entity[] entities = new Entity[_entities.length + 1];
+        Entity[] entities = new Entity[ _entities.length + 1 ];
         System.arraycopy(_entities, 0, entities, 0, _entities.length);
-        entities[_entities.length] = entity;
-        return new VoxelChunkTree(_children, entities, _allEntities + 1, _modifiedVoxels);
+        entities[ _entities.length ] = entity;
+        return with(_children, entities, _allEntities + 1, _modifiedVoxels);
     }
 
     private VoxelChunkTree _withoutEntity( Entity entity ) {
@@ -97,13 +126,13 @@ public class VoxelChunkTree
                 continue;
             entities[index++] = e;
         }
-        return new VoxelChunkTree(_children, entities, _allEntities - 1, _modifiedVoxels);
+        return with(_children, entities, _allEntities - 1, _modifiedVoxels);
     }
 
     public Entity[] entities() { return _entities; }
 
     /**
-     *  Note that a chuck is just a 3-dimensional grid of voxels without any knowledge of its position
+     *  Note that a chunk is just a 3-dimensional grid of voxels without any knowledge of its position
      *  and bounds in the full world reference frame.
      *  All of this information is calculated eagerly during traversal of the voxel tree
      *  (this is designed so that a chuck can also be used as part of a moving entity!).
@@ -117,7 +146,7 @@ public class VoxelChunkTree
      * @param chunkPos The position of the voxel in the chunk reference frame
      * @return A {@link RealVoxel} object that contains the resolved voxel and its bounds
      */
-    public RealVoxel voxel(BoundingBox chunkReferenceFrame, VecF64 chunkPos ) {
+    public RealVoxel calculateRealVoxelFrom( BoundingBox chunkReferenceFrame, VecF64 chunkPos ) {
         // Our goal is the integer based voxel position in the chunk!
         // Let's first calculate the translation and scale between the reference and the chunk bounds:
         var translation = chunkReferenceFrame.min();
@@ -131,10 +160,10 @@ public class VoxelChunkTree
         // And the bounds of the voxel in the world:
         var voxelBounds = BoundingBox.of(voxelPos, voxelPos.add(scale));
         // And now we can return the result:
-        return RealVoxel.of(voxel(x, y, z), voxelBounds);
+        return RealVoxel.of(voxelDataAt(x, y, z), voxelBounds);
     }
 
-    public VoxelData voxel(int x, int y, int z ) {
+    public VoxelData voxelDataAt( int x, int y, int z ) {
         if ( x < 0 || x >= _width || y < 0 || y >= _height || z < 0 || z >= _depth )
             throw new IllegalArgumentException("Voxel coordinates out of bounds!");
 

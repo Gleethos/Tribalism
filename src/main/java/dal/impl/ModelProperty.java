@@ -1,8 +1,9 @@
 package dal.impl;
 
 import dal.api.Model;
+import sprouts.Observable;
+import sprouts.Observer;
 import sprouts.*;
-import swingtree.api.mvvm.*;
 
 import java.util.*;
 import java.util.function.Consumer;
@@ -93,8 +94,11 @@ class ModelProperty implements Var<Object>
     }
 
     @Override
-    public Var<Object> set( Object newItem ) {
-        _setNonSilent(newItem);
+    public Var<Object> set( Channel channel, Object newItem ) {
+        if ( channel == From.VIEW_MODEL )
+            _setNonSilent(newItem);
+        else if ( channel == From.VIEW )
+            act(newItem);
         return this;
     }
 
@@ -139,20 +143,30 @@ class ModelProperty implements Var<Object>
     @Override public Var<Object> withId(String id) { throw new UnsupportedOperationException(); }
 
     @Override
-    public Var<Object> onAct( Action<Val<Object>> action ) {
-        _actActions.add(action);
+    public Var<Object> onChange( Channel channel, Action<Val<Object>> action ) {
+        if ( channel == From.VIEW )
+            _actActions.add(action);
+        if ( channel == From.VIEW_MODEL )
+            _showActions.add(action);
         return this;
     }
 
     @Override
-    public Var<Object> fireAct() {
+    public Var<Object> fireChange(Channel channel) {
+        if ( channel == From.VIEW )
+            fireAct();
+        if ( channel == From.VIEW_MODEL )
+            fireSet();
+        return this;
+    }
+
+    private Var<Object> fireAct() {
         _triggerActions(_actActions);
         _viewers.forEach( v -> v.accept(_value) );
         return this;
     }
 
-    @Override
-    public Var<Object> act(Object newItem) {
+    private Var<Object> act(Object newItem) {
         Object oldValue;
         if ( _isEager ) {
             oldValue = orElseNull();
@@ -173,8 +187,8 @@ class ModelProperty implements Var<Object>
     public <U> Val<U> viewAs(Class<U> type, Function<Object, U> mapper) {
         Var<U> var = mapTo(type, mapper);
         // Now we register a live update listener to this property
-        this.onSet( v -> var.set( mapper.apply( v.orElseNull() ) ));
-        _viewers.add( v -> var.act( mapper.apply( v ) ) );
+        this.onChange(From.VIEW_MODEL,  v -> var.set( mapper.apply( v.orElseNull() ) ));
+        _viewers.add( v -> var.set(From.VIEW,  mapper.apply( v ) ) );
         return var;
     }
 
@@ -182,16 +196,8 @@ class ModelProperty implements Var<Object>
 
     @Override public Class<Object> type() { return (Class<Object>) _propertyValueType; }
 
-    @Override
-    public Var<Object> onSet(Action<Val<Object>> displayAction) {
-        _showActions.add(displayAction);
-        return this;
-    }
-
-    @Override
-    public Val<Object> fireSet() {
+    private void fireSet() {
         _triggerActions(_showActions);
-        return this;
     }
 
     @Override public boolean allowsNull() { return _allowNull; }
@@ -221,12 +227,12 @@ class ModelProperty implements Var<Object>
     public String getFieldName() { return _fieldName; }
 
     @Override
-    public Noticeable subscribe(Listener listener) {
+    public Observable subscribe(Observer listener) {
         throw new IllegalStateException(); // TODO
     }
 
     @Override
-    public Noticeable unsubscribe(Listener listener) {
+    public Observable unsubscribe(Observer listener) {
         throw new IllegalStateException(); // TODO
     }
 }

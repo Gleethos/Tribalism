@@ -3,6 +3,7 @@ package app.dev;
 import app.AppContext;
 import app.common.StickyRef;
 import app.models.AbilityType;
+import sprouts.From;
 import sprouts.Vals;
 import sprouts.Var;
 import sprouts.Vars;
@@ -35,7 +36,7 @@ public class AbilityTypesViewModel
                                         .map(st -> new AbilityTypeViewModel(this, st))
                                         .toList();
         abilityTypes.addAll(asModels);
-        searchKey.onAct( it -> {
+        searchKey.onChange(From.VIEW, it -> {
             abilityTypes.clear();
             abilityTypes.addAll(
                         appContext.db()

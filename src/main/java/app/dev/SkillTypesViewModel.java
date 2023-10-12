@@ -4,6 +4,7 @@ import app.AppContext;
 import app.common.StickyRef;
 import app.models.AbilityType;
 import app.models.SkillType;
+import sprouts.From;
 import sprouts.Vals;
 import sprouts.Var;
 import sprouts.Vars;
@@ -38,7 +39,7 @@ public class SkillTypesViewModel
                                         .map(st -> new SkillTypeViewModel(this, st))
                                         .toList();
         skillTypes.addAll(asModels);
-        searchKey.onAct( it -> {
+        searchKey.onChange(From.VIEW, it -> {
             skillTypes.clear();
             skillTypes.addAll(
                         appContext.db()

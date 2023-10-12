@@ -3,6 +3,7 @@ package app.user;
 import app.AppContext;
 import app.ContentViewModel;
 import app.models.User;
+import sprouts.From;
 import sprouts.Val;
 import sprouts.Var;
 import app.ViewModel;
@@ -27,8 +28,8 @@ public class RegisterViewModel implements ViewModel
     public RegisterViewModel(AppContext context, ContentViewModel contentViewModel) {
         this.context = context;
         this.contentViewModel = contentViewModel;
-        this.username          = Var.of("").withId("username").onAct( it -> validateAll() );
-        this.password          = Var.of("").withId("password").onAct( it -> validateAll() );
+        this.username          = Var.of("").withId("username").onChange(From.VIEW, it -> validateAll() );
+        this.password          = Var.of("").withId("password").onChange(From.VIEW,  it -> validateAll() );
         this.usernameIsValid   = Var.of(false).withId("usernameIsValid");
         this.passwordIsValid   = Var.of(false).withId("passwordIsValid");
         this.usernameBackgroundColor = Var.of(Color.WHITE).withId("usernameBackgroundColor");
@@ -116,12 +117,12 @@ public class RegisterViewModel implements ViewModel
 
     private void rebroadcast() {
         // We rebroadcast all properties:
-        username.fireSet();
-        password.fireSet();
-        feedbackColor.fireSet();
-        feedback.fireSet();
-        usernameBackgroundColor.fireSet();
-        passwordBackgroundColor.fireSet();
+        username.fireChange(From.VIEW_MODEL);
+        password.fireChange(From.VIEW_MODEL);
+        feedbackColor.fireChange(From.VIEW_MODEL);
+        feedback.fireChange(From.VIEW_MODEL);
+        usernameBackgroundColor.fireChange(From.VIEW_MODEL);
+        passwordBackgroundColor.fireChange(From.VIEW_MODEL);
         /*
             This method is COMPLETELY redundant when we have only one view.
             But if we had multiple views, we would need to rebroadcast all properties

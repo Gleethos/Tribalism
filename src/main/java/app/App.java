@@ -2,7 +2,7 @@ package app;
 
 import com.beust.jcommander.Parameter;
 import com.formdev.flatlaf.FlatLightLaf;
-import swingtree.style.SVGIcon;
+import swingtree.style.SvgIcon;
 import swingtree.threading.EventProcessor;
 import swingtree.UI;
 
@@ -154,9 +154,8 @@ public final class App implements Runnable
                                 // If the user says yes, we close the application and exit.
                                 f.setDefaultCloseOperation(WindowConstants.DO_NOTHING_ON_CLOSE);
                                 var icon = UI.findIcon("/web/static/icons/skull.svg").orElseThrow();
-                                ((SVGIcon) icon).setIconHeight(32);
-                                ((SVGIcon) icon).setIconWidth(32);
-                                f.setIconImage(icon.getImage());
+                                var svg = ((SvgIcon) icon).withIconHeight(32).withIconWidth(32);
+                                f.setIconImage(svg.getImage());
                             } catch (Exception e) {
                                 e.printStackTrace();
                             }
