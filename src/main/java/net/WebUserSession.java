@@ -113,13 +113,10 @@ public class WebUserSession
     }
 
     private void bindTo(Object vm, String vmId) {
-        long httpSessionCreationTime = socket.creationTime();
         var observer = new Action<Val<Object>>() {
             @Override
             public void accept(Val<Object> val) {
                 try {
-
-
                     JSONObject update = new JSONObject();
                     update.put(Constants.EVENT_TYPE, Constants.RETURN_PROP);
                     update.put(Constants.EVENT_PAYLOAD,
@@ -133,11 +130,12 @@ public class WebUserSession
             }
         };
         ReflectionUtil.bind( vm, observer );
-        // When the http session is destroyed, we need to remove the observer!
-        socket.onClose( () -> {
-            if ( httpSessionCreationTime != socket.creationTime() )
-                ReflectionUtil.unbind(vm, observer);
-        });
+        //// When the http session is destroyed, we need to remove the observer!
+        //long httpSessionCreationTime = socket.creationTime();
+        //socket.onClose( () -> {
+        //    if ( httpSessionCreationTime != socket.creationTime() )
+        //        ReflectionUtil.unbind(vm, observer);
+        //});
     }
 
     private void applyMutationToVM(JSONObject json) {
