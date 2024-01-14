@@ -269,7 +269,7 @@ public class ModelProperties implements Vars<Object>
     }
 
     @Override
-    public Observable unsubscribe(Observer listener) {
+    public Observable unsubscribe(Subscriber listener) {
         throw new IllegalStateException(); // TODO
     }
 }

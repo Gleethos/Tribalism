@@ -161,10 +161,9 @@ public final class App implements Runnable
                             }
                         })
                         .onClose( it -> {
-                            var answer = UI.confirmWarning()
-                                        .title("Close Application")
-                                        .message("Are you sure you want to close the application?")
-                                        .show();
+                            var answer = UI.confirmation("Are you sure you want to close the application?")
+                                        .titled("Close Application")
+                                        .showAsWarning();
 
                             if ( answer.isYes() ) {
                                 // The user wants to close the application, so we close it:

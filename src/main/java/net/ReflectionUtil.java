@@ -174,6 +174,15 @@ public class ReflectionUtil {
         } );
     }
 
+    public static void unbind(
+            Object vm,
+            Action<Val<Object>> observer
+    ) {
+        ReflectionUtil.findPropertiesInViewModel(vm).forEach(p -> {
+            p.unsubscribe(observer);
+        });
+    }
+
     static JSONArray getMethodsForViewModel(Object vm) {
         var publicMethods = new JSONArray();
         /*

@@ -114,10 +114,12 @@ public class WebUserSession
 
     private void bindTo(Object vm, String vmId) {
         long httpSessionCreationTime = socket.creationTime();
-        ReflectionUtil.bind( vm, new Action<>() {
+        var observer = new Action<Val<Object>>() {
             @Override
             public void accept(Val<Object> val) {
                 try {
+
+
                     JSONObject update = new JSONObject();
                     update.put(Constants.EVENT_TYPE, Constants.RETURN_PROP);
                     update.put(Constants.EVENT_PAYLOAD,
@@ -129,12 +131,12 @@ public class WebUserSession
                     e.printStackTrace();
                 }
             }
-            @Override public boolean canBeRemoved() {
-                boolean observerInvalid = httpSessionCreationTime != socket.creationTime();
-                if ( observerInvalid )
-                    log.info("Observer is invalid, removing it!");
-                return observerInvalid;
-            }
+        };
+        ReflectionUtil.bind( vm, observer );
+        // When the http session is destroyed, we need to remove the observer!
+        socket.onClose( () -> {
+            if ( httpSessionCreationTime != socket.creationTime() )
+                ReflectionUtil.unbind(vm, observer);
         });
     }
 

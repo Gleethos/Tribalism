@@ -209,11 +209,7 @@ class ModelProperty implements Var<Object>
         List<Action<Val<Object>>> removableActions = new ArrayList<>();
         for ( Action<Val<Object>> action : new ArrayList<>(actions) ) // We copy the list to avoid concurrent modification
             try {
-                if ( action.canBeRemoved() )
-                    removableActions.add(action);
-                else {
-                    action.accept(ModelProperty.this);
-                }
+                action.accept(ModelProperty.this);
             } catch ( Exception e ) {
                 e.printStackTrace();
             }
@@ -232,7 +228,7 @@ class ModelProperty implements Var<Object>
     }
 
     @Override
-    public Observable unsubscribe(Observer listener) {
+    public Observable unsubscribe(Subscriber listener) {
         throw new IllegalStateException(); // TODO
     }
 }
