@@ -153,7 +153,7 @@ public final class App implements Runnable
                                 // On close, we ask the user if they really want to close the application:
                                 // If the user says yes, we close the application and exit.
                                 f.setDefaultCloseOperation(WindowConstants.DO_NOTHING_ON_CLOSE);
-                                var icon = UI.findIcon("/web/static/icons/skull.svg").orElseThrow();
+                                var icon = UI.findIcon("/web/walking-male-zombie-svgrepo-com.svg").orElseThrow();
                                 var svg = ((SvgIcon) icon).withIconHeight(32).withIconWidth(32);
                                 f.setIconImage(svg.getImage());
                             } catch (Exception e) {

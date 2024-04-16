@@ -1,7 +1,7 @@
 package app.styles;
 
+import swingtree.UI;
 import swingtree.UI.Edge;
-import swingtree.UI.Transition;
 import swingtree.style.StyleSheet;
 
 import javax.swing.*;
@@ -50,10 +50,10 @@ public class TribalismStyleSheet extends StyleSheet
                 .shadowBlurRadius(13)
                 .shadowSpreadRadius(-2)
                 .shadowIsInset(false)
-                .gradient("default",
-                    shade -> shade.transition(Transition.TOP_LEFT_TO_BOTTOM_RIGHT).colors(
-                                gradientColorsFor(it.component())
-                            )
+                .gradient("default", shade -> shade
+                    .span(UI.Span.TOP_LEFT_TO_BOTTOM_RIGHT).colors(
+                        gradientColorsFor(it.component())
+                    )
                 )
         );
         add(type(AbstractButton.class).group("soft button").inherits("soft base"), it ->
@@ -71,10 +71,10 @@ public class TribalismStyleSheet extends StyleSheet
                 .shadowBlurRadius(6)
                 .shadowSpreadRadius(-2)
                 .shadowIsInset(false)
-                .gradient("default",
-                    shade -> shade.transition(Transition.TOP_LEFT_TO_BOTTOM_RIGHT).colors(
-                                gradientColorsFor(it.component())
-                            )
+                .gradient("default", shade -> shade
+                    .span(UI.Span.TOP_LEFT_TO_BOTTOM_RIGHT).colors(
+                        gradientColorsFor(it.component())
+                    )
                 )
         );
         add(type(JComponent.class).group("soft sink").inherits("soft base"), it ->

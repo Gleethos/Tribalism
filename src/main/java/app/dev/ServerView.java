@@ -2,7 +2,6 @@ package app.dev;
 
 import javax.swing.*;
 
-import java.awt.*;
 
 import static swingtree.UI.*;
 
@@ -18,8 +17,10 @@ public class ServerView extends JPanel
             )
             .add(
                 textField(vm.port())
-                .withBackground(vm.portIsValid().viewAs(Color.class,
-                    isValid -> isValid ? Color.WHITE : new Color(255, 102, 102))
+                .withBackground(
+                    vm.portIsValid().viewAs(java.awt.Color.class,
+                        isValid -> isValid ? Color.WHITE : color(255, 102, 102)
+                    )
                 )
             )
             .add(button(vm.buttonText()).onClick( it -> vm.buttonClicked() ))
@@ -28,8 +29,8 @@ public class ServerView extends JPanel
             )
             .add("alignx center, span, wrap",
                 label(vm.statusText())
-                .withForeground(vm.portIsValid().viewAs(Color.class,
-                    isValid -> isValid ? Color.BLACK : new Color(255, 102, 102))
+                .withForeground(vm.portIsValid().viewAs(java.awt.Color.class,
+                    isValid -> isValid ? Color.BLACK : color(255, 102, 102))
                 )
                 .withStyle( it -> it
                     .fontAlignment(VerticalAlignment.CENTER)
