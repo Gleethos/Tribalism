@@ -8,7 +8,7 @@ import sprouts.ValDelegate;
 import java.util.Objects;
 import java.util.function.Function;
 
-public class ModelPropertyDelegate<T> implements ValDelegate<T> {
+public final class ModelPropertyDelegate<T> implements ValDelegate<T> {
 
     private final Channel channel;
     private final Val<T> value;

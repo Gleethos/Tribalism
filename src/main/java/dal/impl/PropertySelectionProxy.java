@@ -23,7 +23,7 @@ import java.util.function.Function;
  *                  .asList()
  *  }</pre>
  */
-class PropertySelectionProxy implements InvocationHandler
+final class PropertySelectionProxy implements InvocationHandler
 {
     private final ModelTable _modelTable;
     private TableField _selection = null;

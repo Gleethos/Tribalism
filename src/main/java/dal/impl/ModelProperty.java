@@ -3,16 +3,15 @@ package dal.impl;
 import dal.api.Model;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import sprouts.Observable;
-import sprouts.Observer;
 import sprouts.*;
 import sprouts.impl.Sprouts;
 
-import java.util.*;
-import java.util.function.Consumer;
-import java.util.function.Function;
+import java.util.Arrays;
+import java.util.Collections;
+import java.util.List;
+import java.util.Map;
 
-class ModelProperty implements Var<Object>, Viewable<Object>
+final class ModelProperty implements Var<Object>, Viewable<Object>
 {
     private static final Logger log = LoggerFactory.getLogger(ModelProperty.class);
     private final SQLiteDataBase _dataBase;
@@ -26,10 +25,7 @@ class ModelProperty implements Var<Object>, Viewable<Object>
     private boolean _wasSet = false;
 
     // Observers:
-
-    private final List<Action<ValDelegate<Object>>> _showActions = new ArrayList<>();
-    private final List<Action<ValDelegate<Object>>> _actActions = new ArrayList<>();
-    private final List<Consumer<Object>> _viewers = new ArrayList<>(0);
+    private final ChangeListeners<Object> _listeners = new ChangeListeners<>();
 
 
     ModelProperty(
@@ -100,13 +96,13 @@ class ModelProperty implements Var<Object>, Viewable<Object>
     @Override
     public Var<Object> set( Channel channel, Object newItem ) {
         if ( channel == From.VIEW_MODEL )
-            _setNonSilent(newItem);
+            _setNonSilent(newItem, channel);
         else if ( channel == From.VIEW )
             act(newItem);
         return this;
     }
 
-    private void _setNonSilent( Object newItem ) {
+    private void _setNonSilent( Object newItem, Channel channel ) {
         Object oldValue;
         if ( _isEager ) {
             oldValue = orElseNull();
@@ -118,7 +114,7 @@ class ModelProperty implements Var<Object>, Viewable<Object>
         }
         _wasSet = true;
         if ( !Val.equals( oldValue, newItem ) )
-            fireSet();
+            _listeners.fireChange(this, channel);
     }
 
     private void _set( Object newItem ) {
@@ -148,25 +144,13 @@ class ModelProperty implements Var<Object>, Viewable<Object>
 
     @Override
     public Viewable<Object> onChange( Channel channel, Action<ValDelegate<Object>> action ) {
-        if ( channel == From.VIEW )
-            _actActions.add(action);
-        if ( channel == From.VIEW_MODEL )
-            _showActions.add(action);
+        _listeners.onChange(channel, action);
         return this;
     }
 
     @Override
     public Var<Object> fireChange(Channel channel) {
-        if ( channel == From.VIEW )
-            fireAct();
-        if ( channel == From.VIEW_MODEL )
-            fireSet();
-        return this;
-    }
-
-    private Var<Object> fireAct() {
-        _triggerActions(From.ALL, _actActions);
-        _viewers.forEach( v -> v.accept(_value) );
+        _listeners.fireChange(this, channel);
         return this;
     }
 
@@ -182,47 +166,20 @@ class ModelProperty implements Var<Object>, Viewable<Object>
         }
         _wasSet = true;
         if ( !Val.equals( oldValue, newItem ) )
-            fireAct();
+            _listeners.fireChange(this, From.VIEW);
 
         return this;
-    }
-
-    @Override
-    public <U> Viewable<U> viewAs(Class<U> type, Function<Object, U> mapper) {
-        Var<U> var = mapTo(type, mapper);
-        // Now we register a live update listener to this property
-        this.onChange(From.VIEW_MODEL,  v -> var.set( mapper.apply( v.orElseNull() ) ));
-        _viewers.add( v -> var.set(From.VIEW,  mapper.apply( v ) ) );
-        return Viewable.cast(var);
     }
 
     @Override public String id() { return Sprouts.factory().defaultId(); }
 
     @Override public Class<Object> type() { return (Class<Object>) _propertyValueType; }
 
-    private void fireSet() {
-        _triggerActions(From.ALL, _showActions);
-    }
-
     @Override public boolean allowsNull() { return _allowNull; }
 
     @Override
     public boolean isMutable() {
         return true;
-    }
-
-
-    protected void _triggerActions(
-           Channel source, List<Action<ValDelegate<Object>>> actions
-    ) {
-        List<Action<ValDelegate<Object>>> removableActions = new ArrayList<>();
-        for ( Action<ValDelegate<Object>> action : new ArrayList<>(actions) ) // We copy the list to avoid concurrent modification
-            try {
-                action.accept(new ModelPropertyDelegate<>(source, this));
-            } catch ( Exception e ) {
-                log.error("Failed to trigger action", e);
-            }
-        actions.removeAll(removableActions);
     }
 
     public boolean wasSet() { return _wasSet; }

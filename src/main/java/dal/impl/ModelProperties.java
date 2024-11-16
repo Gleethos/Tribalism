@@ -7,7 +7,7 @@ import sprouts.*;
 
 import java.util.*;
 
-public class ModelProperties implements Vars<Object>, Viewables<Object>
+public final class ModelProperties implements Vars<Object>, Viewables<Object>
 {
     private final SQLiteDataBase db;
     private final List<Integer> ids;

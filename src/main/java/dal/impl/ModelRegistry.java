@@ -6,7 +6,7 @@ import java.lang.ref.WeakReference;
 import java.util.*;
 import java.util.stream.Collectors;
 
-class ModelRegistry
+final class ModelRegistry
 {
     private final Map<String, ModelTable> modelTables = new LinkedHashMap<>();
 

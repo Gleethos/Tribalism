@@ -7,7 +7,7 @@ import java.lang.reflect.ParameterizedType;
 import java.lang.reflect.Type;
 import java.util.*;
 
-class DefaultModelTable implements ModelTable
+final class DefaultModelTable implements ModelTable
 {
     private final TableField[] fields;
     private final Class<? extends Model<?>> modelInterface;

@@ -14,7 +14,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.function.Consumer;
 
-class ModelProxy<T extends Model<T>> implements InvocationHandler {
+final class ModelProxy<T extends Model<T>> implements InvocationHandler {
     private final SQLiteDataBase _dataBase;
     private final ModelTable _modelTable;
     private final int _id;
