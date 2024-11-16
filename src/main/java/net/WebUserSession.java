@@ -6,6 +6,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import sprouts.Action;
 import sprouts.Val;
+import sprouts.ValDelegate;
 import swingtree.threading.EventProcessor;
 
 import java.awt.*;
@@ -113,14 +114,15 @@ public class WebUserSession
     }
 
     private void bindTo(Object vm, String vmId) {
-        var observer = new Action<Val<Object>>() {
+        var observer = new Action<ValDelegate<Object>>() {
             @Override
-            public void accept(Val<Object> val) {
+            public void accept(ValDelegate<Object> delegate) {
                 try {
+                    Val<?> property = ReflectionUtil.propertyFromDelegate(delegate);
                     JSONObject update = new JSONObject();
                     update.put(Constants.EVENT_TYPE, Constants.RETURN_PROP);
                     update.put(Constants.EVENT_PAYLOAD,
-                            jsonFromProperty(val)
+                            jsonFromProperty(property)
                                     .put(Constants.VM_ID, vmId)
                     );
                     socket.send(update);

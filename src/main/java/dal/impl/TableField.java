@@ -1,10 +1,7 @@
 package dal.impl;
 
 import dal.api.Model;
-import sprouts.Val;
-import sprouts.Vals;
-import sprouts.Var;
-import sprouts.Vars;
+import sprouts.*;
 
 import java.lang.invoke.MethodHandles;
 import java.lang.invoke.MethodType;
@@ -312,7 +309,7 @@ final class TableField {
         // Let's create the proxy:
         return new ProxyRef<>((Val<Object>) Proxy.newProxyInstance(
                         propertyType.getClassLoader(),
-                        new Class[]{propertyType},
+                        new Class[]{propertyType, Viewable.class},
                         (proxy, method, args) -> {
                             return _handleInvocation(proxy, method, args, prop, propertyType);
                         }
@@ -429,7 +426,7 @@ final class TableField {
         // Let's create the proxy:
         return new ProxyRef<>((Vals<Object>) Proxy.newProxyInstance(
                         _propertyType.getClassLoader(),
-                        new Class[]{_propertyType},
+                        new Class[]{_propertyType, Viewables.class},
                         (proxy, method, args) -> {
                             return _handleInvocation(proxy, method, args, vars, _propertyType);
                         }

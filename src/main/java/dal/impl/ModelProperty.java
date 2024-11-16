@@ -1,16 +1,20 @@
 package dal.impl;
 
 import dal.api.Model;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import sprouts.Observable;
 import sprouts.Observer;
 import sprouts.*;
+import sprouts.impl.Sprouts;
 
 import java.util.*;
 import java.util.function.Consumer;
 import java.util.function.Function;
 
-class ModelProperty implements Var<Object>
+class ModelProperty implements Var<Object>, Viewable<Object>
 {
+    private static final Logger log = LoggerFactory.getLogger(ModelProperty.class);
     private final SQLiteDataBase _dataBase;
     private final int _id;
     private final String _fieldName;
@@ -23,8 +27,8 @@ class ModelProperty implements Var<Object>
 
     // Observers:
 
-    private final List<Action<Val<Object>>> _showActions = new ArrayList<>();
-    private final List<Action<Val<Object>>> _actActions = new ArrayList<>();
+    private final List<Action<ValDelegate<Object>>> _showActions = new ArrayList<>();
+    private final List<Action<ValDelegate<Object>>> _actActions = new ArrayList<>();
     private final List<Consumer<Object>> _viewers = new ArrayList<>(0);
 
 
@@ -143,7 +147,7 @@ class ModelProperty implements Var<Object>
     @Override public Var<Object> withId(String id) { throw new UnsupportedOperationException(); }
 
     @Override
-    public Var<Object> onChange( Channel channel, Action<Val<Object>> action ) {
+    public Viewable<Object> onChange( Channel channel, Action<ValDelegate<Object>> action ) {
         if ( channel == From.VIEW )
             _actActions.add(action);
         if ( channel == From.VIEW_MODEL )
@@ -161,7 +165,7 @@ class ModelProperty implements Var<Object>
     }
 
     private Var<Object> fireAct() {
-        _triggerActions(_actActions);
+        _triggerActions(From.ALL, _actActions);
         _viewers.forEach( v -> v.accept(_value) );
         return this;
     }
@@ -184,34 +188,39 @@ class ModelProperty implements Var<Object>
     }
 
     @Override
-    public <U> Val<U> viewAs(Class<U> type, Function<Object, U> mapper) {
+    public <U> Viewable<U> viewAs(Class<U> type, Function<Object, U> mapper) {
         Var<U> var = mapTo(type, mapper);
         // Now we register a live update listener to this property
         this.onChange(From.VIEW_MODEL,  v -> var.set( mapper.apply( v.orElseNull() ) ));
         _viewers.add( v -> var.set(From.VIEW,  mapper.apply( v ) ) );
-        return var;
+        return Viewable.cast(var);
     }
 
-    @Override public String id() { return Val.NO_ID; }
+    @Override public String id() { return Sprouts.factory().defaultId(); }
 
     @Override public Class<Object> type() { return (Class<Object>) _propertyValueType; }
 
     private void fireSet() {
-        _triggerActions(_showActions);
+        _triggerActions(From.ALL, _showActions);
     }
 
     @Override public boolean allowsNull() { return _allowNull; }
 
+    @Override
+    public boolean isMutable() {
+        return true;
+    }
+
 
     protected void _triggerActions(
-            List<Action<Val<Object>>> actions
+           Channel source, List<Action<ValDelegate<Object>>> actions
     ) {
-        List<Action<Val<Object>>> removableActions = new ArrayList<>();
-        for ( Action<Val<Object>> action : new ArrayList<>(actions) ) // We copy the list to avoid concurrent modification
+        List<Action<ValDelegate<Object>>> removableActions = new ArrayList<>();
+        for ( Action<ValDelegate<Object>> action : new ArrayList<>(actions) ) // We copy the list to avoid concurrent modification
             try {
-                action.accept(ModelProperty.this);
+                action.accept(new ModelPropertyDelegate<>(source, this));
             } catch ( Exception e ) {
-                e.printStackTrace();
+                log.error("Failed to trigger action", e);
             }
         actions.removeAll(removableActions);
     }

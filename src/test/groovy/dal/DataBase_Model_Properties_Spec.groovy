@@ -9,6 +9,7 @@ import spock.lang.Title
 import sprouts.Action
 import sprouts.From
 import sprouts.Val
+import sprouts.ValDelegate
 
 @Title("Working with Model Properties")
 @Narrative('''
@@ -114,9 +115,9 @@ class DataBase_Model_Properties_Spec extends Specification
             Ingredient ingredient = db.create(Ingredient)
         when : 'We register a listener on the name property.'
             var listenerTrace = []
-            ingredient.name().onChange(From.VIEW_MODEL, new Action<Val<String>>() {
+            ingredient.name().onChange(From.VIEW_MODEL, new Action<ValDelegate<String>>() {
                 @Override
-                void accept(Val<String> delegate) {
+                void accept(ValDelegate<String> delegate) {
                     listenerTrace << delegate.get()
                 }
             })

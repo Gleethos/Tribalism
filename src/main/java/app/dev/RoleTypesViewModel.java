@@ -7,6 +7,7 @@ import app.models.SkillType;
 import sprouts.From;
 import sprouts.Var;
 import sprouts.Vars;
+import sprouts.Viewable;
 import swingtree.UI;
 import swingtree.api.mvvm.EntryViewModel;
 
@@ -35,7 +36,7 @@ public class RoleTypesViewModel
                                         .map(st -> new RoleTypeViewModel(this, st))
                                         .toList();
         Roles.addAll(asModels);
-        searchKey.onChange(From.VIEW, it -> {
+        Viewable.cast(searchKey).onChange(From.VIEW, it -> {
             Roles.clear();
             Roles.addAll(
                     appContext.db()

@@ -3,10 +3,7 @@ package net;
 import app.ViewModel;
 import org.json.JSONArray;
 import org.json.JSONObject;
-import sprouts.Action;
-import sprouts.From;
-import sprouts.Val;
-import sprouts.Var;
+import sprouts.*;
 
 import java.util.List;
 
@@ -165,11 +162,11 @@ public class ReflectionUtil {
 
     public static void bind(
             Object vm,
-            Action<Val<Object>> observer
+            Action<ValDelegate<Object>> observer
     ) {
         ReflectionUtil.findPropertiesInViewModel(vm).forEach(p -> {
-            p.onChange(From.VIEW_MODEL, observer);
-            if ( p instanceof Var<Object> var )
+            Viewable.cast(p).onChange(From.VIEW_MODEL, observer);
+            if ( p instanceof Viewable<Object> var )
                 var.onChange(From.VIEW, observer);
         } );
     }
@@ -179,7 +176,7 @@ public class ReflectionUtil {
             Action<Val<Object>> observer
     ) {
         ReflectionUtil.findPropertiesInViewModel(vm).forEach(p -> {
-            p.unsubscribe(observer);
+            Viewable.cast(p).unsubscribe(observer);
         });
     }
 
@@ -229,6 +226,17 @@ public class ReflectionUtil {
             }
         }
         return publicMethods;
+    }
+
+    public static Val<?> propertyFromDelegate(ValDelegate<?> delegate) {
+        // The implementation has a private field called 'val' which is the actual property
+        try {
+            var field = delegate.getClass().getDeclaredField("value");
+            field.setAccessible(true);
+            return (Val<?>) field.get(delegate);
+        } catch (Exception e) {
+            throw new RuntimeException("Could not extract property from delegate!");
+        }
     }
 
 }

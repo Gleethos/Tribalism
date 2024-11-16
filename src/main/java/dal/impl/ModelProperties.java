@@ -1,13 +1,13 @@
 package dal.impl;
 
 import dal.api.Model;
-import sprouts.*;
 import sprouts.Observable;
 import sprouts.Observer;
+import sprouts.*;
 
 import java.util.*;
 
-public class ModelProperties implements Vars<Object>
+public class ModelProperties implements Vars<Object>, Viewables<Object>
 {
     private final SQLiteDataBase db;
     private final List<Integer> ids;
@@ -88,7 +88,7 @@ public class ModelProperties implements Vars<Object>
     }
 
     @Override
-    public Vals<Object> onChange(Action<ValsDelegate<Object>> action) {
+    public Viewables<Object> onChange(Action<ValsDelegate<Object>> action) {
         throw new UnsupportedOperationException("Not supported yet.");
     }
 
@@ -98,11 +98,41 @@ public class ModelProperties implements Vars<Object>
     }
 
     @Override
+    public boolean allowsNull() {
+        return false;
+    }
+
+    @Override
+    public boolean isMutable() {
+        return false;
+    }
+
+    @Override
+    public boolean isView() {
+        return false;
+    }
+
+    @Override
     public Vars<Object> removeAt(int index)
     {
         if ( !_isEager )
             throw new UnsupportedOperationException("Transactional modification of lists (intermediate tables) is not supported yet.");
         _removeAt(index);
+        return this;
+    }
+
+    @Override
+    public Vars<Object> popRange(int from, int to) {
+        throw new UnsupportedOperationException("Not supported yet.");
+    }
+
+    @Override
+    public Vars<Object> removeRange(int from, int to) {
+        if ( !_isEager )
+            throw new UnsupportedOperationException("Transactional modification of lists (intermediate tables) is not supported yet.");
+        for ( int i = to - 1; i >= from; i-- ) {
+            _removeAt(i);
+        }
         return this;
     }
 
@@ -175,7 +205,30 @@ public class ModelProperties implements Vars<Object>
     }
 
     @Override
-    public Vars<Object> retainAll(Vars<Object> vars) {
+    public Vars<Object> setRange(int from, int to, Object value) {
+        throw new UnsupportedOperationException("Not supported yet.");
+    }
+
+    @Override
+    public Vars<Object> setRange(int from, int to, Var<Object> value) {
+        throw new UnsupportedOperationException("Not supported yet.");
+    }
+
+    @Override
+    public Vars<Object> addAllAt(int index, Vars<Object> vars) {
+        for ( int i = 0; i < vars.size(); i++ ) {
+            addAt(index + i, vars.at(i));
+        }
+        return this;
+    }
+
+    @Override
+    public Vars<Object> setAllAt(int index, Vars<Object> vars) {
+        throw new UnsupportedOperationException("Not supported yet.");
+    }
+
+    @Override
+    public Vars<Object> retainAll(Vals<Object> vars) {
         Vars<Object> toRemove = Vars.of(this.type());
         for ( Object o : this ) {
             if ( !vars.contains(o) )
@@ -226,7 +279,7 @@ public class ModelProperties implements Vars<Object>
     }
 
     @Override
-    public Vars<Object> removeAll( Vars<Object> vars ) {
+    public Vars<Object> removeAll( Vals<Object> vars ) {
         for ( Object o : vars ) _removeAt(indexOf(o));
         return this;
     }

@@ -10,6 +10,7 @@ import org.eclipse.jetty.servlet.ServletHolder;
 import sprouts.From;
 import sprouts.Val;
 import sprouts.Var;
+import sprouts.Viewable;
 
 import javax.swing.*;
 
@@ -40,7 +41,8 @@ public class ServerViewModel
     public ServerViewModel(AppContext context) {
         this.port = Var.of(context.app().getServerPort());
         this.portIsValid = Var.of(true);
-        this.portString = Var.of(port.itemAsString()).onChange(From.VIEW, it -> {
+        this.portString = Var.of(port.itemAsString());
+        Viewable.cast(this.portString).onChange(From.VIEW, it -> {
             try {
                 port.set(Integer.parseInt(it.get()));
                 portIsValid.set(true);

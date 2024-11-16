@@ -7,6 +7,7 @@ import sprouts.From;
 import sprouts.Val;
 import sprouts.Var;
 import app.ViewModel;
+import sprouts.Viewable;
 
 import java.awt.*;
 
@@ -28,8 +29,8 @@ public class RegisterViewModel implements ViewModel
     public RegisterViewModel(AppContext context, ContentViewModel contentViewModel) {
         this.context = context;
         this.contentViewModel = contentViewModel;
-        this.username          = Var.of("").withId("username").onChange(From.VIEW, it -> validateAll() );
-        this.password          = Var.of("").withId("password").onChange(From.VIEW,  it -> validateAll() );
+        this.username          = Var.of("").withId("username");
+        this.password          = Var.of("").withId("password");
         this.usernameIsValid   = Var.of(false).withId("usernameIsValid");
         this.passwordIsValid   = Var.of(false).withId("passwordIsValid");
         this.usernameBackgroundColor = Var.of(Color.WHITE).withId("usernameBackgroundColor");
@@ -37,6 +38,8 @@ public class RegisterViewModel implements ViewModel
         this.feedback          = Var.of("").withId("feedback");
         this.feedbackColor     = Var.of(Color.BLACK).withId("feedbackColor");
         this.allInputsDisabled = Var.of(false).withId("allInputsDisabled");
+        Viewable.cast(username).onChange(From.VIEW, it -> validateAll() );
+        Viewable.cast(password).onChange(From.VIEW, it -> validateAll() );
         validateAll();
     }
 

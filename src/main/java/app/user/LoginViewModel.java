@@ -7,6 +7,7 @@ import sprouts.From;
 import sprouts.Val;
 import sprouts.Var;
 import app.ViewModel;
+import sprouts.Viewable;
 
 import java.awt.*;
 
@@ -31,8 +32,8 @@ public class LoginViewModel implements ViewModel
     public LoginViewModel(AppContext context, ContentViewModel contentViewModel) {
         this.context = context;
         this.contentViewModel = contentViewModel;
-        this.username = Var.of("").withId("username").onChange(From.VIEW, it -> validate() );
-        this.password = Var.of("").withId("password").onChange(From.VIEW,  it -> validate() );
+        this.username = Var.of("").withId("username");
+        this.password = Var.of("").withId("password");
         this.feedback = Var.of("").withId("feedback");
         this.usernameIsValid = Var.of(false).withId("usernameIsValid");
         this.passwordIsValid = Var.of(false).withId("passwordIsValid");
@@ -42,6 +43,8 @@ public class LoginViewModel implements ViewModel
         this.textFieldsEnabled = Var.of(true).withId("textFieldsEnabled");
         this.inputValid = Var.of(false).withId("inputValid");
         this.feedbackColor = Var.of(Color.RED).withId("feedbackColor");
+        Viewable.cast(username).onChange(From.VIEW, it -> validate() );
+        Viewable.cast(password).onChange(From.VIEW, it -> validate() );
     }
 
     private void adjustFeedbackStyles() {

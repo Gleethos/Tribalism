@@ -3,10 +3,7 @@ package app.dev;
 import app.AppContext;
 import app.common.StickyRef;
 import app.models.AbilityType;
-import sprouts.From;
-import sprouts.Vals;
-import sprouts.Var;
-import sprouts.Vars;
+import sprouts.*;
 import swingtree.UI;
 import swingtree.api.mvvm.EntryViewModel;
 
@@ -36,7 +33,7 @@ public class AbilityTypesViewModel
                                         .map(st -> new AbilityTypeViewModel(this, st))
                                         .toList();
         abilityTypes.addAll(asModels);
-        searchKey.onChange(From.VIEW, it -> {
+        Viewable.cast(searchKey).onChange(From.VIEW, it -> {
             abilityTypes.clear();
             abilityTypes.addAll(
                         appContext.db()
