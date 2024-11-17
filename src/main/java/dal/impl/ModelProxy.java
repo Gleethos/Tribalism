@@ -45,6 +45,8 @@ final class ModelProxy<T extends Model<T>> implements InvocationHandler {
         if (methodName.equals("equals")) {
             if (args.length != 1)
                 throw new IllegalArgumentException("The equals method must have exactly one argument!");
+            if (args[0] == null)
+                return false;
             if (!Model.class.isAssignableFrom(args[0].getClass()))
                 return false;
             return _id == ((Model<?>) args[0]).id().get();

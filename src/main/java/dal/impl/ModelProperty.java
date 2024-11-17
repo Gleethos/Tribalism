@@ -4,12 +4,11 @@ import dal.api.Model;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import sprouts.*;
+import sprouts.Observable;
+import sprouts.Observer;
 import sprouts.impl.Sprouts;
 
-import java.util.Arrays;
-import java.util.Collections;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 
 final class ModelProperty implements Var<Object>, Viewable<Object>
 {
@@ -81,6 +80,8 @@ final class ModelProperty implements Var<Object>, Viewable<Object>
             else if (!Number.class.isAssignableFrom(value.getClass()))
                 throw new IllegalStateException("The foreign key value is not a number");
             else {
+                if (Objects.equals(value, 0) )
+                    return null;
                 // We have a number, so we can find the model
                 int foreignKeyId = ((Number) value).intValue();
                 Class<? extends Model<?>> foreignKeyModelClass = (Class<? extends Model<?>>) _propertyValueType;
@@ -95,6 +96,8 @@ final class ModelProperty implements Var<Object>, Viewable<Object>
 
     @Override
     public Var<Object> set( Channel channel, Object newItem ) {
+        if ( newItem == null && !_allowNull )
+            throw new NullPointerException("Cannot set a null value to a non-nullable property");
         if ( channel == From.VIEW_MODEL )
             _setNonSilent(newItem, channel);
         else if ( channel == From.VIEW )
@@ -190,11 +193,13 @@ final class ModelProperty implements Var<Object>, Viewable<Object>
 
     @Override
     public Observable subscribe(Observer listener) {
-        throw new IllegalStateException(); // TODO
+        _listeners.onChange(listener);
+        return this;
     }
 
     @Override
     public Observable unsubscribe(Subscriber listener) {
-        throw new IllegalStateException(); // TODO
+        _listeners.unsubscribe(listener);
+        return this;
     }
 }

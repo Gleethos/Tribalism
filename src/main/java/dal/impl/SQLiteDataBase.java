@@ -185,7 +185,7 @@ public final class SQLiteDataBase extends AbstractDataBase
     public <T extends Model<T>> T select( Class<T> model, int id )
     {
         // Now let's verify that the id is valid
-        if ( id < 0 )
+        if ( id <= 0 )
             throw new IllegalArgumentException("The id must be a positive integer!");
         /*
             Now you might think we simply do a single database query to get the model

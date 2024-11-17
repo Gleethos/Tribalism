@@ -365,8 +365,8 @@ class DataBase_Spec extends Specification
                                         "id=1, name=\"\", " +
                                         "address=Address[id=1, city=\"\", country=\"\", postalCode=\"\", street=\"\"], " +
                                         "employees=[" +
-                                            "Person[id=1, firstName=\"\", lastName=\"\", address=Address[id=null, city=null, country=null, postalCode=null, street=null]], " +
-                                            "Person[id=2, firstName=\"\", lastName=\"\", address=Address[id=null, city=null, country=null, postalCode=null, street=null]]" +
+                                            "Person[id=1, firstName=\"\", lastName=\"\", address=null], " +
+                                            "Person[id=2, firstName=\"\", lastName=\"\", address=null]" +
                                         "]]"
 
         when :
@@ -376,8 +376,8 @@ class DataBase_Spec extends Specification
                                         "id=1, name=\"\", " +
                                         "address=Address[id=1, city=\"\", country=\"\", postalCode=\"\", street=\"\"], " +
                                         "employees=[" +
-                                            "Person[id=1, firstName=\"\", lastName=\"\", address=Address[id=null, city=null, country=null, postalCode=null, street=null]], " +
-                                            "Person[id=2, firstName=\"Jane\", lastName=\"\", address=Address[id=null, city=null, country=null, postalCode=null, street=null]]" +
+                                            "Person[id=1, firstName=\"\", lastName=\"\", address=null], " +
+                                            "Person[id=2, firstName=\"Jane\", lastName=\"\", address=null]" +
                                         "]]"
 
         when :
@@ -388,7 +388,7 @@ class DataBase_Spec extends Specification
             workplace.toString() == "Workplace[" +
                                         "id=1, name=\"\", " +
                                         "address=Address[id=1, city=\"\", country=\"\", postalCode=\"\", street=\"\"], " +
-                                        "employees=[Person[id=1, firstName=\"\", lastName=\"\", address=Address[id=null, city=null, country=null, postalCode=null, street=null]]]" +
+                                        "employees=[Person[id=1, firstName=\"\", lastName=\"\", address=null]]" +
                                     "]"
 
         cleanup:

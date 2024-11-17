@@ -364,9 +364,11 @@ abstract class AbstractDataBase implements DataBase {
                         pstmt.close();
                     } catch (SQLException e) {
                         pstmt.close();
+                        _LOG.error("Failed to execute the SQL statement '{}'.", sql, e);
                         return false;
                     }
                 } catch (SQLException e) {
+                    _LOG.error("Failed to execute the SQL statement '{}'.", sql, e);
                     return false;
                 }
                 return true;
@@ -379,9 +381,11 @@ abstract class AbstractDataBase implements DataBase {
                     return true;
                 } catch (SQLException e) {
                     stmt.close();
+                    _LOG.error("Failed to execute the SQL statement '{}'.", sql, e);
                     return false;
                 }
             } catch (SQLException e) {
+                _LOG.error("Failed to execute the SQL statement '{}'.", sql, e);
                 return false;
             }
         });

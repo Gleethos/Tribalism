@@ -18,7 +18,7 @@ final class TableField {
     private final Class<?> _propertyType; // The type of the property and return type of the method
     private final Class<?> _propertyValueType; // The type of the property value
     private final FieldKind _kind;
-    private final boolean _allowNull = false;
+    private final boolean _allowNull;
 
 
     TableField(
@@ -191,7 +191,7 @@ final class TableField {
                             "of " + Val.class.getName() + " or " + Vals.class.getName() + " with one type parameter"
             );
 
-
+        _allowNull = Model.class.isAssignableFrom(_propertyValueType);
     }
 
     public String getName() {
@@ -326,6 +326,10 @@ final class TableField {
         Class<?> propertyType
     ) throws InvocationTargetException, IllegalAccessException {
         String methodName = method.getName();
+        // Check if it is 'toString()':
+        if ( methodName.equals("toString") && args.length == 0 ) {
+            return prop.toString();
+        }
         try {
             Method proxyTypeMethod = propertyType.getMethod(methodName, method.getParameterTypes());
             // Then we expect the method to be a default method
@@ -396,6 +400,14 @@ final class TableField {
                 return 0.0;
             else if ( _propertyValueType == Boolean.class )
                 return false;
+            else if ( _propertyValueType == Long.class )
+                return 0L;
+            else if ( _propertyValueType == Float.class )
+                return 0.0f;
+            else if ( _propertyValueType == Short.class )
+                return (short) 0;
+            else if ( _propertyValueType == Byte.class )
+                return (byte) 0;
             else
                 throw new IllegalStateException( "Unknown property type: " + _propertyValueType );
         } else if ( _kind == FieldKind.ID ) {
