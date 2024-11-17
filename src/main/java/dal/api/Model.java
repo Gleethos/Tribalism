@@ -5,7 +5,10 @@ import sprouts.Val;
 import java.util.function.Consumer;
 
 /**
- *  The bas interface for all property based model types.
+ *  The common base interface for all property model types,
+ *  which are mapped to database tables and implemented automatically by the database API.<br>
+ *  Use {@link DataBase#createTablesFor(Class[])} to create tables for your model types,
+ *  and then use {@link DataBase#create(Class)} to create instances of your model types.
  *
  * @param <M> The type of the model.
  */

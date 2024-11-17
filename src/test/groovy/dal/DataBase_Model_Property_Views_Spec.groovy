@@ -1,22 +1,14 @@
 package dal
 
 import dal.api.DataBase
-import dal.models.Address
-import dal.models.Atom
-import dal.models.Bike
-import dal.models.Food
-import dal.models.Furniture
-import dal.models.Ingredient
-import dal.models.Person
-import dal.models.Train
+import dal.models.*
+import groovy.transform.CompileDynamic
 import spock.lang.Narrative
 import spock.lang.Specification
 import spock.lang.Subject
 import spock.lang.Title
 import sprouts.*
 
-import java.time.Instant
-import java.time.LocalDateTime
 import java.time.Month
 import java.util.concurrent.TimeUnit
 
@@ -39,6 +31,7 @@ import java.util.concurrent.TimeUnit
 
 ''')
 @Subject([Viewable, Var, Val, Vars, Vals])
+@CompileDynamic
 class DataBase_Model_Property_Views_Spec extends Specification
 {
     def TEST_DB_LOCATION = "test_data/"
