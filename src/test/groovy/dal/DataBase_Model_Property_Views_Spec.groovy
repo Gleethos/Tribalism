@@ -842,26 +842,52 @@ class DataBase_Model_Property_Views_Spec extends Specification
             to convert the non null value to a double.
             The view will be updated automatically
             when the original property changes.
+            
+            For this test case we are going to use the `Book` model:
+            ```java
+                public interface Book extends Model<Book> 
+                {
+                    interface Title extends Var<String> {}
+                    interface Author extends Var<Person> {}
+                    interface ISBN extends Var<String> {}
+                    Title title();
+                    Author author();
+                    ISBN isbn();
+                }
+            ```
         """
-        given : 'A String property holding an english sentence.'
-            Var<String> sentence = Var.ofNullable(String, "SwingTree is nice, isn't it?")
-        and : 'A view on the average word length of the sentence with a unique default value.'
-            Viewable<Double> averageWordLength = sentence.viewAsDouble(-0.5, s -> {
-                                                        if ( s == null )
+        given :
+            def db = DataBase.at(TEST_DB_FILE)
+            db.dropAllTables()
+            db.createTablesFor(Book, Person, Address)
+        and : 'A String property holding a nullable author sentence.'
+            var book = db.create(Book)
+            book.title().set("Animal Liberation - Peter Singer")
+            book.isbn().set("978-0-06-171130-5")
+            Person peter = db.create(Person)
+            peter.firstName().set("Peter")
+            peter.lastName().set("Singer")
+            book.author().set(peter)
+            Var<Person> author = book.author()
+        and : 'A view on the average word length of the authors name with a unique default value.'
+            Viewable<Double> averageWordLength = author.viewAsDouble(-0.5, a -> {
+                                                        if ( a == null )
                                                             return null
-                                                        var words = s.split(" ") as List<String>
+                                                        var words = a.firstName().orElse("").split(" ") as List<String>
                                                         return words.stream().mapToInt(String::length).average().orElse(-1)
                                                     })
         expect : 'The view is 4.0 initially and it confirms that it is indeed a view.'
-            averageWordLength.get() == 4.8
+            averageWordLength.get() == 5.0
             averageWordLength.isView()
         when : 'We change the value of the property to null.'
-            sentence.set(null)
+            author.set(null)
         then : 'The view becomes -0.5.'
             averageWordLength.get() == -0.5
-        when : 'We change the value of the property to an empty string.'
-            sentence.set("")
-        then : 'The view contains 0.0 because the average of an empty list is 0.'
+        when : 'We change the value of the property to a new author without name.'
+            Person newAuthor = db.create(Person)
+            newAuthor.firstName().set("")
+            author.set(newAuthor)
+        then : 'The view contains 0.0 because the average of an empty string is 0.'
             averageWordLength.get() == 0.0
     }
 
