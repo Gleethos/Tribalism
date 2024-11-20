@@ -408,6 +408,8 @@ final class TableField {
                 return (short) 0;
             else if ( _propertyValueType == Byte.class )
                 return (byte) 0;
+            else if ( Enum.class.isAssignableFrom(_propertyValueType) )
+                return _propertyValueType.getEnumConstants()[0];
             else
                 throw new IllegalStateException( "Unknown property type: " + _propertyValueType );
         } else if ( _kind == FieldKind.ID ) {

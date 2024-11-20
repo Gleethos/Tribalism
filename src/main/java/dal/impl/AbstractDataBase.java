@@ -414,6 +414,10 @@ abstract class AbstractDataBase implements DataBase {
             return "SMALLINT";
         else if ( type == Byte.class || type == byte.class )
             return "TINYINT";
+        else if ( type == Character.class || type == char.class )
+            return "CHAR";
+        else if ( Enum.class.isAssignableFrom(type) )
+            return "TEXT";
         else
             throw new IllegalArgumentException("The type " + type.getName() + " is not supported");
     }
@@ -451,7 +455,8 @@ abstract class AbstractDataBase implements DataBase {
                         type.equals(Byte.class) ||
                         type.equals(byte.class) ||
                         type.equals(Character.class) ||
-                        type.equals(char.class);
+                        type.equals(char.class) ||
+                        Enum.class.isAssignableFrom(type);
     }
 
     protected static String _tableNameFromClass(Class<?> clazz) {

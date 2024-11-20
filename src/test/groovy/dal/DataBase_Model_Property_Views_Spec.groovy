@@ -898,16 +898,38 @@ class DataBase_Model_Property_Views_Spec extends Specification
             to convert the non null value to a String.
             The view will be updated automatically
             when the original property changes.
+            
+            For this test case we are going to use the `Book` model:
+            ```java
+                public interface Book extends Model<Book> 
+                {
+                    interface Title extends Var<String> {}
+                    interface Author extends Var<Person> {}
+                    interface ISBN extends Var<String> {}
+                    Title title();
+                    Author author();
+                    ISBN isbn();
+                }
+            ```
         """
-        given : 'A property holding nullable `TimeUnit` enum items.'
-            Var<TimeUnit> timeUnit = Var.ofNullable(TimeUnit, TimeUnit.SECONDS)
+        given :
+            def db = DataBase.at(TEST_DB_FILE)
+            db.dropAllTables()
+            db.createTablesFor(Book, Person, Address)
+        and : 'A property holding nullable `TimeUnit` enum items.'
+            Book book = db.create(Book)
+            Person author = db.create(Person)
+            author.firstName().set("Peter")
+            author.lastName().set("Singer")
+            book.author().set(author)
+            Var<Person> authorProp = book.author()
         and : 'A view on the lowercase name of the time unit with a unique default value.'
-            Viewable<String> lowerCaseName = timeUnit.viewAsString("unknown", u -> u.name().toLowerCase())
+            Viewable<String> lowerCaseName = authorProp.viewAsString("unknown", u -> u.firstName().map(String::toLowerCase).orElseNull())
         expect : 'The view is "seconds" initially and it confirms that it is indeed a view.'
-            lowerCaseName.get() == "seconds"
+            lowerCaseName.get() == "peter"
             lowerCaseName.isView()
         when : 'We change the value of the property to null.'
-            timeUnit.set(null)
+            authorProp.set(null)
         then : 'The view becomes "unknown" because the property is empty.'
             lowerCaseName.get() == "unknown"
     }
@@ -921,9 +943,27 @@ class DataBase_Model_Property_Views_Spec extends Specification
             
             This exact same principle is also true for the views of a property
             whose change event listeners will also receive the channel of the origin property.
+            
+            For this test case we are going to use the `Region` model:
+            ```java
+                public interface Region extends Model<Region>
+                {
+                    Var<Month> warmestMonth();
+                    Var<Month> coldestMonth();
+                    Var<String> name();
+                }
+            ```
         """
-        given : 'A property based on an enum and 3 different views.'
-            var monthProperty = Var.of(Month.AUGUST)
+        given :
+            def db = DataBase.at(TEST_DB_FILE)
+            db.dropAllTables()
+            db.createTablesFor(Region)
+        and : 'A property based on an enum and 3 different views.'
+            var region = db.create(Region)
+            region.name().set("Tropical")
+            region.warmestMonth().set(Month.AUGUST)
+            region.coldestMonth().set(Month.JANUARY)
+            var monthProperty = region.warmestMonth()
             var intView = monthProperty.viewAsInt(Month::ordinal)
             var stringView = monthProperty.viewAsString(Month::name)
             var firstMonthOfQuarter = monthProperty.view(Month::firstMonthOfQuarter)
@@ -962,16 +1002,35 @@ class DataBase_Model_Property_Views_Spec extends Specification
             changes are caused by the application logic.
             Irrespective as to how the value of the original property is changed,
             the views will be updated.
+            
+            For this test case we are going to use the `Movie` model:
+            ```java
+                public interface Movie extends Model<Movie>
+                {
+                    interface Title extends Var<String> {}
+                    interface Year extends Var<Integer> {}
+                    interface Rating extends Var<Double> {}
+                    Title title();
+                    Year year();
+                    Rating rating();
+                }
+            ```
         """
-        given : 'We create a property...'
-            Var<String> food = Var.of("Animal Crossing")
+        given :
+            def db = DataBase.at(TEST_DB_FILE)
+            db.dropAllTables()
+            db.createTablesFor(Movie)
+        and : 'We create a property...'
+            Movie movie = db.create(Movie)
+            movie.title().set("Earthlings Documentary")
+            Var<String> title = movie.title()
         and : 'We create a view of the property.'
-            Viewable<Integer> words = food.viewAsInt( f -> f.split(" ").length )
+            Viewable<Integer> words = title.viewAsInt( f -> f.split(" ").length )
         expect : 'The view has the expected value.'
             words.get() == 2
 
         when : 'We change the value of the food property through the `.set(From.VIEW, T)` method.'
-            food.set(From.VIEW, "Faster Than Light")
+            title.set(From.VIEW, "Faster Than Light")
         then : 'The view is updated.'
             words.get() == 3
     }
@@ -983,18 +1042,39 @@ class DataBase_Model_Property_Views_Spec extends Specification
             The string representation of a property view starts with "View" followed by the item
             type and square brackets
             containing the current item of the view.
+            
+            For this test case we are going to use the `Train` model:
+            ```java
+                public interface Train extends dal.api.Model<Train>
+                {
+                    interface Name extends sprouts.Var<String> {}
+                    interface Waggons extends sprouts.Var<Integer> {}
+                    interface Speed extends sprouts.Var<Float> {}
+                    interface IsElectric extends sprouts.Var<Boolean> {}
+                    Name name();
+                    Waggons waggons();
+                    Speed speed();
+                    IsElectric isElectric();
+                }
+            ```
         """
-        given : 'A property based on a string.'
-            var stringProperty = Var.of("Hello")
+        given :
+            def db = DataBase.at(TEST_DB_FILE)
+            db.dropAllTables()
+            db.createTablesFor(Train)
+        and : 'A property based on a string.'
+            Train train = db.create(Train)
+            train.name().set("Shinkansen")
+            var stringProperty = train.name()
         and : 'A view of the property as a byte representation of the length of the string.'
             Val<Byte> view = stringProperty.viewAs(Byte, s -> (byte) s.length())
         expect : 'The string representation of the view is as expected.'
-            view.toString() == "View<Byte>[5]"
+            view.toString() == "View<Byte>[10]"
 
         when : 'We update the view to have a custom id String.'
             view = view.withId("patient_age")
         then : 'The string representation of the view is as expected.'
-            view.toString() == "View<Byte>[patient_age=5]"
+            view.toString() == "View<Byte>[patient_age=10]"
     }
 
 }
