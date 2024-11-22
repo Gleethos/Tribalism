@@ -10,7 +10,6 @@ import spock.lang.Title
 import sprouts.*
 
 import java.time.Month
-import java.util.concurrent.TimeUnit
 
 @Title("Property Views")
 @Narrative('''
@@ -32,7 +31,7 @@ import java.util.concurrent.TimeUnit
 ''')
 @Subject([Viewable, Var, Val, Vars, Vals])
 @CompileDynamic
-class DataBase_Model_Property_Views_Spec extends Specification
+class DataBase_Model_Property_View_Spec extends Specification
 {
     def TEST_DB_LOCATION = "test_data/"
     def TEST_DB_FILE = TEST_DB_LOCATION + "my.db"

@@ -219,4 +219,8 @@ final class ModelProperty implements Var<Object>, Viewable<Object>
         _listeners.unsubscribe(listener);
         return this;
     }
+
+    public long numberOfChangeListeners() {
+        return _listeners.numberOfChangeListeners();
+    }
 }

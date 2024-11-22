@@ -38,7 +38,7 @@ class DataBase_Model_Properties_Spec extends Specification
     def TEST_DB_FILE = TEST_DB_LOCATION + "my.db"
 
     def setup() {
-        def db = DataBase.at(TEST_DB_FILE)
+        var db = DataBase.at(TEST_DB_FILE)
         db.dropAllTables()
         db.close()
     }
@@ -61,7 +61,7 @@ class DataBase_Model_Properties_Spec extends Specification
             ```
         """
         given : 'We create a database instance for testing, the database will be opened in a test folder.'
-            def db = DataBase.at(TEST_DB_FILE)
+            var db = DataBase.at(TEST_DB_FILE)
             db.dropAllTables()
         and : 'We create the test table.'
             db.createTablesFor(Ingredient)
@@ -110,7 +110,7 @@ class DataBase_Model_Properties_Spec extends Specification
             ```
         """
         given : 'We create a database instance for testing, the database will be opened in a test folder.'
-            def db = DataBase.at(TEST_DB_FILE)
+            var db = DataBase.at(TEST_DB_FILE)
             db.dropAllTables()
         and : 'We create the test table.'
             db.createTablesFor(Ingredient)
@@ -154,7 +154,7 @@ class DataBase_Model_Properties_Spec extends Specification
             ```
         """
         given : 'We create a database instance for testing, the database will be opened in a test folder.'
-            def db = DataBase.at(TEST_DB_FILE)
+            var db = DataBase.at(TEST_DB_FILE)
             db.dropAllTables()
         and : 'We create the test table.'
             db.createTablesFor(Region)
@@ -189,7 +189,7 @@ class DataBase_Model_Properties_Spec extends Specification
             by calling it "UNKNOWN" or "UNDEFINED" or something similar.
         """
         given : 'We create a database instance for testing, the database will be opened in a test folder.'
-            def db = DataBase.at(TEST_DB_FILE)
+            var db = DataBase.at(TEST_DB_FILE)
             db.dropAllTables()
         and : 'We create the test table.'
             db.createTablesFor(Region)
