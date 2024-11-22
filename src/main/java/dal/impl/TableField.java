@@ -327,7 +327,7 @@ final class TableField {
     ) throws InvocationTargetException, IllegalAccessException {
         String methodName = method.getName();
         // Check if it is 'toString()':
-        if ( methodName.equals("toString") && args.length == 0 ) {
+        if ( methodName.equals("toString") && (args == null || args.length == 0) ) {
             return prop.toString();
         }
         try {
