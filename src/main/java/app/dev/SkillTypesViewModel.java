@@ -42,7 +42,7 @@ public class SkillTypesViewModel
                         appContext.db()
                             .select(app.models.SkillType.class)
                             .where(SkillType::name)
-                            .like("%" + it.get() + "%")
+                            .like("%" + it.currentValue().orElseThrowUnchecked() + "%")
                             .asList()
                             .stream()
                             .map(st -> new SkillTypeViewModel(this, st))

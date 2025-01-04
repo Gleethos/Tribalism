@@ -5,6 +5,7 @@ import org.json.JSONObject;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import sprouts.Action;
+import sprouts.Maybe;
 import sprouts.Val;
 import sprouts.ValDelegate;
 import swingtree.threading.EventProcessor;
@@ -118,11 +119,11 @@ public class WebUserSession
             @Override
             public void accept(ValDelegate<Object> delegate) {
                 try {
-                    Val<?> property = ReflectionUtil.propertyFromDelegate(delegate);
+                    Maybe<?> property = delegate.currentValue();
                     JSONObject update = new JSONObject();
                     update.put(Constants.EVENT_TYPE, Constants.RETURN_PROP);
                     update.put(Constants.EVENT_PAYLOAD,
-                            jsonFromProperty(property)
+                            jsonFromProperty(property, delegate.id())
                                     .put(Constants.VM_ID, vmId)
                     );
                     socket.send(update);
@@ -245,7 +246,7 @@ public class WebUserSession
         }
 
         if ( result instanceof Val<?> property )
-            result = jsonFromProperty(property);
+            result = jsonFromProperty(property, property.id());
 
         return new JSONObject()
                 .put(Constants.METHOD_NAME, methodName)
@@ -257,7 +258,7 @@ public class WebUserSession
         Objects.requireNonNull(vm);
         JSONObject json = new JSONObject();
         for ( var property : ReflectionUtil.findPropertiesInViewModel(vm) )
-            json.put(property.id(), jsonFromProperty(property));
+            json.put(property.id(), jsonFromProperty(property, property.id()));
 
         JSONObject result = new JSONObject();
         result.put(Constants.PROPS, json);
@@ -268,7 +269,7 @@ public class WebUserSession
     }
 
     public JSONObject jsonFromProperty(
-            Val<?> property
+            Maybe<?> property, String id
     ) {
         Class<?> type = property.type();
         List<String> knownStates = new ArrayList<>();
@@ -277,7 +278,7 @@ public class WebUserSession
                 knownStates.add(((Enum)state).name());
         }
         JSONObject json = new JSONObject();
-        json.put(Constants.PROP_NAME, property.id());
+        json.put(Constants.PROP_NAME, id);
         json.put(Constants.PROP_VALUE, toJsonCompatibleValueFromProperty(property));
         json.put(Constants.PROP_TYPE,
                 new JSONObject()
@@ -290,22 +291,22 @@ public class WebUserSession
     }
 
 
-    Object toJsonCompatibleValueFromProperty(Val<?> prop) {
+    Object toJsonCompatibleValueFromProperty(Maybe<?> prop) {
 
         if ( prop.isEmpty() ) // We return a json null if the property is empty
             return JSONObject.NULL;
 
 
         if ( prop.type() == Boolean.class )
-            return prop.get();
+            return prop.orElseThrowUnchecked();
         else if ( prop.type() == Integer.class )
-            return prop.get();
+            return prop.orElseThrowUnchecked();
         else if ( prop.type() == Double.class )
-            return prop.get();
+            return prop.orElseThrowUnchecked();
         else if ( prop.type() == Enum.class )
-            return ((Enum)prop.get()).name();
+            return ((Enum)prop.orElseThrowUnchecked()).name();
         else if (ViewModel.class.isAssignableFrom(prop.type())) {
-            ViewModel viewModel = (ViewModel) prop.get();
+            ViewModel viewModel = (ViewModel) prop.orElseThrowUnchecked();
             if ( !webUserContext.hasVM(viewModel) ) {
                 webUserContext.put(viewModel);
                 bindTo(viewModel, webUserContext.vmIdOf(viewModel).toString());
@@ -316,11 +317,11 @@ public class WebUserSession
         }
         else if ( prop.type() == Color.class ) {
             // In the frontend colors are usually hex strings
-            Color color = (Color) prop.get();
+            Color color = (Color) prop.orElseThrowUnchecked();
             return String.format("#%02x%02x%02x", color.getRed(), color.getGreen(), color.getBlue());
         }
 
-        Object value = prop.get();
+        Object value = prop.orElseThrowUnchecked();
         String asString = String.valueOf(value);
         asString = asString.replace("\"", "\\\"");
         asString = asString.replace("\r", "\\r");

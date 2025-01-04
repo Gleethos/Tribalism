@@ -228,15 +228,4 @@ public class ReflectionUtil {
         return publicMethods;
     }
 
-    public static Val<?> propertyFromDelegate(ValDelegate<?> delegate) {
-        // The implementation has a private field called 'val' which is the actual property
-        try {
-            var field = delegate.getClass().getDeclaredField("value");
-            field.setAccessible(true);
-            return (Val<?>) field.get(delegate);
-        } catch (Exception e) {
-            throw new RuntimeException("Could not extract property from delegate!");
-        }
-    }
-
 }

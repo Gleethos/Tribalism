@@ -29,7 +29,7 @@ public class SkillTypesView extends JPanel
             .add(label("Found Skill Types:"))
             .add(GROW.and(PUSH),
                 scrollPanels().withPrefSize(600, 600)
-                .add(vm.skillTypes(), svm ->
+                .addAll(vm.skillTypes(), svm ->
                         svm.getViewCache().get(()->
                         UI.panel(UI.FILL.and(UI.INS(12)))
                         .add(UI.GROW, UI.textField(svm.skillType().name()))

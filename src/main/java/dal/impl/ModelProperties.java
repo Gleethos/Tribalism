@@ -312,7 +312,7 @@ public final class ModelProperties implements Vars<Object>, Viewables<Object>
     }
 
     @Override
-    public Vars<Object> revert() {
+    public Vars<Object> reversed() {
         throw new UnsupportedOperationException("Not supported yet.");
     }
 
@@ -323,6 +323,11 @@ public final class ModelProperties implements Vars<Object>, Viewables<Object>
 
     @Override
     public Observable unsubscribe(Subscriber listener) {
+        throw new IllegalStateException(); // TODO
+    }
+
+    @Override
+    public void unsubscribeAll() {
         throw new IllegalStateException(); // TODO
     }
 }

@@ -29,7 +29,7 @@ public class AbilityTypesView extends JPanel
             .add(label("Found Ability Types:"))
             .add(GROW.and(PUSH),
                 scrollPanels().withPrefSize(600, 600)
-                .add(vm.skillTypes(), stm ->
+                .addAll(vm.skillTypes(), stm ->
                     stm.getViewCache().get(()->
                         UI.panel(UI.FILL.and(UI.INS(12)))
                         .add(UI.WIDTH(90,120,220), UI.textField(stm.abilityType().name()))

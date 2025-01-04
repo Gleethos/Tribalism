@@ -269,7 +269,6 @@ abstract class AbstractDataBase implements DataBase {
                     try {// loop through the result set
                         while (rs.next()) {
                             for (int i = 1; i <= rs.getMetaData().getColumnCount(); i++) {
-                                String columnValue = rs.getString(i);
                                 ResultSetMetaData rsmd = rs.getMetaData();
                                 String column_name = rsmd.getColumnName(i);
                                 if(rsmd.getColumnType(i)==java.sql.Types.ARRAY) {

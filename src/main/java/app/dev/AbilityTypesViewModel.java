@@ -39,7 +39,7 @@ public class AbilityTypesViewModel
                         appContext.db()
                             .select(AbilityType.class)
                             .where(AbilityType::name)
-                            .like("%" + it.get() + "%")
+                            .like("%" + it.currentValue().orElseThrowUnchecked() + "%")
                             .asList()
                             .stream()
                             .map(st -> new AbilityTypeViewModel(this, st))

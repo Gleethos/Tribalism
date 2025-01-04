@@ -44,7 +44,7 @@ public class ServerViewModel
         this.portString = Var.of(port.itemAsString());
         Viewable.cast(this.portString).onChange(From.VIEW, it -> {
             try {
-                port.set(Integer.parseInt(it.get()));
+                port.set(Integer.parseInt(it.currentValue().orElseThrowUnchecked()));
                 portIsValid.set(true);
             } catch (NumberFormatException e) {
                 port.set(context.app().getServerPort());

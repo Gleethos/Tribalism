@@ -42,7 +42,7 @@ public class RoleTypesViewModel
                     appContext.db()
                         .select(Role.class)
                         .where(Role::name)
-                        .like("%" + it.get() + "%")
+                        .like("%" + it.currentValue().orElseThrowUnchecked() + "%")
                         .asList()
                         .stream()
                         .map(st -> new RoleTypeViewModel(this, st))
@@ -112,7 +112,7 @@ public class RoleTypesViewModel
                         .add(UI.SHRINK.and(UI.WRAP), UI.button("Delete").onClick(it2 -> delete()))
                         .add(UI.GROW.and(UI.WRAP).and(UI.SPAN),
                             UI.scrollPanels().withPrefHeight(142)
-                            .add(skillViewModels, svm -> UI.of(svm.createView(JComponent.class)))
+                            .addAll(skillViewModels, svm -> UI.of(svm.createView(JComponent.class)))
                         )
                         .add(UI.GROW.and(UI.WRAP).and(UI.SPAN), UI.separator())
                         .getComponent()

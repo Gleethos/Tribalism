@@ -189,7 +189,7 @@ class DataBase_Model_Property_View_Memory_Safety_Spec extends Specification
             Val<String> view = monthProperty.viewAsString(Month::name)
         and : 'A trace list and a change listener that listens to changes on the view.'
             var trace = []
-        Action<Val<String>> action = { trace << it.get() }
+        Action<Val<String>> action = { trace << it.currentValue().orElseThrowUnchecked() }
         expect : 'The trace list is empty and there are no change listeners registered.'
             trace.isEmpty()
             view.numberOfChangeListeners() == 0

@@ -122,7 +122,7 @@ class DataBase_Model_Properties_Spec extends Specification
             nameView.onChange(From.VIEW_MODEL, new Action<ValDelegate<String>>() {
                 @Override
                 void accept(ValDelegate<String> delegate) {
-                    listenerTrace << delegate.get()
+                    listenerTrace << delegate.currentValue().orElseThrowUnchecked()
                 }
             })
         and : 'We set the name property.'

@@ -129,7 +129,7 @@ final class ModelProperty implements Var<Object>, Viewable<Object>
         }
         _wasSet = true;
         if ( !Val.equals( oldValue, newItem ) )
-            _listeners.fireChange(this, channel);
+            _listeners.fireChange(this, oldValue, channel);
     }
 
     private void _set( Object newItem ) {
@@ -175,7 +175,7 @@ final class ModelProperty implements Var<Object>, Viewable<Object>
 
     @Override
     public Var<Object> fireChange(Channel channel) {
-        _listeners.fireChange(this, channel);
+        _listeners.fireChange(this, _value, channel);
         return this;
     }
 
@@ -218,6 +218,11 @@ final class ModelProperty implements Var<Object>, Viewable<Object>
     public Observable unsubscribe(Subscriber listener) {
         _listeners.unsubscribe(listener);
         return this;
+    }
+
+    @Override
+    public void unsubscribeAll() {
+        _listeners.unsubscribeAll();
     }
 
     public long numberOfChangeListeners() {

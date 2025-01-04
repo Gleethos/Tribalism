@@ -48,13 +48,13 @@ final class ChangeListeners<T>
         onChange(Sprouts.factory().defaultObservableChannel(), new PropertyProxyChangeListener<>(observer) );
     }
 
-	public void fireChange( Val<T> owner, Channel channel ) {
+	public void fireChange( Val<T> owner, T oldItem, Channel channel ) {
 		if ( channel == From.ALL)
 			for ( Channel key : _actions.keySet() )
-                _getActionsFor(key).trigger( channel, owner );
+                _getActionsFor(key).trigger( channel, owner, oldItem );
 		else {
-            _getActionsFor(channel).trigger( channel, owner );
-            _getActionsFor(From.ALL).trigger( channel, owner );
+            _getActionsFor(channel).trigger( channel, owner, oldItem );
+            _getActionsFor(From.ALL).trigger( channel, owner, oldItem );
 		}
 	}
 
@@ -67,6 +67,10 @@ final class ChangeListeners<T>
                 else
                     return Objects.equals(a, subscriber);
             });
+    }
+
+    public void unsubscribeAll() {
+        _actions.clear();
     }
 
     public long numberOfChangeListeners() {
@@ -131,8 +135,13 @@ final class ChangeListeners<T>
             return _getActions( actions -> {} );
         }
 
-        public void trigger( Channel channel, Val<T> owner ) {
-            ValDelegate<T> delegate = new ModelPropertyDelegate<>(channel, Val.ofNullable(owner)); // We clone this property to avoid concurrent modification
+        public void trigger( Channel channel, Val<T> owner, T oldItem ) {
+            T newItem = owner.orElseNull();
+            Class<T> type = owner.type();
+            SingleChange change = SingleChange.of(type, newItem, oldItem);
+            Val<T> oldProperty = Val.ofNullable(type, oldItem);
+            ValDelegate<T> delegate = Sprouts.factory().delegateOf(oldProperty, channel, change, newItem); // TODO!!!!
+            // We clone this property to avoid concurrent modification
             _getActions( actions -> {
                 for ( Action<ValDelegate<T>> action : actions ) // We copy the list to avoid concurrent modification
                     try {
