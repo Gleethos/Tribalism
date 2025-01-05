@@ -24,6 +24,7 @@ abstract class AbstractDataBase implements DataBase {
     private final Map<Thread, Connection> _connections = new HashMap<>();
     private final DataBaseProcessor _processor;
 
+
     AbstractDataBase(
             String url,
             String name,
@@ -53,7 +54,7 @@ abstract class AbstractDataBase implements DataBase {
         try {
             _createAndOrConnectToDatabase();
         } catch (Exception e) {
-            e.printStackTrace();
+            _LOG.error("Failed to create a connection to the database!", e);
         }
     }
 
@@ -73,7 +74,7 @@ abstract class AbstractDataBase implements DataBase {
         }
         Connection connection = null;
         _LOG.info("Connecting to database at '{}' now!", _url);
-        if (_user.equals("") || _pwd.equals(""))
+        if (_user.isEmpty() || _pwd.isEmpty())
             connection = DriverManager.getConnection(_url);
         else
             connection = DriverManager.getConnection(_url, _user, _pwd);
@@ -88,7 +89,7 @@ abstract class AbstractDataBase implements DataBase {
                 _createAndOrConnectToDatabase();
                 con = _connections.get(Thread.currentThread());
             } catch (Exception e) {
-                e.printStackTrace();
+                _LOG.error("Failed to create a connection to the database!", e);
             }
         }
         if ( con == null ) {
@@ -216,11 +217,11 @@ abstract class AbstractDataBase implements DataBase {
                     rs.close();
                     pstmt.close();
                 } catch (SQLException e) {
-                    e.printStackTrace();
+                    _LOG.error("Failed to execute the SQL statement '{}'.", sql, e);
                     pstmt.close();
                 }
             } catch (SQLException e) {
-                e.printStackTrace();
+                _LOG.error("Failed to execute the SQL statement '{}'.", sql, e);
             }
         } else {
             try {
@@ -263,7 +264,9 @@ abstract class AbstractDataBase implements DataBase {
                         for (int i = 1; i <= columnsNumber; i++) {
                             result.put(rsmd.getColumnName(i), new ArrayList<>());
                         }
-                    } catch (Exception e){e.printStackTrace();}
+                    } catch (Exception e){
+                        _LOG.error("Failed to get the column names from the result set!", e);
+                    }
                 },
                 rs -> {
                     try {// loop through the result set
@@ -318,7 +321,7 @@ abstract class AbstractDataBase implements DataBase {
                             }
                         }
                     } catch (SQLException e) {
-                        e.printStackTrace();
+                        _LOG.error("Failed to get the column values from the result set!", e);
                     }
                 });
         });
@@ -327,7 +330,7 @@ abstract class AbstractDataBase implements DataBase {
 
     /**
      * SQL execution on connection!
-     * @param sql
+     * @param sql - SQL statement to execute
      */
     protected void _execute(String sql) {
         if(sql.isBlank()) return;
@@ -340,10 +343,10 @@ abstract class AbstractDataBase implements DataBase {
                     stmt.close();
                 } catch (SQLException e) {
                     stmt.close();
-                    e.printStackTrace();
+                    _LOG.error("Failed to execute the SQL statement '{}'.", sql, e);
                 }
             } catch (SQLException e) {
-                e.printStackTrace();
+                _LOG.error("Failed to execute the SQL statement '{}'.", sql, e);
             }
         });
     }
