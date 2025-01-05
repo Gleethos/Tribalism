@@ -26,10 +26,10 @@ abstract class AbstractDataBase implements DataBase {
 
 
     AbstractDataBase(
-            String url,
-            String name,
-            String password,
-            DataBaseProcessor processor
+        String url,
+        String name,
+        String password,
+        DataBaseProcessor processor
     ) {
         var currentThread = Thread.currentThread();
         _processor = processor;
@@ -63,7 +63,7 @@ abstract class AbstractDataBase implements DataBase {
     /**
      * Connect to a simple database
      */
-    protected void _createAndOrConnectToDatabase() throws SQLException
+    private void _createAndOrConnectToDatabase() throws SQLException
     {
         _LOG.info("Establishing connection to database url '"+_url+"' now.");
         try {
@@ -109,7 +109,7 @@ abstract class AbstractDataBase implements DataBase {
     /**
      * Closing Connection!
      */
-    protected void _close(){
+    private void _close(){
         try {
             _getConnection().close();
             _connections.put(Thread.currentThread(), null);
@@ -119,7 +119,9 @@ abstract class AbstractDataBase implements DataBase {
     }
 
     @Override
-    public void close(){ _close(); }
+    public void close(){
+        _processor.process(this::_close);
+    }
 
     /**
      * Returns a list of all table names of a connection!
@@ -393,7 +395,7 @@ abstract class AbstractDataBase implements DataBase {
         });
     }
 
-    protected boolean doesTableExist(String tableName) {
+    protected final boolean doesTableExist(String tableName) {
         String command = "SELECT name FROM sqlite_master WHERE type='table' AND name=?";
         Map<String, List<Object>> result = _query(command, List.of(tableName));
         return !result.isEmpty();
