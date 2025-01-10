@@ -222,7 +222,7 @@ public final class SQLiteDataBase extends AbstractDataBase
             throw new IllegalArgumentException("The model '" + models.getName() + "' does not have a table in the database!");
         if ( result.size() > 1 )
             throw new IllegalArgumentException("There are multiple tables for the model '" + models.getName() + "' in the database!");
-        List<Object> ids = result.get("id");
+        List<Object> ids = result.get(Constants.ID);
 
         List<M> modelsList = new ArrayList<>();
         for ( Object id : ids )
@@ -263,13 +263,16 @@ public final class SQLiteDataBase extends AbstractDataBase
 
         int idIndex = -1;
         for ( int i = 0; i < fieldNames.size(); i++ )
-            if ( fieldNames.get(i).equals("id") ) {
+            if ( fieldNames.get(i).equals(Constants.ID) ) {
                 idIndex = i;
                 break;
             }
 
         if ( idIndex == -1 )
-            throw new IllegalArgumentException("The model '" + model.getName() + "' does not have an id field!");
+            throw new IllegalArgumentException(
+                    "The model '" + model.getName() + "' does not have an '"+Constants.ID+"' field. " +
+                    "This is most likely a bug in the TopSoil ORM!"
+                );
         else {
             defaultValues.remove(idIndex);
             fieldNames.remove(idIndex);
@@ -566,7 +569,7 @@ public final class SQLiteDataBase extends AbstractDataBase
                     sqlString = sqlString.substring(0, sqlString.length()-7);
 
                 Map<String, List<Object>> result = _query(sqlString, values);
-                List<Integer> ids = result.getOrDefault("id", Collections.emptyList())
+                List<Integer> ids = result.getOrDefault(Constants.ID, Collections.emptyList())
                                             .stream()
                                             .map( o -> (int) o )
                                             .toList();
