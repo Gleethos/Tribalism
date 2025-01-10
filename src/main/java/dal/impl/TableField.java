@@ -147,7 +147,7 @@ final class TableField {
                         "all other model types!"
                     );
             } else if (AbstractDataBase._isBasicDataType(_propertyValueType)) {
-                _kind = FieldKind.VALUE;
+                _kind = FieldKind.PRIMITIVE;
             } else {
                 boolean propertyValueIsModel = Model.class.isAssignableFrom(_propertyValueType);
                 if ( !propertyValueIsModel )
@@ -391,7 +391,7 @@ final class TableField {
             return null;
         else if ( _kind == FieldKind.INTERMEDIATE_TABLE )
             return null;
-        else if ( _kind == FieldKind.VALUE ) {
+        else if ( _kind == FieldKind.PRIMITIVE) {
             if ( _propertyValueType == String.class )
                 return "";
             else if ( _propertyValueType == Integer.class )

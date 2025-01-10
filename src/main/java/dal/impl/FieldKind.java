@@ -2,7 +2,7 @@ package dal.impl;
 
 enum FieldKind {
     ID,
-    VALUE,
+    PRIMITIVE,
     FOREIGN_KEY,
     INTERMEDIATE_TABLE
 }
