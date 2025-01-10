@@ -125,7 +125,7 @@ final class TableField {
          */
 
         // First we check if the field is an ID field
-        if (method.getName().equals(Constants.ID)) {
+        if (method.getName().equals(ModelTable.ID)) {
             if (!_propertyType.equals(Model.Id.class))
                 throw new IllegalArgumentException(
                     "The return type of the method " + method.getName() + " is not " + Model.Id.class.getName()
@@ -374,12 +374,12 @@ final class TableField {
         String name = getName();
         if (!Model.class.isAssignableFrom(_propertyValueType)) {
             String properties = _allowNull ? "" : " NOT NULL";
-            if (name.equals(Constants.ID))
+            if (name.equals(ModelTable.ID))
                 properties += " PRIMARY KEY AUTOINCREMENT";
             return Optional.of(name + " " + AbstractDataBase._fromJavaTypeToDBType(_propertyValueType) + properties);
         } else if ( _kind == FieldKind.FOREIGN_KEY) {
             String otherTable = AbstractDataBase._tableNameFromClass(_propertyValueType);
-            return Optional.of(name + " INTEGER REFERENCES " + otherTable + "("+Constants.ID+")");
+            return Optional.of(name + " INTEGER REFERENCES " + otherTable + "("+ ModelTable.ID+")");
         } else if ( _kind == FieldKind.INTERMEDIATE_TABLE) {
             return Optional.empty(); // The field is not a column in the table, but a table itself
         } else

@@ -79,10 +79,10 @@ final class DefaultModelTable implements ModelTable
                             "The method " + method.getName() + " of the interface " + modelInterface.getName() + " has a return type of void"
                     );
                 // The method is not allowed to be called "id" because that is reserved for the id field:
-                if (method.getDeclaringClass().equals(modelInterface) && method.getName().equals(Constants.ID))
+                if (method.getDeclaringClass().equals(modelInterface) && method.getName().equals(ModelTable.ID))
                     throw new IllegalArgumentException(
                         "The method " + method.getName() + " of the interface " + modelInterface.getName() + " is " +
-                        "not allowed to be called \""+Constants.ID+"\", " +
+                        "not allowed to be called \""+ ModelTable.ID+"\", " +
                         "because that name is already reserved for the internal table entry id!"
                     );
                 fields.add(new TableField(method, modelInterface, otherModels));
@@ -91,7 +91,7 @@ final class DefaultModelTable implements ModelTable
         // Now we add the id field
         Class<Model> modelClass = Model.class;
         try {
-            Method idMethod = modelClass.getMethod(Constants.ID);
+            Method idMethod = modelClass.getMethod(ModelTable.ID);
             fields.add(0, new TableField(idMethod, modelInterface, otherModels));
         } catch (NoSuchMethodException | SecurityException e) {
             throw new RuntimeException(e);

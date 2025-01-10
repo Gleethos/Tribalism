@@ -154,7 +154,7 @@ final class ModelProxy<T extends Model<T>> implements InvocationHandler {
                     Method m1 = methods1[ii];
                     System.out.println(m0.getName()+" "+m1.getName());
                     if ( m0.getName().equals(m1.getName()) ) {
-                        if (!m0.getName().equals(Constants.ID) && m0.getParameterCount() == 0) {
+                        if (!m0.getName().equals(ModelTable.ID) && m0.getParameterCount() == 0) {
                             // The return type of the method must be a subtype of Var:
                             if (!Val.class.isAssignableFrom(m0.getReturnType()))
                                 continue;

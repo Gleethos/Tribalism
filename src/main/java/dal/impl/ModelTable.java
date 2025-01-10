@@ -13,6 +13,7 @@ interface ModelTable
     String INTER_FK_POSTFIX = "_id";
     String FK_POSTFIX = "_id";
     String FK_PREFIX = "fk_";
+    String ID = "id";
 
 
     String getTableName();
