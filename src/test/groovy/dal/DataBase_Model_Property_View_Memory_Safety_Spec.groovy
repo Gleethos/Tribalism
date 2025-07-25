@@ -320,7 +320,7 @@ class DataBase_Model_Property_View_Memory_Safety_Spec extends Specification
             Var<DayOfWeek> day = culturalEvent.day()
             Var<String> name = culturalEvent.name()
         and : 'A composite property that observes the two properties.'
-            Viewable<String> composite = Val.viewOf(name, day, (n,d) -> n + " " + d.name().toLowerCase())
+            Viewable<String> composite = Viewable.of(name, day, (n,d) -> n + " " + d.name().toLowerCase())
         expect : 'The composite property is "John monday" initially.'
             composite.get() == "John monday"
         when : 'We wrap the two properties in `WeakReference` objects.'
@@ -369,7 +369,7 @@ class DataBase_Model_Property_View_Memory_Safety_Spec extends Specification
             Var<Month> month = region.warmestMonth()
             Var<String> name = region.name()
         and : 'A nullable composite property that observes the two properties.'
-            Viewable<String> composite = Val.viewOfNullable(name, month, (n,m) -> n + " " + m.name().toLowerCase())
+            Viewable<String> composite = Viewable.ofNullable(name, month, (n,m) -> n + " " + m.name().toLowerCase())
         expect : 'The composite property is "Linda january" initially.'
             composite.get() == "Linda january"
         when : 'We wrap the two properties in `WeakReference` objects.'
@@ -420,7 +420,7 @@ class DataBase_Model_Property_View_Memory_Safety_Spec extends Specification
         and : 'Two properties we will dereference later forming a composite property.'
             Var<String> a = person.firstName()
             Var<String> b = person.lastName()
-            Val<String> c = Val.viewOf(a, b, (x, y) -> x + y)
+            Val<String> c = Viewable.of(a, b, (x, y) -> x + y)
             var weakA = new WeakReference(a)
         expect :
             c.get() == "AB"
@@ -472,7 +472,7 @@ class DataBase_Model_Property_View_Memory_Safety_Spec extends Specification
         and : 'Two properties we will dereference later forming a composite property.'
             Var<String> a = person.firstName()
             Var<String> b = person.lastName()
-            Viewable<String> c = Val.viewOf(a, b, (x, y) -> x + y)
+            Viewable<String> c = Viewable.of(a, b, (x, y) -> x + y)
             var weakB = new WeakReference(b)
         expect :
             c.get() == "AB"

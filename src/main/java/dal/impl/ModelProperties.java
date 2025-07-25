@@ -1,9 +1,9 @@
 package dal.impl;
 
 import dal.api.Model;
+import sprouts.*;
 import sprouts.Observable;
 import sprouts.Observer;
-import sprouts.*;
 
 import java.util.*;
 
@@ -280,7 +280,7 @@ public final class ModelProperties implements Vars<Object>, Viewables<Object>
 
     @Override
     public Vars<Object> removeAll( Vals<Object> vars ) {
-        for ( Object o : vars ) _removeAt(indexOf(o));
+        for ( Object o : vars ) _removeAt(firstIndexOf(o));
         return this;
     }
 
@@ -307,7 +307,7 @@ public final class ModelProperties implements Vars<Object>, Viewables<Object>
     }
 
     @Override
-    public void makeDistinct() {
+    public Vars<Object> makeDistinct() {
         throw new UnsupportedOperationException("Not supported yet."); // How to make distinct on a database?
     }
 

@@ -6,6 +6,7 @@ import org.slf4j.LoggerFactory;
 import sprouts.*;
 import sprouts.Observable;
 import sprouts.Observer;
+import sprouts.impl.PropertyChangeListeners;
 import sprouts.impl.Sprouts;
 
 import java.util.*;
@@ -25,8 +26,7 @@ final class ModelProperty implements Var<Object>, Viewable<Object>
     private boolean _wasSet = false;
 
     // Observers:
-    private final ChangeListeners<Object> _listeners = new ChangeListeners<>();
-
+    private final PropertyChangeListeners<Object> _listeners = new PropertyChangeListeners<>();
 
     ModelProperty(
         SQLiteDataBase dataBase,
@@ -129,7 +129,7 @@ final class ModelProperty implements Var<Object>, Viewable<Object>
         }
         _wasSet = true;
         if ( !Val.equals( oldValue, newItem ) )
-            _listeners.fireChange(this, oldValue, channel);
+            _listeners.fireChange(this, channel, newItem, oldValue);
     }
 
     private void _set( Object newItem ) {
@@ -175,7 +175,7 @@ final class ModelProperty implements Var<Object>, Viewable<Object>
 
     @Override
     public Var<Object> fireChange(Channel channel) {
-        _listeners.fireChange(this, _value, channel);
+        _listeners.fireChange(this, channel, _value, _value);
         return this;
     }
 
