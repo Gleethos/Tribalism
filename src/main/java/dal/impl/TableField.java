@@ -11,35 +11,36 @@ import java.util.Collections;
 import java.util.List;
 import java.util.Optional;
 
-final class TableField {
+record TableField(
+    Method method, // The method from the model class
+    Class<? extends Model<?>> ownerModelClass, // The model class
+    Class<?> propertyType, // The type of the property and return type of the method
+    Class<?> propertyValueType, // The type of the property value
+    FieldKind kind,
+    boolean allowNull
+) {
 
-    private final Method _method; // The method from the model class
-    private final Class<? extends Model<?>> _ownerModelClass; // The model class
-    private final Class<?> _propertyType; // The type of the property and return type of the method
-    private final Class<?> _propertyValueType; // The type of the property value
-    private final FieldKind _kind;
-    private final boolean _allowNull;
 
-
-    TableField(
-        Method method,
-        Class<? extends Model<?>> ownerClass,
-        List<Class<? extends Model<?>>> otherModels
+    public static TableField of(
+        final Method method, // The method from the model class
+        final Class<? extends Model<?>> ownerModelClass, // The model class
+        final List<Class<? extends Model<?>>> otherModels
     ) {
-        _method          = method;
-        _ownerModelClass = ownerClass;
-        _propertyType    = method.getReturnType();
+        final Class<?> propertyType = method.getReturnType(); // The type of the property and return type of the method
+        Class<?> propertyValueType; // The type of the property value
+        FieldKind kind;
+        boolean allowNull;
 
         // First we check if the return type is a subclass of Val or Vals
-        boolean isSubTypeOfVal  = Val.class.isAssignableFrom(_propertyType);
-        boolean isSubTypeOfVals = Vals.class.isAssignableFrom(_propertyType);
-        boolean isValOrVar   = _propertyType == Val.class  || _propertyType == Var.class;
-        boolean isValsOrVars = _propertyType == Vals.class || _propertyType == Vars.class;
+        boolean isSubTypeOfVal  = Val.class.isAssignableFrom(propertyType);
+        boolean isSubTypeOfVals = Vals.class.isAssignableFrom(propertyType);
+        boolean isValOrVar   = propertyType == Val.class  || propertyType == Var.class;
+        boolean isValsOrVars = propertyType == Vals.class || propertyType == Vars.class;
 
         if ( !isSubTypeOfVal && !isSubTypeOfVals )
             throw new IllegalArgumentException(
                     "The return type of method '" + method.getName() + "' " +
-                    "in model type '" + ownerClass.getName() + "' " +
+                    "in model type '" + ownerModelClass.getName() + "' " +
                     "is not a subclass of " +
                     "either " + Val.class.getName() + " or " + Vals.class.getName() + ". \n" +
                     "You might want to declare the method as a default method in the model interface " +
@@ -74,12 +75,12 @@ final class TableField {
          */
         if ( !isValOrVar && !isValsOrVars ) {
             // It is a subclass of Val or Vals:
-            TypeVariable<?>[] typeParameters = _propertyType.getTypeParameters();
+            TypeVariable<?>[] typeParameters = propertyType.getTypeParameters();
             if (typeParameters.length != 0)
                 throw new IllegalArgumentException(
                         "The return type of the method " + method.getName() + " may not have generic parameters!"
                 );
-            Type[] genericInterfaces = _propertyType.getGenericInterfaces();
+            Type[] genericInterfaces = propertyType.getGenericInterfaces();
             if (genericInterfaces.length != 1)
                 throw new IllegalArgumentException(
                         "The return type of the method " + method.getName() + " must implement exactly one interface!"
@@ -87,7 +88,7 @@ final class TableField {
 
             Type genericInterface = genericInterfaces[0];
             Type[] actualTypeArguments = ((ParameterizedType) genericInterface).getActualTypeArguments();
-            _propertyValueType = (Class<?>) actualTypeArguments[0];
+            propertyValueType = (Class<?>) actualTypeArguments[0];
         } else {
             // The return type is Val<T>, Var<T>, Vals<T> or Vars<T> so we can get the type parameter T easily:
             // However we can not get the declared type from Var,Val... it is a generic type...
@@ -96,7 +97,7 @@ final class TableField {
             if ( declaredReturnTypeGenericParam instanceof ParameterizedType ) {
                 var declaredReturnTypeGenericParamType = ((ParameterizedType) declaredReturnTypeGenericParam).getActualTypeArguments()[0];
                 if ( declaredReturnTypeGenericParamType instanceof Class<?> ) {
-                    _propertyValueType = (Class<?>) declaredReturnTypeGenericParamType;
+                    propertyValueType = (Class<?>) declaredReturnTypeGenericParamType;
                 } else {
                     throw new IllegalArgumentException(
                             "The return type of the method " + method.getName() + " must be a class!"
@@ -126,44 +127,44 @@ final class TableField {
 
         // First we check if the field is an ID field
         if (method.getName().equals(ModelTable.ID)) {
-            if (!_propertyType.equals(Model.Id.class))
+            if (!propertyType.equals(Model.Id.class))
                 throw new IllegalArgumentException(
                     "The return type of the method " + method.getName() + " is not " + Model.Id.class.getName()
                 );
-            _kind = FieldKind.ID;
+            kind = FieldKind.ID;
         }
         // Then we check if the field is a foreign key field
         else if ( isSubTypeOfVal ) {
-            if (Model.class.isAssignableFrom(_propertyValueType)) {
-                if (otherModels.contains(_propertyValueType)) {
-                    _kind = FieldKind.FOREIGN_KEY;
+            if (Model.class.isAssignableFrom(propertyValueType)) {
+                if (otherModels.contains(propertyValueType)) {
+                    kind = FieldKind.FOREIGN_KEY;
                 } else
                     throw new IllegalArgumentException(
-                        "Cannot establish table field for method '" + method.getName() + "()' for model '" + _ownerModelClass.getName() + "', \n" +
+                        "Cannot establish table field for method '" + method.getName() + "()' for model '" + ownerModelClass.getName() + "', \n" +
                         "because the return type of " +
-                        "the method is a property referencing another model called '" + _propertyValueType.getName() + "', " +
+                        "the method is a property referencing another model called '" + propertyValueType.getName() + "', " +
                         "which is however not known " +
                         "by the database, please make sure that it is passed to the 'createTablesFor(..)' method alongside " +
                         "all other model types!"
                     );
-            } else if (AbstractDataBase._isBasicDataType(_propertyValueType)) {
-                _kind = FieldKind.PRIMITIVE;
+            } else if (AbstractDataBase._isBasicDataType(propertyValueType)) {
+                kind = FieldKind.PRIMITIVE;
             } else {
-                boolean propertyValueIsModel = Model.class.isAssignableFrom(_propertyValueType);
+                boolean propertyValueIsModel = Model.class.isAssignableFrom(propertyValueType);
                 if ( !propertyValueIsModel )
                     throw new IllegalArgumentException(
-                            "Failed to create table field '" + _method.getName() + "' for model '" + _ownerModelClass.getName() + "', because \n" +
-                            "the property value type '" + _propertyValueType.getName() + "' in declared method " +
-                            "'public " + _propertyType.getSimpleName() + "<" + _propertyValueType.getSimpleName() + "> " + method.getName() + "();' " +
+                            "Failed to create table field '" + method.getName() + "' for model '" + ownerModelClass.getName() + "', because \n" +
+                            "the property value type '" + propertyValueType.getName() + "' in declared method " +
+                            "'public " + propertyType.getSimpleName() + "<" + propertyValueType.getSimpleName() + "> " + method.getName() + "();' " +
                             "is not a basic data type and is also not recognisable as another model! \n" +
-                            "If you want this declaration to work, make sure that '" + _propertyValueType.getName() + "' is a subtype of the '" + Model.class.getName() + "' interface " +
+                            "If you want this declaration to work, make sure that '" + propertyValueType.getName() + "' is a subtype of the '" + Model.class.getName() + "' interface " +
                             "and also is passed to the the 'createTablesFor(Class<M>... models);' method."
                         );
                 else // The user has simply not passed the interface class to the createTablesFor(Class<Model... models) method:
                     throw new IllegalArgumentException(
-                            "Failed to create table field '" + _method.getName() + "' for model '" + _ownerModelClass.getName() + "', because \n" +
-                            "the property value type '" + _propertyValueType.getName() + "' in declared method " +
-                            "'public " + _propertyType.getSimpleName() + "<" + _propertyValueType.getSimpleName() + "> " + method.getName() + "();' " +
+                            "Failed to create table field '" + method.getName() + "' for model '" + ownerModelClass.getName() + "', because \n" +
+                            "the property value type '" + propertyValueType.getName() + "' in declared method " +
+                            "'public " + propertyType.getSimpleName() + "<" + propertyValueType.getSimpleName() + "> " + method.getName() + "();' " +
                             "is a model type not known to the database! " +
                             "If you want this declaration to work, make sure that you have passed the interface class of the model to the " +
                             "createTablesFor(Class<M>... models); method!"
@@ -172,16 +173,16 @@ final class TableField {
         }
         // Then we check if the field is an intermediate table field
         else if (isSubTypeOfVals) {
-            if (otherModels.contains(_propertyValueType)) {
-                _kind = FieldKind.INTERMEDIATE_TABLE;
+            if (otherModels.contains(propertyValueType)) {
+                kind = FieldKind.INTERMEDIATE_TABLE;
             } else {
-                if (AbstractDataBase._isBasicDataType(_propertyValueType))
+                if (AbstractDataBase._isBasicDataType(propertyValueType))
                     throw new IllegalArgumentException(
                             "List of basic data types cannot be modelled as table fields."
                     );
                 else
                     throw new IllegalArgumentException(
-                            "The type '" + _propertyType.getName() + "' of the property returned by " +
+                            "The type '" + propertyType.getName() + "' of the property returned by " +
                                     "method " + method.getName() + " is not a known model type."
                     );
             }
@@ -191,49 +192,57 @@ final class TableField {
                             "of " + Val.class.getName() + " or " + Vals.class.getName() + " with one type parameter"
             );
 
-        _allowNull = Model.class.isAssignableFrom(_propertyValueType);
+        allowNull = Model.class.isAssignableFrom(propertyValueType);
+        return new TableField(
+                method,
+                ownerModelClass,
+                propertyType,
+                propertyValueType,
+                kind,
+                allowNull
+            );
     }
 
     public String getName() {
-        if ( _kind == FieldKind.FOREIGN_KEY )
-            return ModelTable.FK_PREFIX + _method.getName() + ModelTable.FK_POSTFIX;
-        return _method.getName();
+        if ( kind == FieldKind.FOREIGN_KEY )
+            return ModelTable.FK_PREFIX + method.getName() + ModelTable.FK_POSTFIX;
+        return method.getName();
     }
 
     public String getMethodName() {
-        return _method.getName();
+        return method.getName();
     }
 
     public boolean isField(String name) {
-        return _method.getName().equals(name);
+        return method.getName().equals(name);
     }
 
     public Class<?> getType() {
-        return _propertyValueType;
+        return propertyValueType;
     }
 
     public Class<?> getPropType() {
-        return _propertyType;
+        return propertyType;
     }
 
     public boolean isList() {
-        return Vals.class.isAssignableFrom(_propertyType);
+        return Vals.class.isAssignableFrom(propertyType);
     }
 
     public FieldKind getKind() {
-        return _kind;
+        return kind;
     }
 
     public boolean requiresIntermediateTable() {
-        return _kind == FieldKind.INTERMEDIATE_TABLE;
+        return kind == FieldKind.INTERMEDIATE_TABLE;
     }
 
     public boolean isForeignKey() {
-        return _kind == FieldKind.FOREIGN_KEY;
+        return kind == FieldKind.FOREIGN_KEY;
     }
 
     public String toTableFieldStatement() {
-        return getName() + " " + AbstractDataBase._fromJavaTypeToDBType(_propertyValueType);
+        return getName() + " " + AbstractDataBase._fromJavaTypeToDBType(propertyValueType);
     }
 
     public Optional<ModelTable> getIntermediateTable() {
@@ -241,7 +250,7 @@ final class TableField {
             return Optional.of(new ModelTable() {
                 @Override
                 public String getTableName() {
-                    return AbstractDataBase._nameFromClass(_ownerModelClass) + "__" + TableField.this.getName() + INTER_TABLE_POSTFIX;
+                    return AbstractDataBase._nameFromClass(ownerModelClass) + "__" + TableField.this.getName() + INTER_TABLE_POSTFIX;
                 }
 
                 @Override
@@ -251,8 +260,8 @@ final class TableField {
 
                 @Override
                 public List<Class<? extends Model<?>>> getReferencedModels() {
-                    Class<?> thisTableClass = TableField.this._method.getDeclaringClass();
-                    Class<?> otherTableClass = TableField.this._propertyValueType;
+                    Class<?> thisTableClass = TableField.this.method.getDeclaringClass();
+                    Class<?> otherTableClass = TableField.this.propertyValueType;
                     return Arrays.asList((Class<? extends Model<?>>) thisTableClass, (Class<? extends Model<?>>) otherTableClass);
                 }
 
@@ -264,8 +273,8 @@ final class TableField {
                         - foreign_key pointing to the model table of the model to which the list belongs
                         - foreign_key pointing to the model of the property type of the list
                      */
-                    Class<?> thisTableClass = TableField.this._method.getDeclaringClass();
-                    Class<?> otherTableClass = TableField.this._propertyValueType;
+                    Class<?> thisTableClass = TableField.this.method.getDeclaringClass();
+                    Class<?> otherTableClass = TableField.this.propertyValueType;
                     String thisTable = AbstractDataBase._tableNameFromClass(thisTableClass);
                     String otherTable = AbstractDataBase._tableNameFromClass(otherTableClass);
                     return "CREATE TABLE " + getTableName() + " (\n" +
@@ -290,19 +299,17 @@ final class TableField {
     public ProxyRef<Val<Object>> asProperty(SQLiteDataBase db, int id, boolean eager ) {
         var prop = new ModelProperty(
                         db, id, this.getName(),
-                        AbstractDataBase._tableNameFromClass(_ownerModelClass),
-                        _propertyValueType,
-                        _allowNull,
+                        AbstractDataBase._tableNameFromClass(ownerModelClass),
+                propertyValueType,
+                allowNull,
                         eager
                     );
-
-        Class<?> propertyType = _propertyType;
 
         // Let's check if the property is a Val
         boolean isVal = Val.class.isAssignableFrom(propertyType);
         if (!isVal)
             throw new IllegalArgumentException(
-                    "The return type of the method " + _method.getName() + " is not a subclass " +
+                    "The return type of the method " + method.getName() + " is not a subclass " +
                             "of " + Val.class.getName() + " or " + Vals.class.getName() + " with one type parameter"
             );
 
@@ -372,50 +379,50 @@ final class TableField {
 
     public Optional<String> asSqlColumn() {
         String name = getName();
-        if (!Model.class.isAssignableFrom(_propertyValueType)) {
-            String properties = _allowNull ? "" : " NOT NULL";
+        if (!Model.class.isAssignableFrom(propertyValueType)) {
+            String properties = allowNull ? "" : " NOT NULL";
             if (name.equals(ModelTable.ID))
                 properties += " PRIMARY KEY AUTOINCREMENT";
-            return Optional.of(name + " " + AbstractDataBase._fromJavaTypeToDBType(_propertyValueType) + properties);
-        } else if ( _kind == FieldKind.FOREIGN_KEY) {
-            String otherTable = AbstractDataBase._tableNameFromClass(_propertyValueType);
+            return Optional.of(name + " " + AbstractDataBase._fromJavaTypeToDBType(propertyValueType) + properties);
+        } else if ( kind == FieldKind.FOREIGN_KEY) {
+            String otherTable = AbstractDataBase._tableNameFromClass(propertyValueType);
             return Optional.of(name + " INTEGER REFERENCES " + otherTable + "("+ ModelTable.ID+")");
-        } else if ( _kind == FieldKind.INTERMEDIATE_TABLE) {
+        } else if ( kind == FieldKind.INTERMEDIATE_TABLE) {
             return Optional.empty(); // The field is not a column in the table, but a table itself
         } else
-            throw new IllegalStateException("Unknown field kind: " + _kind);
+            throw new IllegalStateException("Unknown field kind: " + kind);
     }
 
     public Object getDefaultValue() {
-        if ( _kind == FieldKind.FOREIGN_KEY )
+        if ( kind == FieldKind.FOREIGN_KEY )
             return null;
-        else if ( _kind == FieldKind.INTERMEDIATE_TABLE )
+        else if ( kind == FieldKind.INTERMEDIATE_TABLE )
             return null;
-        else if ( _kind == FieldKind.PRIMITIVE) {
-            if ( _propertyValueType == String.class )
+        else if ( kind == FieldKind.PRIMITIVE) {
+            if ( propertyValueType == String.class )
                 return "";
-            else if ( _propertyValueType == Integer.class )
+            else if ( propertyValueType == Integer.class )
                 return 0;
-            else if ( _propertyValueType == Double.class )
+            else if ( propertyValueType == Double.class )
                 return 0.0;
-            else if ( _propertyValueType == Boolean.class )
+            else if ( propertyValueType == Boolean.class )
                 return false;
-            else if ( _propertyValueType == Long.class )
+            else if ( propertyValueType == Long.class )
                 return 0L;
-            else if ( _propertyValueType == Float.class )
+            else if ( propertyValueType == Float.class )
                 return 0.0f;
-            else if ( _propertyValueType == Short.class )
+            else if ( propertyValueType == Short.class )
                 return (short) 0;
-            else if ( _propertyValueType == Byte.class )
+            else if ( propertyValueType == Byte.class )
                 return (byte) 0;
-            else if ( Enum.class.isAssignableFrom(_propertyValueType) )
-                return _propertyValueType.getEnumConstants()[0];
+            else if ( Enum.class.isAssignableFrom(propertyValueType) )
+                return propertyValueType.getEnumConstants()[0];
             else
-                throw new IllegalStateException( "Unknown property type: " + _propertyValueType );
-        } else if ( _kind == FieldKind.ID ) {
+                throw new IllegalStateException( "Unknown property type: " + propertyValueType);
+        } else if ( kind == FieldKind.ID ) {
             return 1;
         } else
-            throw new IllegalStateException("Unknown field kind: " + _kind);
+            throw new IllegalStateException("Unknown field kind: " + kind);
     }
 
     public ProxyRef<Vals<Object>> asProperties( SQLiteDataBase db, int id, boolean eager ) {
@@ -435,14 +442,14 @@ final class TableField {
             throw new IllegalStateException("The intermediate table does not exist");
 
 
-        Vars<Object> vars = new ModelProperties(db, _ownerModelClass, _propertyValueType, intermediateTable, id, eager);
+        Vars<Object> vars = new ModelProperties(db, ownerModelClass, propertyValueType, intermediateTable, id, eager);
 
         // Let's create the proxy:
         return new ProxyRef<>((Vals<Object>) Proxy.newProxyInstance(
-                        _propertyType.getClassLoader(),
-                        new Class[]{_propertyType, Viewables.class},
+                        propertyType.getClassLoader(),
+                        new Class[]{propertyType, Viewables.class},
                         (proxy, method, args) -> {
-                            return _handleInvocation(proxy, method, args, vars, _propertyType);
+                            return _handleInvocation(proxy, method, args, vars, propertyType);
                         }
                     ),
                     vars
@@ -450,7 +457,7 @@ final class TableField {
     }
 
     @Override public String toString() {
-        return "TableField[" + "name=" + getName() + ", type=" + _propertyValueType + ", kind=" + _kind + ']';
+        return "TableField[" + "name=" + getName() + ", type=" + propertyValueType + ", kind=" + kind + ']';
     }
 
 }

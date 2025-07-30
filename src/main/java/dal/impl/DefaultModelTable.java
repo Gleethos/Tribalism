@@ -85,14 +85,14 @@ final class DefaultModelTable implements ModelTable
                         "not allowed to be called \""+ ModelTable.ID+"\", " +
                         "because that name is already reserved for the internal table entry id!"
                     );
-                fields.add(new TableField(method, modelInterface, otherModels));
+                fields.add(TableField.of(method, modelInterface, otherModels));
             }
         }
         // Now we add the id field
         Class<Model> modelClass = Model.class;
         try {
             Method idMethod = modelClass.getMethod(ModelTable.ID);
-            fields.add(0, new TableField(idMethod, modelInterface, otherModels));
+            fields.add(0, TableField.of(idMethod, modelInterface, otherModels));
         } catch (NoSuchMethodException | SecurityException e) {
             throw new RuntimeException(e);
         }
