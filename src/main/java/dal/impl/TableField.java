@@ -6,9 +6,6 @@ import sprouts.*;
 import java.lang.invoke.MethodHandles;
 import java.lang.invoke.MethodType;
 import java.lang.reflect.*;
-import java.util.Arrays;
-import java.util.Collections;
-import java.util.List;
 import java.util.Optional;
 
 record TableField(
@@ -247,51 +244,7 @@ record TableField(
 
     public Optional<ModelTable> getIntermediateTable() {
         if (requiresIntermediateTable())
-            return Optional.of(new ModelTable() {
-                @Override
-                public String getTableName() {
-                    return AbstractDataBase._nameFromClass(ownerModelClass) + "__" + TableField.this.getName() + INTER_TABLE_POSTFIX;
-                }
-
-                @Override
-                public List<TableField> getFields() {
-                    return Collections.emptyList();
-                }
-
-                @Override
-                public List<Class<? extends Model<?>>> getReferencedModels() {
-                    Class<?> thisTableClass = TableField.this.method.getDeclaringClass();
-                    Class<?> otherTableClass = TableField.this.propertyValueType;
-                    return Arrays.asList((Class<? extends Model<?>>) thisTableClass, (Class<? extends Model<?>>) otherTableClass);
-                }
-
-                @Override
-                public String createTableStatement() {
-                    /*
-                        Simple:
-                        - id
-                        - foreign_key pointing to the model table of the model to which the list belongs
-                        - foreign_key pointing to the model of the property type of the list
-                     */
-                    Class<?> thisTableClass = TableField.this.method.getDeclaringClass();
-                    Class<?> otherTableClass = TableField.this.propertyValueType;
-                    String thisTable = AbstractDataBase._tableNameFromClass(thisTableClass);
-                    String otherTable = AbstractDataBase._tableNameFromClass(otherTableClass);
-                    return "CREATE TABLE " + getTableName() + " (\n" +
-                            "    id INTEGER PRIMARY KEY AUTOINCREMENT,\n" +
-                            "    " + ModelTable.INTER_LEFT_FK_PREFIX + thisTable + ModelTable.INTER_FK_POSTFIX + " INTEGER NOT NULL,\n" +
-                            "    " + ModelTable.INTER_RIGHT_FK_PREFIX + otherTable + ModelTable.INTER_FK_POSTFIX + " INTEGER NOT NULL,\n" +
-                            "    FOREIGN KEY (" + ModelTable.INTER_LEFT_FK_PREFIX + thisTable + ModelTable.INTER_FK_POSTFIX + ") REFERENCES " + thisTable + "(id),\n" +
-                            "    FOREIGN KEY (" + ModelTable.INTER_RIGHT_FK_PREFIX + otherTable + ModelTable.INTER_FK_POSTFIX + ") REFERENCES " + otherTable + "(id)\n" +
-                            ");";
-                }
-
-                @Override
-                public List<Object> getDefaultValues() {
-                    throw new UnsupportedOperationException("An intermediate table does not have default values");
-                }
-
-            });
+            return Optional.of(new IntermediateTable(this));
         else
             return Optional.empty();
     }
