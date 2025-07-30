@@ -1,6 +1,7 @@
 package dal.impl;
 
 import dal.api.Model;
+import sprouts.Tuple;
 
 import java.lang.reflect.Method;
 import java.lang.reflect.ParameterizedType;
@@ -14,7 +15,7 @@ final class DefaultModelTable implements ModelTable
 
     DefaultModelTable(
         Class<? extends Model<?>> modelInterface,
-        List<Class<? extends Model<?>>> otherModels
+        Tuple<Class<? extends Model<?>>> otherModels
     ) {
         // We expect something like this:
         /*

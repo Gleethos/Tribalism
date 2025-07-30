@@ -1,6 +1,7 @@
 package dal.impl;
 
 import dal.api.Model;
+import sprouts.Tuple;
 
 import java.lang.ref.WeakReference;
 import java.util.*;
@@ -26,11 +27,11 @@ final class ModelRegistry
             modelTable.getModelInterface().ifPresent(modelInterface -> distinct.add(modelInterface));
 
         distinct.addAll(modelInterfaces);
-        modelInterfaces = new ArrayList<>(distinct);
+        var finalModelInterfaces = (Tuple<Class<? extends Model<?>>>) ((Tuple) Tuple.of(Class.class)).addAll(distinct);
 
         Map<String, ModelTable> newModelTables = new LinkedHashMap<>();
-        for (Class<? extends Model<?>> modelInterface : modelInterfaces) {
-            ModelTable modelTable = new DefaultModelTable(modelInterface, modelInterfaces);
+        for (Class<? extends Model<?>> modelInterface : finalModelInterfaces) {
+            ModelTable modelTable = new DefaultModelTable(modelInterface, finalModelInterfaces);
             newModelTables.put(modelTable.getTableName(), modelTable);
             modelTable.getFields().forEach(
                     f -> f.getIntermediateTable().ifPresent(

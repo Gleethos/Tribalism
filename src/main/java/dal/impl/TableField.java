@@ -24,7 +24,7 @@ record TableField(
     public static TableField of(
         final Method method, // The method from the model class
         final Class<? extends Model<?>> ownerModelClass, // The model class
-        final List<Class<? extends Model<?>>> otherModels
+        final Tuple<Class<? extends Model<?>>> otherModels
     ) {
         final Class<?> propertyType = method.getReturnType(); // The type of the property and return type of the method
         Class<?> propertyValueType; // The type of the property value
@@ -136,7 +136,7 @@ record TableField(
         // Then we check if the field is a foreign key field
         else if ( isSubTypeOfVal ) {
             if (Model.class.isAssignableFrom(propertyValueType)) {
-                if (otherModels.contains(propertyValueType)) {
+                if (otherModels.contains((Class<? extends Model<?>>) propertyValueType)) {
                     kind = FieldKind.FOREIGN_KEY;
                 } else
                     throw new IllegalArgumentException(
@@ -173,7 +173,7 @@ record TableField(
         }
         // Then we check if the field is an intermediate table field
         else if (isSubTypeOfVals) {
-            if (otherModels.contains(propertyValueType)) {
+            if (otherModels.contains((Class<? extends Model<?>>) propertyValueType)) {
                 kind = FieldKind.INTERMEDIATE_TABLE;
             } else {
                 if (AbstractDataBase._isBasicDataType(propertyValueType))
