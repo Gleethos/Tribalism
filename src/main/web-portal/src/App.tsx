@@ -8,8 +8,8 @@ import RegisterView from './views/RegisterView';
 import FatalErrorView from "./views/FatalErrorView";
 import UserView from "./views/UserView";
 
-
-const backend = Backend.at('ws://localhost:8080/websocket');
+const currentPort = window.location.port;
+const backend = Backend.at('ws://localhost:'+currentPort+'/websocket');
 
 function App() {
   const [content, setContent] = useState<any>(null);
