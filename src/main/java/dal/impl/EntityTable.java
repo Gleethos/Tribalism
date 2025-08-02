@@ -2,10 +2,12 @@ package dal.impl;
 
 import dal.api.DataBaseEntity;
 import dal.api.Model;
+import org.jspecify.annotations.NullMarked;
 import sprouts.Tuple;
 
 import java.util.Optional;
 
+@NullMarked
 sealed interface EntityTable permits ModelTable, IntermediateTable
 {
     String INTER_TABLE_POSTFIX = "_list_table";

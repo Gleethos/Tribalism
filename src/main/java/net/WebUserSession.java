@@ -238,7 +238,11 @@ public class WebUserSession
         // -> We want this to be executed on the application thread, but how?
         boolean returnsNothing = method.getReturnType().equals(Void.TYPE);
         if ( returnsNothing )
-            EventProcessor.DECOUPLED.registerAppEvent(invoker::get); // Just send it to the app thread
+            EventProcessor.DECOUPLED.registerAppEvent(()->{
+                var o = invoker.get();
+                if ( o != null )
+                    log.error("Method {} returned void", method);
+            }); // Just send it to the app thread
         else {
             Object[] resultHolder = new Object[1];
             EventProcessor.DECOUPLED.registerAndRunAppEventNow(() -> resultHolder[0] = invoker.get()); // We need to wait for the result!

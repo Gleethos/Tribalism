@@ -3,6 +3,8 @@ package dal.impl;
 import dal.api.DataBaseEntity;
 import dal.api.Model;
 import dal.api.Value;
+import org.jspecify.annotations.NullMarked;
+import org.jspecify.annotations.Nullable;
 import sprouts.*;
 
 import java.lang.invoke.MethodHandles;
@@ -10,6 +12,7 @@ import java.lang.invoke.MethodType;
 import java.lang.reflect.*;
 import java.util.Optional;
 
+@NullMarked
 record TableField(
     Method method, // The method from the model class
     Class<? extends DataBaseEntity> ownerModelClass, // The model class
@@ -414,7 +417,7 @@ record TableField(
             throw new IllegalStateException("Unknown field kind: " + kind);
     }
 
-    public Object getDefaultValue() {
+    public @Nullable Object getDefaultValue() {
         if ( kind == FieldKind.FOREIGN_KEY )
             return null;
         else if ( kind == FieldKind.INTERMEDIATE_TABLE )

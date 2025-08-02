@@ -1,5 +1,7 @@
 package dal.impl;
 
+import org.jspecify.annotations.NullMarked;
+import org.jspecify.annotations.Nullable;
 import sprouts.Tuple;
 
 import java.lang.reflect.InvocationHandler;
@@ -24,10 +26,11 @@ import java.util.function.Function;
  *                  .asList()
  *  }</pre>
  */
+@NullMarked
 final class PropertySelectionProxy implements InvocationHandler
 {
     private final EntityTable _modelTable;
-    private TableField _selection = null;
+    private @Nullable TableField _selection = null;
 
     public PropertySelectionProxy(EntityTable modelTable) {
         _modelTable = modelTable;

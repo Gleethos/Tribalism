@@ -612,12 +612,13 @@ public final class SQLiteDataBase extends AbstractDataBase
         Class<M> model
     ) {
         var propSelector = new PropertySelectionProxy(_getTableFor(model));
-        selector.apply((M) Proxy.newProxyInstance(
+        var selection = selector.apply((M) Proxy.newProxyInstance(
                                 model.getClassLoader(),
                                 new Class<?>[]{model},
                                 propSelector
                             ));
-
+        if ( selection != null )
+            log.error("Selection is null!", new Throwable());
         return propSelector.getSelection().orElseThrow();
     }
 

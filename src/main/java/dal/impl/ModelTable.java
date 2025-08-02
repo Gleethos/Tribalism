@@ -2,6 +2,7 @@ package dal.impl;
 
 import dal.api.DataBaseEntity;
 import dal.api.Model;
+import org.jspecify.annotations.NullMarked;
 import sprouts.Tuple;
 
 import java.lang.reflect.Method;
@@ -9,6 +10,7 @@ import java.lang.reflect.ParameterizedType;
 import java.lang.reflect.Type;
 import java.util.*;
 
+@NullMarked
 record ModelTable(
     Tuple<TableField> fields,
     Class<? extends Model<?>> modelInterface

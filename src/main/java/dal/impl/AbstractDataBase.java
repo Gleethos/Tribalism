@@ -2,6 +2,8 @@ package dal.impl;
 
 import dal.api.DataBase;
 import dal.api.DataBaseProcessor;
+import org.jspecify.annotations.NullMarked;
+import org.jspecify.annotations.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -11,6 +13,7 @@ import java.sql.*;
 import java.util.*;
 import java.util.function.Consumer;
 
+@NullMarked
 abstract class AbstractDataBase implements DataBase {
 
     private final static Logger _LOG = LoggerFactory.getLogger(AbstractDataBase.class);
@@ -192,15 +195,15 @@ abstract class AbstractDataBase implements DataBase {
         return pstmt;
     }
 
-    protected void _for(String sql, Consumer<ResultSet> start, Consumer<ResultSet> each)
+    protected void _for(String sql, @Nullable Consumer<ResultSet> start, Consumer<ResultSet> each)
     {
         _for(sql, null, start, each);
     }
 
     protected void _for(
             String sql,
-            List<Object> values,
-            Consumer<ResultSet> start,
+            @Nullable List<Object> values,
+            @Nullable Consumer<ResultSet> start,
             Consumer<ResultSet> each
     ){
         if (values!=null && !values.isEmpty()){
@@ -254,7 +257,7 @@ abstract class AbstractDataBase implements DataBase {
         return _query(sql, null);
     }
 
-    protected Map<String, List<Object>> _query(String sql, List<Object> values){
+    protected Map<String, List<Object>> _query(String sql, @Nullable List<Object> values){
         Map<String, List<Object>> result = new LinkedHashMap<>();
         _processor.processNow(()->{
             _for(
@@ -277,48 +280,48 @@ abstract class AbstractDataBase implements DataBase {
                                 ResultSetMetaData rsmd = rs.getMetaData();
                                 String column_name = rsmd.getColumnName(i);
                                 if(rsmd.getColumnType(i)==java.sql.Types.ARRAY) {
-                                    result.get(column_name).add(rs.getArray(column_name));
+                                    Objects.requireNonNull(result.get(column_name)).add(rs.getArray(column_name));
                                 }
                                 else if(rsmd.getColumnType(i)==java.sql.Types.BIGINT) {
-                                    result.get(column_name).add(rs.getInt(column_name));
+                                    Objects.requireNonNull(result.get(column_name)).add(rs.getInt(column_name));
                                 }
                                 else if(rsmd.getColumnType(i)==java.sql.Types.BOOLEAN) {
-                                    result.get(column_name).add(rs.getBoolean(column_name));
+                                    Objects.requireNonNull(result.get(column_name)).add(rs.getBoolean(column_name));
                                 }
                                 else if(rsmd.getColumnType(i)==java.sql.Types.BLOB) {
-                                    result.get(column_name).add(rs.getBlob(column_name));
+                                    Objects.requireNonNull(result.get(column_name)).add(rs.getBlob(column_name));
                                 }
                                 else if(rsmd.getColumnType(i)==java.sql.Types.DOUBLE) {
-                                    result.get(column_name).add(rs.getDouble(column_name));
+                                    Objects.requireNonNull(result.get(column_name)).add(rs.getDouble(column_name));
                                 }
                                 else if(rsmd.getColumnType(i)==java.sql.Types.FLOAT) {
-                                    result.get(column_name).add(rs.getFloat(column_name));
+                                    Objects.requireNonNull(result.get(column_name)).add(rs.getFloat(column_name));
                                 }
                                 else if(rsmd.getColumnType(i)==java.sql.Types.INTEGER) {
-                                    result.get(column_name).add(rs.getInt(column_name));
+                                    Objects.requireNonNull(result.get(column_name)).add(rs.getInt(column_name));
                                 }
                                 else if(rsmd.getColumnType(i)==java.sql.Types.NVARCHAR) {
-                                    result.get(column_name).add(rs.getNString(column_name));
+                                    Objects.requireNonNull(result.get(column_name)).add(rs.getNString(column_name));
                                 }
                                 else if(rsmd.getColumnType(i)==java.sql.Types.VARCHAR) {
-                                    result.get(column_name).add(rs.getString(column_name));
+                                    Objects.requireNonNull(result.get(column_name)).add(rs.getString(column_name));
                                 }
                                 else if(rsmd.getColumnType(i)==java.sql.Types.TINYINT) {
-                                    result.get(column_name).add(rs.getInt(column_name));
+                                    Objects.requireNonNull(result.get(column_name)).add(rs.getInt(column_name));
                                 }
                                 else if(rsmd.getColumnType(i)==java.sql.Types.SMALLINT) {
-                                    result.get(column_name).add(rs.getInt(column_name));
+                                    Objects.requireNonNull(result.get(column_name)).add(rs.getInt(column_name));
                                 }
                                 else if(rsmd.getColumnType(i)==java.sql.Types.DATE) {
                                     String date = rs.getString(column_name);
-                                    result.get(column_name).add((date==null)?null:Date.valueOf(date));
+                                    Objects.requireNonNull(result.get(column_name)).add((date==null)?null:Date.valueOf(date));
                                     //result.get(column_name).add(rs.getDate(column_name));
                                     //rs.getTimestamp(column_name);
                                 }
                                 else if(rsmd.getColumnType(i)==java.sql.Types.TIMESTAMP){
-                                    result.get(column_name).add(rs.getTimestamp(column_name));
+                                    Objects.requireNonNull(result.get(column_name)).add(rs.getTimestamp(column_name));
                                 } else {
-                                    result.get(column_name).add(rs.getObject(column_name));
+                                    Objects.requireNonNull(result.get(column_name)).add(rs.getObject(column_name));
                                 }
                             }
                         }

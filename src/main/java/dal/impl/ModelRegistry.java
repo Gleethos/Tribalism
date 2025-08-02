@@ -3,6 +3,7 @@ package dal.impl;
 import dal.api.DataBaseEntity;
 import dal.api.Model;
 import dal.api.Value;
+import org.jspecify.annotations.NullMarked;
 import sprouts.Association;
 import sprouts.Tuple;
 
@@ -10,6 +11,7 @@ import java.lang.ref.WeakReference;
 import java.util.*;
 import java.util.stream.Collectors;
 
+@NullMarked
 final class ModelRegistry
 {
     private Association<String, EntityTable> modelTables = Association.betweenLinked(String.class, EntityTable.class);
@@ -111,6 +113,7 @@ final class ModelRegistry
 
         for (Class<?> model : sortedModels) {
             EntityTable modelTable = newModelTables.get(AbstractDataBase._tableNameFromClass(model));
+            Objects.requireNonNull(modelTable, "No table found for model class '" + model + "'");
             modelTables = modelTables.put(modelTable.getTableName(), modelTable);
         }
 

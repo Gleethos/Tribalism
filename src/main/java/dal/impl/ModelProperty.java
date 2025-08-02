@@ -1,6 +1,8 @@
 package dal.impl;
 
 import dal.api.Model;
+import org.jspecify.annotations.NullMarked;
+import org.jspecify.annotations.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import sprouts.*;
@@ -11,6 +13,7 @@ import sprouts.impl.Sprouts;
 
 import java.util.*;
 
+@NullMarked
 final class ModelProperty implements Var<Object>, Viewable<Object>
 {
     private static final Logger log = LoggerFactory.getLogger(ModelProperty.class);
@@ -22,7 +25,7 @@ final class ModelProperty implements Var<Object>, Viewable<Object>
     private final Class<?> _propertyValueType;
     private final boolean _allowNull;
     private final boolean _isEager;
-    private Object _value;
+    private @Nullable Object _value;
     private boolean _wasSet = false;
 
     // Observers:
@@ -47,7 +50,7 @@ final class ModelProperty implements Var<Object>, Viewable<Object>
     }
 
     @Override
-    public Object orElseNull()
+    public @Nullable Object orElseNull()
     {
         if ( _wasSet && !_isEager ) return _value;
 
@@ -61,6 +64,7 @@ final class ModelProperty implements Var<Object>, Viewable<Object>
             return null;
         else {
             List<Object> queryResultColumn = result.get(_fieldName);
+            Objects.requireNonNull(queryResultColumn, "Query result column was empty");
             if (queryResultColumn.isEmpty())
                 throw new IllegalStateException("Failed to find table entry for id " + _id);
             else if (queryResultColumn.size() > 1)
@@ -200,7 +204,7 @@ final class ModelProperty implements Var<Object>, Viewable<Object>
         return _wasSet;
     }
 
-    Object getSetVal() {
+    @Nullable Object getSetVal() {
         return _value;
     }
 

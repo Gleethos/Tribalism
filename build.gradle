@@ -2,6 +2,8 @@ plugins {
     id 'groovy'
     id 'java'
     id "com.github.node-gradle.node" version "3.5.1"
+    // For static null checking:
+    id "net.ltgt.errorprone" version "3.1.0"
 }
 
 group 'org.gleethos'
@@ -18,6 +20,14 @@ repositories {
 }
 
 dependencies {
+
+    // JSpecify
+    errorprone "com.uber.nullaway:nullaway:0.10.25"
+    compileOnly "com.google.code.findbugs:jsr305:3.0.2"
+    errorprone "com.google.errorprone:error_prone_core:2.27.0"
+    implementation group: 'com.google.errorprone', name: 'error_prone_annotations', version: '2.27.0'
+    implementation 'org.jspecify:jspecify:1.0.0'
+
 
     implementation 'javax.websocket:javax.websocket-api:1.1'
     implementation 'org.eclipse.jetty:jetty-servlet:9.4.29.v20200521'
@@ -61,6 +71,21 @@ dependencies {
     testImplementation group: 'org.gebish', name: 'geb-spock', version: '5.1'
     testImplementation group: 'org.seleniumhq.selenium', name: 'selenium-firefox-driver', version: '4.8.0'
 
+}
+
+tasks.withType(JavaCompile) {
+    // remove the if condition if you want to run NullAway on test code
+    if (!name.toLowerCase().contains("test")) {
+        options.errorprone {
+            check("NullAway", net.ltgt.gradle.errorprone.CheckSeverity.ERROR)
+            option("NullAway:AnnotatedPackages", "")
+        }
+    } else {
+        options.errorprone {
+            check("NullAway", net.ltgt.gradle.errorprone.CheckSeverity.WARN)
+            option("NullAway:AnnotatedPackages", "")
+        }
+    }
 }
 
 // Read more about how to configure the plugin from

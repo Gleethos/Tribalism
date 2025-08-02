@@ -1,12 +1,14 @@
 package dal.impl;
 
 import dal.api.Model;
+import org.jspecify.annotations.NullMarked;
 import sprouts.*;
 import sprouts.Observable;
 import sprouts.Observer;
 
 import java.util.*;
 
+@NullMarked
 public final class ModelProperties implements Vars<Object>, Viewables<Object>
 {
     private final SQLiteDataBase db;

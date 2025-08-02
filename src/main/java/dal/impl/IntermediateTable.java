@@ -2,10 +2,12 @@ package dal.impl;
 
 import dal.api.DataBaseEntity;
 import dal.api.Model;
+import org.jspecify.annotations.NullMarked;
 import sprouts.Tuple;
 
 import java.util.Objects;
 
+@NullMarked
 record IntermediateTable(TableField tableField) implements EntityTable {
 
     @Override

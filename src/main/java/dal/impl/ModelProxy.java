@@ -1,6 +1,8 @@
 package dal.impl;
 
 import dal.api.Model;
+import org.jspecify.annotations.NullMarked;
+import org.jspecify.annotations.Nullable;
 import sprouts.Val;
 import sprouts.Vals;
 import sprouts.Var;
@@ -14,6 +16,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.function.Consumer;
 
+@NullMarked
 final class ModelProxy<T extends Model<T>> implements InvocationHandler {
     private final SQLiteDataBase _dataBase;
     private final ModelTable _modelTable;
@@ -34,7 +37,7 @@ final class ModelProxy<T extends Model<T>> implements InvocationHandler {
     }
 
     @Override
-    public Object invoke(Object proxy, Method method, Object[] args) throws Throwable {
+    public @Nullable Object invoke(Object proxy, Method method, Object[] args) throws Throwable {
         String methodName = method.getName();
 
         /*
