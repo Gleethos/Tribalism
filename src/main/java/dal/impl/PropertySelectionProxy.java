@@ -1,5 +1,7 @@
 package dal.impl;
 
+import sprouts.Tuple;
+
 import java.lang.reflect.InvocationHandler;
 import java.lang.reflect.Method;
 import java.util.List;
@@ -38,7 +40,7 @@ final class PropertySelectionProxy implements InvocationHandler
             Method method,
             Object[] args
     ) throws Throwable {
-        List<TableField> fields = _modelTable.getFields();
+        Tuple<TableField> fields = _modelTable.getFields();
         for (TableField field : fields) {
             if (field.getMethodName().equals(method.getName())) {
                 _selection = field;

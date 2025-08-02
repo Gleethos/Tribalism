@@ -1,9 +1,9 @@
 package dal.impl;
 
 import dal.api.Model;
+import sprouts.Tuple;
 
 import java.util.Arrays;
-import java.util.Collections;
 import java.util.List;
 
 record IntermediateTable(TableField tableField) implements ModelTable {
@@ -14,8 +14,8 @@ record IntermediateTable(TableField tableField) implements ModelTable {
     }
 
     @Override
-    public List<TableField> getFields() {
-        return Collections.emptyList();
+    public Tuple<TableField> getFields() {
+        return Tuple.of(TableField.class);
     }
 
     @Override

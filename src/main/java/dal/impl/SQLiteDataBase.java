@@ -2,6 +2,7 @@ package dal.impl;
 
 import dal.api.*;
 import org.slf4j.Logger;
+import sprouts.Tuple;
 import sprouts.Val;
 import sprouts.Vars;
 
@@ -244,7 +245,7 @@ public final class SQLiteDataBase extends AbstractDataBase
 
         // Now let's create the model
         ModelTable modelTable      = _getTableFor(model);
-        List<TableField> fields    = modelTable.getFields();
+        Tuple<TableField> fields   = modelTable.getFields();
         List<Object> defaultValues = modelTable.getDefaultValues();
         List<String> fieldNames    = fields.stream().map(TableField::getName).collect(Collectors.toList());
         /*

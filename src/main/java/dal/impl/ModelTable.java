@@ -1,11 +1,12 @@
 package dal.impl;
 
 import dal.api.Model;
+import sprouts.Tuple;
 
 import java.util.List;
 import java.util.Optional;
 
-interface ModelTable
+sealed interface ModelTable permits DefaultModelTable, IntermediateTable
 {
     String INTER_TABLE_POSTFIX = "_list_table";
     String INTER_LEFT_FK_PREFIX = "fk_self_";
@@ -18,7 +19,7 @@ interface ModelTable
 
     String getTableName();
 
-    List<TableField> getFields();
+    Tuple<TableField> getFields();
 
     default TableField getField(String name) {
         for (TableField field : getFields()) {

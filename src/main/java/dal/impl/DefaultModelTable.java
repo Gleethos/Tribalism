@@ -10,7 +10,7 @@ import java.util.*;
 
 final class DefaultModelTable implements ModelTable
 {
-    private final TableField[] fields;
+    private final Tuple<TableField> fields;
     private final Class<? extends Model<?>> modelInterface;
 
     DefaultModelTable(
@@ -121,7 +121,7 @@ final class DefaultModelTable implements ModelTable
             return firstKind.compareTo(secondKind);
         });
 
-        this.fields = sortedFields.toArray(new TableField[0]);
+        this.fields = Tuple.of(TableField.class, sortedFields);
         this.modelInterface = modelInterface;
     }
 
@@ -131,8 +131,8 @@ final class DefaultModelTable implements ModelTable
     }
 
     @Override
-    public List<TableField> getFields() {
-        return Arrays.asList(fields);
+    public Tuple<TableField> getFields() {
+        return fields;
     }
 
     @Override
