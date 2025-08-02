@@ -2,6 +2,7 @@ package dal.impl;
 
 import dal.api.DataBaseEntity;
 import dal.api.Model;
+import dal.api.Value;
 import sprouts.Association;
 import sprouts.Tuple;
 
@@ -35,12 +36,15 @@ final class ModelRegistry
         for (Class<? extends DataBaseEntity> modelInterface : finalModelInterfaces) {
             if ( Model.class.isAssignableFrom(modelInterface) ) {
                 ModelTable modelTable = DefaultModelTable.of((Class<? extends Model<?>>) modelInterface, finalModelInterfaces);
+                Objects.requireNonNull(modelTable, "modelTable");
                 newModelTables.put(modelTable.getTableName(), modelTable);
                 modelTable.getFields().forEach(
                         f -> f.getIntermediateTable().ifPresent(
                                 t -> newModelTables.put(t.getTableName(), t)
                         )
                 );
+            } else if (Value.class.isAssignableFrom(modelInterface)) {
+                // TODO
             }
         }
         /*
@@ -69,7 +73,7 @@ final class ModelRegistry
         List<ModelTable> intermediateTables = new ArrayList<>();
 
         for (ModelTable modelTable : newModelTables.values()) {
-            List<Class<? extends Model<?>>> referencedModels = modelTable.getReferencedModels();
+            Tuple<Class<? extends Model<?>>> referencedModels = modelTable.getReferencedModels();
             List<Class<?>> references = new ArrayList<>();
             for (Class<? extends Model<?>> referencedModel : referencedModels) {
                 if (!referencedModel.equals(modelTable.getModelInterface().orElse(null))) {
@@ -123,13 +127,22 @@ final class ModelRegistry
             Set<ModelTable> currentPath,
             Map<String, ModelTable> newModelTables
     ) {
+        Objects.requireNonNull(modelTable, "modelTable");
         if (visited.contains(modelTable))
             return false;
         if (currentPath.contains(modelTable))
             return true;
         currentPath.add(modelTable);
         for (Class<? extends Model<?>> referencedModel : modelTable.getReferencedModels()) {
-            if (_hasCycle(newModelTables.get(AbstractDataBase._tableNameFromClass(referencedModel)), visited, currentPath, newModelTables))
+            var tableName = AbstractDataBase._tableNameFromClass(referencedModel);
+            var foundTable = newModelTables.get(tableName);
+            if ( foundTable == null ) {
+                throw new IllegalStateException(
+                        "Internal error detected! Failed to find a table configuration for '" + referencedModel
+                        + "' and table name '" + tableName + "'."
+                    );
+            }
+            if (_hasCycle(foundTable, visited, currentPath, newModelTables))
                 return true;
         }
         currentPath.remove(modelTable);

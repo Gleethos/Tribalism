@@ -136,14 +136,14 @@ record DefaultModelTable(
     }
 
     @Override
-    public List<Class<? extends Model<?>>> getReferencedModels() {
+    public Tuple<Class<? extends Model<?>>> getReferencedModels() {
         List<Class<? extends Model<?>>> referencedModels = new ArrayList<>();
         for (TableField field : fields) {
             if (field.isForeignKey()) {
                 referencedModels.add((Class<? extends Model<?>>) field.getType());
             }
         }
-        return referencedModels;
+        return ((Tuple)Tuple.of(Class.class)).addAll(referencedModels);
     }
 
     @Override
@@ -169,7 +169,7 @@ record DefaultModelTable(
     }
 
     @Override
-    public List<Object> getDefaultValues() {
+    public Tuple<Object> getDefaultValues() {
         List<Object> defaultValues = new ArrayList<>();
         for (TableField field : fields) {
             if (field.isForeignKey()) {
@@ -178,7 +178,7 @@ record DefaultModelTable(
                 defaultValues.add(field.getDefaultValue());
             }
         }
-        return defaultValues;
+        return Tuple.ofNullable(Object.class, defaultValues);
     }
 
 }

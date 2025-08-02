@@ -244,10 +244,10 @@ public final class SQLiteDataBase extends AbstractDataBase
             throw new IllegalArgumentException("The table for the model '" + model.getName() + "' does not exist!");
 
         // Now let's create the model
-        ModelTable modelTable      = _getTableFor(model);
-        Tuple<TableField> fields   = modelTable.getFields();
-        List<Object> defaultValues = modelTable.getDefaultValues();
-        List<String> fieldNames    = fields.stream().map(TableField::getName).collect(Collectors.toList());
+        ModelTable modelTable       = _getTableFor(model);
+        Tuple<TableField> fields    = modelTable.getFields();
+        Tuple<Object> defaultValues = modelTable.getDefaultValues();
+        List<String> fieldNames     = fields.stream().map(TableField::getName).collect(Collectors.toList());
         /*
             Now there might be a problem here because some model fields might not actually exist
             in the table explicitly. Namely, if the model references multiple other models
@@ -258,7 +258,7 @@ public final class SQLiteDataBase extends AbstractDataBase
             TableField field = fields.get(i);
             if ( field.getKind() == FieldKind.INTERMEDIATE_TABLE ) {
                 fieldNames.remove(i);
-                defaultValues.remove(i);
+                defaultValues = defaultValues.removeAt(i);
             }
         }
 
@@ -275,7 +275,7 @@ public final class SQLiteDataBase extends AbstractDataBase
                     "This is most likely a bug in the TopSoil ORM!"
                 );
         else {
-            defaultValues.remove(idIndex);
+            defaultValues = defaultValues.removeAt(idIndex);
             fieldNames.remove(idIndex);
         }
         String tableName = _tableNameFromClass(model);
@@ -283,7 +283,7 @@ public final class SQLiteDataBase extends AbstractDataBase
                 "INSERT INTO " + tableName +
                 " (" + String.join(", ", fieldNames) + ") " +
                 "VALUES (" + IntStream.range(0, fieldNames.size()).mapToObj(i -> " ? ").collect(Collectors.joining(",")) + ")";
-        boolean success = _update(sql, defaultValues);
+        boolean success = _update(sql, defaultValues.toList());
         if ( !success )
             throw new IllegalArgumentException(
                     "Failed to create create a database entry for model '" + model.getName() + "' " +

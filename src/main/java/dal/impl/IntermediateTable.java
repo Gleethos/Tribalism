@@ -3,8 +3,7 @@ package dal.impl;
 import dal.api.Model;
 import sprouts.Tuple;
 
-import java.util.Arrays;
-import java.util.List;
+import java.util.Objects;
 
 record IntermediateTable(TableField tableField) implements ModelTable {
 
@@ -19,10 +18,12 @@ record IntermediateTable(TableField tableField) implements ModelTable {
     }
 
     @Override
-    public List<Class<? extends Model<?>>> getReferencedModels() {
+    public Tuple<Class<? extends Model<?>>> getReferencedModels() {
         Class<?> thisTableClass = tableField.method().getDeclaringClass();
         Class<?> otherTableClass = tableField.propertyValueType();
-        return Arrays.asList((Class<? extends Model<?>>) thisTableClass, (Class<? extends Model<?>>) otherTableClass);
+        Objects.requireNonNull(thisTableClass);
+        Objects.requireNonNull(otherTableClass);
+        return ((Tuple)Tuple.of(Class.class)).addAll((Class<? extends Model<?>>) thisTableClass, (Class<? extends Model<?>>) otherTableClass);
     }
 
     @Override
@@ -47,7 +48,7 @@ record IntermediateTable(TableField tableField) implements ModelTable {
     }
 
     @Override
-    public List<Object> getDefaultValues() {
+    public Tuple<Object> getDefaultValues() {
         throw new UnsupportedOperationException("An intermediate table does not have default values");
     }
 

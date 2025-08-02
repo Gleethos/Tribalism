@@ -45,7 +45,7 @@ sealed interface ModelTable permits DefaultModelTable, IntermediateTable
         throw new IllegalArgumentException("No field with type " + propertyType.getName() + " found!");
     }
 
-    List<Class<? extends Model<?>>> getReferencedModels();
+    Tuple<Class<? extends Model<?>>> getReferencedModels();
 
     default Optional<Class<? extends Model<?>>> getModelInterface() {
         return Optional.empty();
@@ -53,6 +53,6 @@ sealed interface ModelTable permits DefaultModelTable, IntermediateTable
 
     String createTableStatement();
 
-    List<Object> getDefaultValues();
+    Tuple<Object> getDefaultValues();
 
 }
