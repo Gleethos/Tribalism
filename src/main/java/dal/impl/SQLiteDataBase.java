@@ -14,7 +14,7 @@ import java.util.function.Function;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
-import static dal.impl.ModelTable.INTER_TABLE_POSTFIX;
+import static dal.impl.EntityTable.INTER_TABLE_POSTFIX;
 
 /**
  *  This class constitutes both a representation of a database
@@ -82,7 +82,7 @@ public final class SQLiteDataBase extends AbstractDataBase
     private List<String> getCreateTableStatements() {
         List<String> allExistingTables = listOfAllTableNames();
         List<String> statements = new ArrayList<>();
-        for ( ModelTable modelTable : _modelRegistry.getTables() ) {
+        for ( EntityTable modelTable : _modelRegistry.getTables() ) {
             if ( !allExistingTables.contains(modelTable.getTableName()) )
                 statements.add(modelTable.createTableStatement());
             else {
@@ -163,7 +163,7 @@ public final class SQLiteDataBase extends AbstractDataBase
         return (String) result.get("sql").get(0);
     }
 
-    private ModelTable _getTableFor( Class<? extends Model<?>> model ) {
+    private EntityTable _getTableFor(Class<? extends Model<?>> model ) {
         // First let's verify that the model is indeed a model
         if ( !Model.class.isAssignableFrom(model) )
             throw new IllegalArgumentException("The provided class is not a model!");
@@ -223,7 +223,7 @@ public final class SQLiteDataBase extends AbstractDataBase
             throw new IllegalArgumentException("The model '" + models.getName() + "' does not have a table in the database!");
         if ( result.size() > 1 )
             throw new IllegalArgumentException("There are multiple tables for the model '" + models.getName() + "' in the database!");
-        List<Object> ids = result.get(ModelTable.ID);
+        List<Object> ids = result.get(EntityTable.ID);
 
         List<M> modelsList = new ArrayList<>();
         for ( Object id : ids )
@@ -244,7 +244,7 @@ public final class SQLiteDataBase extends AbstractDataBase
             throw new IllegalArgumentException("The table for the model '" + model.getName() + "' does not exist!");
 
         // Now let's create the model
-        ModelTable modelTable       = _getTableFor(model);
+        EntityTable modelTable       = _getTableFor(model);
         Tuple<TableField> fields    = modelTable.getFields();
         Tuple<Object> defaultValues = modelTable.getDefaultValues();
         List<String> fieldNames     = fields.stream().map(TableField::getName).collect(Collectors.toList());
@@ -264,14 +264,14 @@ public final class SQLiteDataBase extends AbstractDataBase
 
         int idIndex = -1;
         for ( int i = 0; i < fieldNames.size(); i++ )
-            if ( fieldNames.get(i).equals(ModelTable.ID) ) {
+            if ( fieldNames.get(i).equals(EntityTable.ID) ) {
                 idIndex = i;
                 break;
             }
 
         if ( idIndex == -1 )
             throw new IllegalArgumentException(
-                    "The model '" + model.getName() + "' does not have an '"+ ModelTable.ID+"' field. " +
+                    "The model '" + model.getName() + "' does not have an '"+ EntityTable.ID+"' field. " +
                     "This is most likely a bug in the TopSoil ORM!"
                 );
         else {
@@ -326,13 +326,13 @@ public final class SQLiteDataBase extends AbstractDataBase
         String tableName = _tableNameFromClass(modelInterfaceClass);
         // First we clean up usages of the model
         // Now we need to find all the intermediate tables that reference this model
-        List<ModelTable> intermediateTables = _modelRegistry.getIntermediateTableInvolving((Class<? extends Model<?>>) modelInterfaceClass);
+        Tuple<IntermediateTable> intermediateTables = _modelRegistry.getIntermediateTableInvolving((Class<? extends Model<?>>) modelInterfaceClass);
         intermediateTables.forEach( intermTable -> {
             String intermTableName = intermTable.getTableName();
             Class<?> left = intermTable.getReferencedModels().get(0);
             Class<?> right = intermTable.getReferencedModels().get(1);
-            String leftName = ModelTable.INTER_LEFT_FK_PREFIX + _tableNameFromClass(left) + ModelTable.INTER_FK_POSTFIX;
-            String rightName = ModelTable.INTER_RIGHT_FK_PREFIX + _tableNameFromClass(right) + ModelTable.INTER_FK_POSTFIX;
+            String leftName = EntityTable.INTER_LEFT_FK_PREFIX + _tableNameFromClass(left) + EntityTable.INTER_FK_POSTFIX;
+            String rightName = EntityTable.INTER_RIGHT_FK_PREFIX + _tableNameFromClass(right) + EntityTable.INTER_FK_POSTFIX;
             // We need to find all entries where 'fk_..._id' is this 'id'
             // Then we need to find all the referencing (containing "self") models and simply
             // call the right property using reflection and tell it to remove the model...
@@ -376,7 +376,7 @@ public final class SQLiteDataBase extends AbstractDataBase
     public <M extends Model<M>> Where<M> select(Class<M> model) {
         StringBuilder sql = new StringBuilder();
         sql.append("SELECT * FROM ").append(_tableNameFromClass(model)).append(" WHERE ");
-        ModelTable table = _getTableFor(model);
+        EntityTable table = _getTableFor(model);
         List<Object> values = new ArrayList<>();
         Junction[] junc = {null};
         Compare<M, Object> valueCollector = new Compare<>() {
@@ -570,7 +570,7 @@ public final class SQLiteDataBase extends AbstractDataBase
                     sqlString = sqlString.substring(0, sqlString.length()-7);
 
                 Map<String, List<Object>> result = _query(sqlString, values);
-                List<Integer> ids = result.getOrDefault(ModelTable.ID, Collections.emptyList())
+                List<Integer> ids = result.getOrDefault(EntityTable.ID, Collections.emptyList())
                                             .stream()
                                             .map( o -> (int) o )
                                             .toList();

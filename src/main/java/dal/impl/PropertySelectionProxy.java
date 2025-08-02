@@ -4,7 +4,6 @@ import sprouts.Tuple;
 
 import java.lang.reflect.InvocationHandler;
 import java.lang.reflect.Method;
-import java.util.List;
 import java.util.Optional;
 import java.util.function.Function;
 
@@ -27,10 +26,10 @@ import java.util.function.Function;
  */
 final class PropertySelectionProxy implements InvocationHandler
 {
-    private final ModelTable _modelTable;
+    private final EntityTable _modelTable;
     private TableField _selection = null;
 
-    public PropertySelectionProxy(ModelTable modelTable) {
+    public PropertySelectionProxy(EntityTable modelTable) {
         _modelTable = modelTable;
     }
 

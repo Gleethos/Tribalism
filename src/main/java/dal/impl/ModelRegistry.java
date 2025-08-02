@@ -12,7 +12,7 @@ import java.util.stream.Collectors;
 
 final class ModelRegistry
 {
-    private Association<String, ModelTable> modelTables = Association.betweenLinked(String.class, ModelTable.class);
+    private Association<String, EntityTable> modelTables = Association.betweenLinked(String.class, EntityTable.class);
 
     private final Map<String, Map<Integer, WeakReference<ModelProxy<?>>>> modelProxies = new LinkedHashMap<>();
 
@@ -32,10 +32,10 @@ final class ModelRegistry
         distinct.addAll(modelInterfaces);
         var finalModelInterfaces = (Tuple<Class<? extends DataBaseEntity>>) ((Tuple) Tuple.of(Class.class)).addAll(distinct);
 
-        Map<String, ModelTable> newModelTables = new LinkedHashMap<>();
+        Map<String, EntityTable> newModelTables = new LinkedHashMap<>();
         for (Class<? extends DataBaseEntity> modelInterface : finalModelInterfaces) {
             if ( Model.class.isAssignableFrom(modelInterface) ) {
-                ModelTable modelTable = DefaultModelTable.of((Class<? extends Model<?>>) modelInterface, finalModelInterfaces);
+                EntityTable modelTable = ModelTable.of((Class<? extends Model<?>>) modelInterface, finalModelInterfaces);
                 Objects.requireNonNull(modelTable, "modelTable");
                 newModelTables.put(modelTable.getTableName(), modelTable);
                 modelTable.getFields().forEach(
@@ -51,9 +51,9 @@ final class ModelRegistry
             Now we need to check if there are any circular references
             We do this by checking if there are any cycles in the graph of the model tables
          */
-        for (ModelTable modelTable : newModelTables.values()) {
-            Set<ModelTable> visited = new HashSet<>();
-            Set<ModelTable> currentPath = new HashSet<>();
+        for (EntityTable modelTable : newModelTables.values()) {
+            Set<EntityTable> visited = new HashSet<>();
+            Set<EntityTable> currentPath = new HashSet<>();
             if (_hasCycle(modelTable, visited, currentPath, newModelTables))
                 throw new IllegalArgumentException(
                         "The model " + modelTable.getTableName() + " has a circular reference!"
@@ -70,9 +70,9 @@ final class ModelRegistry
         */
         List<Class<?>> sortedModels = new ArrayList<>();
         Map<Class<?>, List<Class<?>>> modelReferences = new LinkedHashMap<>();
-        List<ModelTable> intermediateTables = new ArrayList<>();
+        List<EntityTable> intermediateTables = new ArrayList<>();
 
-        for (ModelTable modelTable : newModelTables.values()) {
+        for (EntityTable modelTable : newModelTables.values()) {
             Tuple<Class<? extends Model<?>>> referencedModels = modelTable.getReferencedModels();
             List<Class<?>> references = new ArrayList<>();
             for (Class<? extends Model<?>> referencedModel : referencedModels) {
@@ -83,7 +83,7 @@ final class ModelRegistry
             modelTable.getModelInterface().ifPresent(m -> modelReferences.put(m, references));
             // If it is not present then it is an intermediate table and we do not need to add it to the map
             // because it is not referenced by any other table, so it can be created at the end.
-            if (modelTable.getModelInterface().isEmpty()) {
+            if (modelTable instanceof IntermediateTable) {
                 intermediateTables.add(modelTable);
             }
         }
@@ -110,22 +110,22 @@ final class ModelRegistry
         }
 
         for (Class<?> model : sortedModels) {
-            ModelTable modelTable = newModelTables.get(AbstractDataBase._tableNameFromClass(model));
+            EntityTable modelTable = newModelTables.get(AbstractDataBase._tableNameFromClass(model));
             modelTables = modelTables.put(modelTable.getTableName(), modelTable);
         }
 
         // Now we need to add intermediate tables
-        for (ModelTable modelTable : intermediateTables) {
+        for (EntityTable modelTable : intermediateTables) {
             modelTables = modelTables.put(modelTable.getTableName(), modelTable);
         }
         // We are done!
     }
 
     private boolean _hasCycle(
-            ModelTable modelTable,
-            Set<ModelTable> visited,
-            Set<ModelTable> currentPath,
-            Map<String, ModelTable> newModelTables
+            EntityTable modelTable,
+            Set<EntityTable> visited,
+            Set<EntityTable> currentPath,
+            Map<String, EntityTable> newModelTables
     ) {
         Objects.requireNonNull(modelTable, "modelTable");
         if (visited.contains(modelTable))
@@ -150,7 +150,7 @@ final class ModelRegistry
         return false;
     }
 
-    public Tuple<ModelTable> getTables() {
+    public Tuple<EntityTable> getTables() {
         return modelTables.values();
     }
 
@@ -158,7 +158,7 @@ final class ModelRegistry
         return modelTables.containsKey(tableName);
     }
 
-    public ModelTable getTable(String tableName) {
+    public EntityTable getTable(String tableName) {
         return modelTables.get(tableName).orElseThrow();
     }
 
@@ -166,7 +166,7 @@ final class ModelRegistry
         return modelTables.values().stream().anyMatch(t -> t.getModelInterface().isPresent() && t.getModelInterface().get().equals(modelInterface));
     }
 
-    Optional<ModelTable> getTable( Class<? extends Model<?>> modelInterface ) {
+    Optional<EntityTable> getTable(Class<? extends Model<?>> modelInterface ) {
         String tableName = AbstractDataBase._tableNameFromClass(modelInterface);
         var found1 = modelTables.get(tableName).orElse(null);
         var found2 = modelTables.values()
@@ -182,12 +182,12 @@ final class ModelRegistry
         return Optional.ofNullable(found1);
     }
 
-    public List<ModelTable> getIntermediateTables() {
-        return modelTables.values().stream().filter(t -> t.getModelInterface().isEmpty()).collect(Collectors.toList());
+    public Tuple<IntermediateTable> getIntermediateTables() {
+        return modelTables.values().stream().filter(t -> t instanceof IntermediateTable).map(IntermediateTable.class::cast).collect(Tuple.collectorOf(IntermediateTable.class));
     }
 
-    public List<ModelTable> getIntermediateTableInvolving(Class<? extends Model<?>> modelInterface) {
-        return getIntermediateTables().stream().filter(t -> t.getReferencedModels().contains(modelInterface)).collect(Collectors.toList());
+    public Tuple<IntermediateTable> getIntermediateTableInvolving(Class<? extends Model<?>> modelInterface) {
+        return getIntermediateTables().stream().filter(t -> t.getReferencedModels().contains(modelInterface)).collect(Tuple.collectorOf(IntermediateTable.class));
     }
 
     public Optional<ModelProxy<?>> findModelProxy(String tableName, int id) {

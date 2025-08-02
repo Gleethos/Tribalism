@@ -116,7 +116,7 @@ record TableField(
          */
 
         // First, we check if the field is an ID field
-        if (method.getName().equals(ModelTable.ID)) {
+        if (method.getName().equals(EntityTable.ID)) {
             if (!propertyType.equals(Model.Id.class))
                 throw new IllegalArgumentException(
                     "The return type of the method " + method.getName() + " is not " + Model.Id.class.getName()
@@ -274,7 +274,7 @@ record TableField(
 
     public String getName() {
         if ( kind == FieldKind.FOREIGN_KEY )
-            return ModelTable.FK_PREFIX + method.getName() + ModelTable.FK_POSTFIX;
+            return EntityTable.FK_PREFIX + method.getName() + EntityTable.FK_POSTFIX;
         return method.getName();
     }
 
@@ -314,7 +314,7 @@ record TableField(
         return getName() + " " + AbstractDataBase._fromJavaTypeToDBType(propertyValueType);
     }
 
-    public Optional<ModelTable> getIntermediateTable() {
+    public Optional<EntityTable> getIntermediateTable() {
         if (requiresIntermediateTable())
             return Optional.of(new IntermediateTable(this));
         else
@@ -406,12 +406,12 @@ record TableField(
         String name = getName();
         if (!Model.class.isAssignableFrom(propertyValueType)) {
             String properties = allowNull ? "" : " NOT NULL";
-            if (name.equals(ModelTable.ID))
+            if (name.equals(EntityTable.ID))
                 properties += " PRIMARY KEY AUTOINCREMENT";
             return Optional.of(name + " " + AbstractDataBase._fromJavaTypeToDBType(propertyValueType) + properties);
         } else if ( kind == FieldKind.FOREIGN_KEY) {
             String otherTable = AbstractDataBase._tableNameFromClass(propertyValueType);
-            return Optional.of(name + " INTEGER REFERENCES " + otherTable + "("+ ModelTable.ID+")");
+            return Optional.of(name + " INTEGER REFERENCES " + otherTable + "("+ EntityTable.ID+")");
         } else if ( kind == FieldKind.INTERMEDIATE_TABLE) {
             return Optional.empty(); // The field is not a column in the table, but a table itself
         } else
@@ -461,7 +461,7 @@ record TableField(
             referenced by the intermediate table.
             So we need to query the table to find out.
         */
-        ModelTable intermediateTable = getIntermediateTable().orElse(null);
+        EntityTable intermediateTable = getIntermediateTable().orElse(null);
         // We expect it to exist:
         if (intermediateTable == null)
             throw new IllegalStateException("The intermediate table does not exist");

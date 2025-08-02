@@ -5,7 +5,7 @@ import sprouts.Tuple;
 
 import java.util.Objects;
 
-record IntermediateTable(TableField tableField) implements ModelTable {
+record IntermediateTable(TableField tableField) implements EntityTable {
 
     @Override
     public String getTableName() {
@@ -40,10 +40,10 @@ record IntermediateTable(TableField tableField) implements ModelTable {
         String otherTable = AbstractDataBase._tableNameFromClass(otherTableClass);
         return "CREATE TABLE " + getTableName() + " (\n" +
                 "    id INTEGER PRIMARY KEY AUTOINCREMENT,\n" +
-                "    " + ModelTable.INTER_LEFT_FK_PREFIX + thisTable + ModelTable.INTER_FK_POSTFIX + " INTEGER NOT NULL,\n" +
-                "    " + ModelTable.INTER_RIGHT_FK_PREFIX + otherTable + ModelTable.INTER_FK_POSTFIX + " INTEGER NOT NULL,\n" +
-                "    FOREIGN KEY (" + ModelTable.INTER_LEFT_FK_PREFIX + thisTable + ModelTable.INTER_FK_POSTFIX + ") REFERENCES " + thisTable + "(id),\n" +
-                "    FOREIGN KEY (" + ModelTable.INTER_RIGHT_FK_PREFIX + otherTable + ModelTable.INTER_FK_POSTFIX + ") REFERENCES " + otherTable + "(id)\n" +
+                "    " + EntityTable.INTER_LEFT_FK_PREFIX + thisTable + EntityTable.INTER_FK_POSTFIX + " INTEGER NOT NULL,\n" +
+                "    " + EntityTable.INTER_RIGHT_FK_PREFIX + otherTable + EntityTable.INTER_FK_POSTFIX + " INTEGER NOT NULL,\n" +
+                "    FOREIGN KEY (" + EntityTable.INTER_LEFT_FK_PREFIX + thisTable + EntityTable.INTER_FK_POSTFIX + ") REFERENCES " + thisTable + "(id),\n" +
+                "    FOREIGN KEY (" + EntityTable.INTER_RIGHT_FK_PREFIX + otherTable + EntityTable.INTER_FK_POSTFIX + ") REFERENCES " + otherTable + "(id)\n" +
                 ");";
     }
 

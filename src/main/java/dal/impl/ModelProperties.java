@@ -12,7 +12,7 @@ public final class ModelProperties implements Vars<Object>, Viewables<Object>
     private final SQLiteDataBase db;
     private final List<Integer> ids;
     private final int id; // The id of the model to which the properties belong
-    private final ModelTable intermediateTable;
+    private final EntityTable intermediateTable;
     private final String otherTable;
     private final Class<?> propertyValueType;
     private final String otherTableIdColumn;
@@ -23,7 +23,7 @@ public final class ModelProperties implements Vars<Object>, Viewables<Object>
             SQLiteDataBase db,
             Class<?> ownerModelClass,
             Class<?> propertyValueType,
-            ModelTable intermediateTable,
+            EntityTable intermediateTable,
             int id,
             boolean isEager
     ) {
@@ -36,8 +36,8 @@ public final class ModelProperties implements Vars<Object>, Viewables<Object>
         // We need to find the name of the column that contains the ids of the models
         // that are referenced by the intermediate table:
         this.otherTable = AbstractDataBase._tableNameFromClass(propertyValueType);
-        this.otherTableIdColumn = ModelTable.INTER_RIGHT_FK_PREFIX + otherTable + ModelTable.INTER_FK_POSTFIX;
-        this.thisTableIdColumn = ModelTable.INTER_LEFT_FK_PREFIX + AbstractDataBase._tableNameFromClass(ownerModelClass) + ModelTable.INTER_FK_POSTFIX;
+        this.otherTableIdColumn = EntityTable.INTER_RIGHT_FK_PREFIX + otherTable + EntityTable.INTER_FK_POSTFIX;
+        this.thisTableIdColumn = EntityTable.INTER_LEFT_FK_PREFIX + AbstractDataBase._tableNameFromClass(ownerModelClass) + EntityTable.INTER_FK_POSTFIX;
         String query = "SELECT " + otherTableIdColumn + " FROM " + intermediateTable.getTableName() + " WHERE " + thisTableIdColumn + " = ?";
 
         List<Object> param = Collections.singletonList(id);
@@ -79,7 +79,7 @@ public final class ModelProperties implements Vars<Object>, Viewables<Object>
         return new ModelProperty(
                 db,
                 ids.get(index),
-                ModelTable.INTER_RIGHT_FK_PREFIX + otherTable + ModelTable.INTER_FK_POSTFIX,
+                EntityTable.INTER_RIGHT_FK_PREFIX + otherTable + EntityTable.INTER_FK_POSTFIX,
                 intermediateTable.getTableName(),
                 propertyValueType,
                 false,
