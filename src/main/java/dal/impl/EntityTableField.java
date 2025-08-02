@@ -27,6 +27,42 @@ record EntityTableField(
         record TupleOf(Class<?> type) implements Params {}
     }
 
+    public static EntityTableField ofValue(
+            final Method method, // The method from the model class
+            final Class<? extends Value> ownerEntityClass, // The model class
+            final Tuple<Class<? extends DataBaseEntity>> otherEntities
+    ) {
+        final String methodName = method.getName();
+        final Class<?> methodReturnType = method.getReturnType(); // The type of the property and return type of the method
+        final Type declaredReturnTypeGenericParam = method.getGenericReturnType();
+        boolean isTuple = Tuple.class.isAssignableFrom(methodReturnType);
+        boolean isPrimitive = AbstractDataBase._isBasicDataType(methodReturnType);
+        boolean isValue = Value.class.isAssignableFrom(methodReturnType);
+        if ( Value.class.isAssignableFrom(ownerEntityClass) ) {
+            if ( !isTuple && !isPrimitive && !isValue ) {
+                throw new IllegalArgumentException(
+                        "The return type of " + methodName + "() must be a tuple, primitive or Value"
+                );
+            }
+        }
+        var params = extractParamsFrom(declaredReturnTypeGenericParam, methodName);
+        FieldKind kind;
+        if ( isTuple )
+            kind = FieldKind.INTERMEDIATE_TABLE;
+        else if ( isPrimitive )
+            kind = FieldKind.PRIMITIVE;
+        else
+            kind = FieldKind.FOREIGN_KEY;
+        return new EntityTableField(
+                methodName,
+                ownerEntityClass,
+                isTuple ? Tuple.class : null,
+                params.type(),
+                kind,
+                false
+        );
+    }
+
     public static EntityTableField of(
         final Method method, // The method from the model class
         final Class<? extends DataBaseEntity> ownerEntityClass, // The model class
@@ -45,16 +81,20 @@ record EntityTableField(
         boolean isValOrVar   = methodReturnType == Val.class  || methodReturnType == Var.class;
         boolean isValsOrVars = methodReturnType == Vals.class || methodReturnType == Vars.class;
 
-        if ( !isSubTypeOfVal && !isSubTypeOfVals )
-            throw new IllegalArgumentException(
-                    "The return type of method '" + methodName + "' " +
-                    "in model type '" + ownerEntityClass.getName() + "' " +
-                    "is not a subclass of " +
-                    "either " + Val.class.getName() + " or " + Vals.class.getName() + ". \n" +
-                    "You might want to declare the method as a default method in the model interface " +
-                    "or wrap the return type in a property type, like so: \n" +
-                    "'public " + Var.class.getSimpleName() + "<" + methodReturnType.getSimpleName() + "> " + methodName + "()'"
-                );
+        if ( Model.class.isAssignableFrom(ownerEntityClass) ) {
+            if ( !isSubTypeOfVal && !isSubTypeOfVals )
+                throw new IllegalArgumentException(
+                        "The return type of method '" + methodName + "' " +
+                        "in model type '" + ownerEntityClass.getName() + "' " +
+                        "is not a subclass of " +
+                        "either " + Val.class.getName() + " or " + Vals.class.getName() + ". \n" +
+                        "You might want to declare the method as a default method in the model interface " +
+                        "or wrap the return type in a property type, like so: \n" +
+                        "'public " + Var.class.getSimpleName() + "<" + methodReturnType.getSimpleName() + "> " + methodName + "()'"
+                    );
+        } else if ( Value.class.isAssignableFrom(ownerEntityClass) ) {
+            throw new IllegalStateException("Unexpected factory method argument.");
+        }
 
         // Great that is correct! But now we have another requirement:
         /*

@@ -135,7 +135,7 @@ public final class SQLiteDataBase extends AbstractDataBase
      * @return The sql defining the table of the provided model type
      */
     @Override
-    public String sqlCodeOfTable(Class<? extends Model<?>> model) {
+    public String sqlCodeOfTable(Class<? extends DataBaseEntity> model) {
         // We query the database for the sql code of the table
         var sql = new StringBuilder();
         sql.append("SELECT sql FROM sqlite_master WHERE type='table' AND name='");

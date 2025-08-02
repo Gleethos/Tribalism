@@ -100,7 +100,12 @@ record ModelTable(
         } catch (NoSuchMethodException | SecurityException e) {
             throw new RuntimeException(e);
         }
+        // Now we prepare the sorted fields list
+        List<EntityTableField> sortedFields = sort(fields);
+        return new ModelTable(Tuple.of(EntityTableField.class, sortedFields), modelInterface);
+    }
 
+    public static List<EntityTableField> sort(List<EntityTableField> fields) {
         // Before storing the fields as array in this object let's first sort them,
         // we do this because the methods we get through reflection are not sorted...
         // What we want is simple: The id field should be the first field and the rest should be sorted alphabetically
@@ -123,8 +128,7 @@ record ModelTable(
             // Now we have an order between the field kinds which is simply the order of the enums:
             return firstKind.compareTo(secondKind);
         });
-
-        return new ModelTable(Tuple.of(EntityTableField.class, sortedFields), modelInterface);
+        return sortedFields;
     }
 
     @Override

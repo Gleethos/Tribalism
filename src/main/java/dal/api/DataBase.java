@@ -134,7 +134,7 @@ public interface DataBase
      *  @param model The model type to get the table SQL code for.
      *  @return The SQL code of the table corresponding to the provided model type.
      */
-    String sqlCodeOfTable( Class<? extends Model<?>> model );
+    String sqlCodeOfTable( Class<? extends DataBaseEntity> model );
 
     /**
      *  Creates and returns a new instance of the specified {@link Model} type.<br>

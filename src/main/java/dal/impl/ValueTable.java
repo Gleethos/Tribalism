@@ -68,33 +68,23 @@ record ValueTable(
 
             // Alternative: use RecordComponent to get the components of the record
             // This is more accurate than guessing by name
-            try {
-                RecordComponent[] components = valueType.getRecordComponents();
-                for (RecordComponent component : components) {
-                    if (component.getName().equals(method.getName())) {
-                        /*
-                            The return type must either be a primitive, a record, or a tuple of primitive and/or record.
-                         */
-                        var field = EntityTableField.of(method, valueType, otherModels);
-                        if ( !field.isTuple() && !Value.class.isAssignableFrom(field.itemType()) )
-                            throw new IllegalStateException(
-                                    "Database values may only be composed of other values. " +
-                                    "So the return type must either be a primitive, a record, " +
-                                    "or a tuple of primitive and/or record: " + method
-                                );
-                        // This method corresponds to a record component
-                        fields.add(field);
-                        break;
-                    }
+            RecordComponent[] components = valueType.getRecordComponents();
+            for (RecordComponent component : components) {
+                if (component.getName().equals(method.getName())) {
+                    /*
+                        The return type must either be a primitive, a record, or a tuple of primitive and/or record.
+                     */
+                    var field = EntityTableField.ofValue(method, valueType, otherModels);
+                    // This method corresponds to a record component
+                    fields.add(field);
+                    break;
                 }
-            } catch (Exception e) {
-                // Fallback: assume it's a getter if it's not void, not static, no args, and likely a field
-                // But better to avoid this fallback
-                continue;
             }
         }
+        // Now we prepare the sorted fields list
+        List<EntityTableField> sortedFields = ModelTable.sort(fields);
         // Now we add the id field
-        fields.add(0, new EntityTableField(
+        sortedFields.add(0, new EntityTableField(
                 EntityTable.ID,
                 valueType,
                 null,
@@ -102,7 +92,7 @@ record ValueTable(
                 FieldKind.ID,
                 false
         ));
-        fields.add(1, new EntityTableField(
+        sortedFields.add(1, new EntityTableField(
                 HASH_FIELD_NAME,
                 valueType,
                 null,
@@ -110,7 +100,7 @@ record ValueTable(
                 FieldKind.PRIMITIVE,
                 false
         ));
-        fields.add(2, new EntityTableField(
+        sortedFields.add(2, new EntityTableField(
                 USAGE_FIELD_COUNTER,
                 valueType,
                 null,
@@ -119,7 +109,7 @@ record ValueTable(
                 false
         ));
 
-        return new ValueTable(Tuple.of(EntityTableField.class, fields), valueType);
+        return new ValueTable(Tuple.of(EntityTableField.class, sortedFields), valueType);
     }
 
     @Override
