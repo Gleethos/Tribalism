@@ -44,7 +44,7 @@ final class PropertySelectionProxy implements InvocationHandler
     ) throws Throwable {
         Tuple<TableField> fields = _modelTable.getFields();
         for (TableField field : fields) {
-            if (field.getMethodName().equals(method.getName())) {
+            if (field.baseName().equals(method.getName())) {
                 _selection = field;
                 Class<?> propType = field.wrapperType();
                 // We return a proxy that will return the value of the property

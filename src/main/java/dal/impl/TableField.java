@@ -14,12 +14,12 @@ import java.util.Optional;
 
 @NullMarked
 record TableField(
-    Method method, // The method from the model class
-    Class<? extends DataBaseEntity> ownerModelClass, // The model class
-    Class<?> wrapperType, // The type of the property and return type of the method
-    Class<?> itemType, // The type of the property value
-    FieldKind kind,
-    boolean allowNull
+        String baseName, // The method baseName from the model class
+        Class<? extends DataBaseEntity> ownerModelClass, // The model class
+        Class<?> wrapperType, // The type of the property and return type of the method
+        Class<?> itemType, // The type of the property value
+        FieldKind kind,
+        boolean allowNull
 ) {
     sealed interface Params {
         Class<?> type();
@@ -215,7 +215,7 @@ record TableField(
 
         allowNull = Model.class.isAssignableFrom(propertyParams.type());
         return new TableField(
-                method,
+                method.getName(),
                 ownerEntityClass,
                 propertyType,
                 propertyParams.type(),
@@ -275,18 +275,14 @@ record TableField(
         }
     }
 
-    public String getName() {
+    public String name() {
         if ( kind == FieldKind.FOREIGN_KEY )
-            return EntityTable.FK_PREFIX + method.getName() + EntityTable.FK_POSTFIX;
-        return method.getName();
-    }
-
-    public String getMethodName() {
-        return method.getName();
+            return EntityTable.FK_PREFIX + baseName() + EntityTable.FK_POSTFIX;
+        return baseName();
     }
 
     public boolean isField(String name) {
-        return method.getName().equals(name);
+        return baseName().equals(name);
     }
 
     public boolean isList() {
@@ -310,7 +306,7 @@ record TableField(
     }
 
     public String toTableFieldStatement() {
-        return getName() + " " + AbstractDataBase._fromJavaTypeToDBType(itemType);
+        return name() + " " + AbstractDataBase._fromJavaTypeToDBType(itemType);
     }
 
     public Optional<EntityTable> getIntermediateTable() {
@@ -322,7 +318,7 @@ record TableField(
 
     public ProxyRef<Val<Object>> asProperty(SQLiteDataBase db, int id, boolean eager ) {
         var prop = new ModelProperty(
-                        db, id, this.getName(),
+                        db, id, this.name(),
                         AbstractDataBase._tableNameFromClass(ownerModelClass),
                 itemType,
                 allowNull,
@@ -333,7 +329,7 @@ record TableField(
         boolean isVal = Val.class.isAssignableFrom(wrapperType);
         if (!isVal)
             throw new IllegalArgumentException(
-                    "The return type of the method " + method.getName() + " is not a subclass " +
+                    "The return type of the method " + baseName() + " is not a subclass " +
                             "of " + Val.class.getName() + " or " + Vals.class.getName() + " with one type parameter"
             );
 
@@ -402,7 +398,7 @@ record TableField(
     }
 
     public Optional<String> asSqlColumn() {
-        String name = getName();
+        String name = name();
         if (!Model.class.isAssignableFrom(itemType)) {
             String properties = allowNull ? "" : " NOT NULL";
             if (name.equals(EntityTable.ID))
@@ -481,7 +477,7 @@ record TableField(
     }
 
     @Override public String toString() {
-        return "TableField[" + "name=" + getName() + ", type=" + itemType + ", kind=" + kind + ']';
+        return "TableField[" + "baseName=" + name() + ", type=" + itemType + ", kind=" + kind + ']';
     }
 
 }

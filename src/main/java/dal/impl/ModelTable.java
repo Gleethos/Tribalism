@@ -108,7 +108,7 @@ record ModelTable(
 
         // Before all that however, let's first sort the fields by name alphabetically
         // to make sure that the initial order is always the same (making thing deterministic)
-        fields.sort(Comparator.comparing(TableField::getName));
+        fields.sort(Comparator.comparing(TableField::name));
 
         // Now we prepare the sorted fields list
         List<TableField> sortedFields = new ArrayList<>(fields);
@@ -119,7 +119,7 @@ record ModelTable(
             var secondKind = field2.getKind();
             // Same kind: Sort alphabetically
             if (firstKind.equals(secondKind))
-                return field1.getName().compareTo(field2.getName());
+                return field1.name().compareTo(field2.name());
             // Now we have an order between the field kinds which is simply the order of the enums:
             return firstKind.compareTo(secondKind);
         });

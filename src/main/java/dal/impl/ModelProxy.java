@@ -76,11 +76,11 @@ final class ModelProxy<T extends Model<T>> implements InvocationHandler {
                     else
                         asString = o.toString();
 
-                    sb.append(field.getMethodName());
+                    sb.append(field.baseName());
                     sb.append("=").append(asString);
                     sb.append(", ");
                 } else {
-                    sb.append(field.getMethodName());
+                    sb.append(field.baseName());
                     sb.append("=[");
                     Vals<Object> props = field.asProperties(_dataBase, _id, true).impl();
                     for ( Object o : props ) {

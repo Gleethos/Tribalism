@@ -248,7 +248,7 @@ public final class SQLiteDataBase extends AbstractDataBase
         ModelTable modelTable       = _getTableFor(model);
         Tuple<TableField> fields    = modelTable.getFields();
         Tuple<Object> defaultValues = modelTable.getDefaultValues();
-        List<String> fieldNames     = fields.stream().map(TableField::getName).collect(Collectors.toList());
+        List<String> fieldNames     = fields.stream().map(TableField::name).collect(Collectors.toList());
         /*
             Now there might be a problem here because some model fields might not actually exist
             in the table explicitly. Namely, if the model references multiple other models
@@ -506,27 +506,27 @@ public final class SQLiteDataBase extends AbstractDataBase
             @Override
             public <T> Compare<M, T> and(Function<M, Val<T>> selector) {
                 var field = _selectTableField(selector, model);
-                sql.append(" AND ").append(field.getName()).append(" ");
+                sql.append(" AND ").append(field.name()).append(" ");
                 return (Compare<M, T>) valueCollector;
             }
 
             @Override
             public <T> Compare<M, T> or( Function<M, Val<T>> selector ) {
                 var field = _selectTableField(selector, model);
-                sql.append(" OR ").append(field.getName()).append(" ");
+                sql.append(" OR ").append(field.name()).append(" ");
                 return (Compare<M, T>) valueCollector;
             }
 
             @Override
             public <T> Compare<M, T> and( Class<? extends Val<T>> field ) {
-                sql.append(" AND ").append(table.getField(field).getName());
+                sql.append(" AND ").append(table.getField(field).name());
                 return (Compare<M, T>) valueCollector;
             }
 
             @Override
             public <T> Compare<M, T> or( Class<? extends Val<T>> field ) {
                 sql.append(" OR ");
-                sql.append(table.getField(field).getName());
+                sql.append(table.getField(field).name());
                 return (Compare<M, T>) valueCollector;
             }
 
@@ -534,7 +534,7 @@ public final class SQLiteDataBase extends AbstractDataBase
             public <N extends Number> Query<M> orderAscendingBy( Function<M, Val<N>> selector ) {
                 var field = _selectTableField(selector, model);
                 sql.append(" ORDER BY ");
-                sql.append(field.getName());
+                sql.append(field.name());
                 sql.append(" ASC");
                 return this;
             }
@@ -543,7 +543,7 @@ public final class SQLiteDataBase extends AbstractDataBase
             public <N extends Number> Query<M> orderDescendingBy( Function<M, Val<N>> selector ) {
                 var field = _selectTableField(selector, model);
                 sql.append(" ORDER BY ");
-                sql.append(field.getName());
+                sql.append(field.name());
                 sql.append(" DESC");
                 return this;
             }
@@ -551,7 +551,7 @@ public final class SQLiteDataBase extends AbstractDataBase
             @Override
             public Query<M> orderAscendingBy( Class<? extends Val<?>> field ) {
                 sql.append(" ORDER BY ");
-                sql.append(table.getField(field).getName());
+                sql.append(table.getField(field).name());
                 sql.append(" ASC");
                 return this;
             }
@@ -559,7 +559,7 @@ public final class SQLiteDataBase extends AbstractDataBase
             @Override
             public Query<M> orderDescendingBy( Class<? extends Val<?>> field ) {
                 sql.append(" ORDER BY ");
-                sql.append(table.getField(field).getName());
+                sql.append(table.getField(field).name());
                 sql.append(" DESC");
                 return this;
             }
@@ -590,7 +590,7 @@ public final class SQLiteDataBase extends AbstractDataBase
             @Override
             public <T> Compare<M, T> where( Class<? extends Val<T>> field ) {
                 // First sql:
-                sql.append(table.getField(field).getName()).append(" ");
+                sql.append(table.getField(field).name()).append(" ");
                 // Then values:
                 return (Compare<M, T>) valueCollector;
             }
@@ -600,7 +600,7 @@ public final class SQLiteDataBase extends AbstractDataBase
             {
                 var field = _selectTableField(selector, model);
                 // First sql:
-                sql.append(field.getName()).append(" ");
+                sql.append(field.name()).append(" ");
                 // Then values:
                 return (Compare<M, T>) valueCollector;
             }

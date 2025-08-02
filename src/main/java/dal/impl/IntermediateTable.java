@@ -1,18 +1,19 @@
 package dal.impl;
 
 import dal.api.DataBaseEntity;
-import dal.api.Model;
 import org.jspecify.annotations.NullMarked;
 import sprouts.Tuple;
 
 import java.util.Objects;
 
 @NullMarked
-record IntermediateTable(TableField tableField) implements EntityTable {
+record IntermediateTable(
+    TableField tableField
+) implements EntityTable {
 
     @Override
     public String getTableName() {
-        return AbstractDataBase._nameFromClass(tableField.ownerModelClass()) + "__" + tableField.getName() + INTER_TABLE_POSTFIX;
+        return AbstractDataBase._nameFromClass(tableField.ownerModelClass()) + "__" + tableField.name() + INTER_TABLE_POSTFIX;
     }
 
     @Override
@@ -22,7 +23,7 @@ record IntermediateTable(TableField tableField) implements EntityTable {
 
     @Override
     public Tuple<Class<? extends DataBaseEntity>> getReferencedModels() {
-        Class<?> thisTableClass = tableField.method().getDeclaringClass();
+        Class<?> thisTableClass = tableField.ownerModelClass();
         Class<?> otherTableClass = tableField.itemType();
         Objects.requireNonNull(thisTableClass);
         Objects.requireNonNull(otherTableClass);
@@ -37,7 +38,7 @@ record IntermediateTable(TableField tableField) implements EntityTable {
                 - foreign_key pointing to the model table of the model to which the list belongs
                 - foreign_key pointing to the model of the property type of the list
              */
-        Class<?> thisTableClass = tableField.method().getDeclaringClass();
+        Class<?> thisTableClass = tableField.ownerModelClass();
         Class<?> otherTableClass = tableField.itemType();
         String thisTable = AbstractDataBase._tableNameFromClass(thisTableClass);
         String otherTable = AbstractDataBase._tableNameFromClass(otherTableClass);
