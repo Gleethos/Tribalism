@@ -1,6 +1,7 @@
 package dal.impl;
 
 import dal.api.Model;
+import sprouts.Association;
 import sprouts.Tuple;
 
 import java.lang.ref.WeakReference;
@@ -9,7 +10,7 @@ import java.util.stream.Collectors;
 
 final class ModelRegistry
 {
-    private final Map<String, ModelTable> modelTables = new LinkedHashMap<>();
+    private Association<String, ModelTable> modelTables = Association.betweenLinked(String.class, ModelTable.class);
 
     private final Map<String, Map<Integer, WeakReference<ModelProxy<?>>>> modelProxies = new LinkedHashMap<>();
 
@@ -103,12 +104,12 @@ final class ModelRegistry
 
         for (Class<?> model : sortedModels) {
             ModelTable modelTable = newModelTables.get(AbstractDataBase._tableNameFromClass(model));
-            modelTables.put(modelTable.getTableName(), modelTable);
+            modelTables = modelTables.put(modelTable.getTableName(), modelTable);
         }
 
         // Now we need to add intermediate tables
         for (ModelTable modelTable : intermediateTables) {
-            modelTables.put(modelTable.getTableName(), modelTable);
+            modelTables = modelTables.put(modelTable.getTableName(), modelTable);
         }
         // We are done!
     }
@@ -133,8 +134,8 @@ final class ModelRegistry
         return false;
     }
 
-    public List<ModelTable> getTables() {
-        return new ArrayList<>(modelTables.values());
+    public Tuple<ModelTable> getTables() {
+        return modelTables.values();
     }
 
     public boolean hasTable(String tableName) {
@@ -142,7 +143,7 @@ final class ModelRegistry
     }
 
     public ModelTable getTable(String tableName) {
-        return modelTables.get(tableName);
+        return modelTables.get(tableName).orElseThrow();
     }
 
     public boolean hasTable(Class<? extends Model<?>> modelInterface) {
@@ -151,7 +152,7 @@ final class ModelRegistry
 
     Optional<ModelTable> getTable( Class<? extends Model<?>> modelInterface ) {
         String tableName = AbstractDataBase._tableNameFromClass(modelInterface);
-        var found1 = modelTables.get(tableName);
+        var found1 = modelTables.get(tableName).orElse(null);
         var found2 = modelTables.values()
                                 .stream()
                                 .filter(t -> t.getModelInterface().isPresent() && t.getModelInterface().get().equals(modelInterface))
