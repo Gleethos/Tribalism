@@ -1,7 +1,6 @@
 package dal.impl;
 
 import dal.api.DataBaseEntity;
-import dal.api.Model;
 import org.jspecify.annotations.NullMarked;
 import sprouts.Tuple;
 
@@ -21,10 +20,10 @@ sealed interface EntityTable permits ModelTable, IntermediateTable
 
     String getTableName();
 
-    Tuple<TableField> getFields();
+    Tuple<EntityTableField> getFields();
 
-    default TableField getField(String name) {
-        for (TableField field : getFields()) {
+    default EntityTableField getField(String name) {
+        for (EntityTableField field : getFields()) {
             if (field.isField(name))
                 return field;
         }
@@ -32,15 +31,15 @@ sealed interface EntityTable permits ModelTable, IntermediateTable
     }
 
     default boolean hasField(String name) {
-        for ( TableField field : getFields() ) {
+        for ( EntityTableField field : getFields() ) {
             if ( field.isField(name) )
                 return true;
         }
         return false;
     }
 
-    default TableField getField(Class<?> wrapperType) {
-        for (TableField field : getFields()) {
+    default EntityTableField getField(Class<?> wrapperType) {
+        for (EntityTableField field : getFields()) {
             if (field.wrapperType().equals(wrapperType))
                 return field;
         }

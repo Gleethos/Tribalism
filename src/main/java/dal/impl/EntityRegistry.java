@@ -12,23 +12,23 @@ import java.util.*;
 import java.util.stream.Collectors;
 
 @NullMarked
-final class ModelRegistry
+final class EntityRegistry
 {
-    private Association<String, EntityTable> modelTables = Association.betweenLinked(String.class, EntityTable.class);
+    private Association<String, EntityTable> entityTables = Association.betweenLinked(String.class, EntityTable.class);
 
     private final Map<String, Map<Integer, WeakReference<ModelProxy<?>>>> modelProxies = new LinkedHashMap<>();
 
-    public ModelRegistry() {}
+    public EntityRegistry() {}
 
     public void addTables(List<Class<? extends DataBaseEntity>> modelInterfaces)
     {
         modelInterfaces = modelInterfaces
                               .stream()
-                              .filter(m -> !modelTables.containsKey(SQLiteDataBase._tableNameFromClass(m)) ) // Filter out already added interfaces
+                              .filter(m -> !entityTables.containsKey(SQLiteDataBase._tableNameFromClass(m)) ) // Filter out already added interfaces
                               .collect(Collectors.toList());
 
         Set<Class<? extends DataBaseEntity>> distinct = new HashSet<>();
-        for (var modelTable : modelTables.values())
+        for (var modelTable : entityTables.values())
             modelTable.entityType().ifPresent(modelInterface -> distinct.add(modelInterface));
 
         distinct.addAll(modelInterfaces);
@@ -114,12 +114,12 @@ final class ModelRegistry
         for (Class<?> model : sortedModels) {
             EntityTable modelTable = newModelTables.get(AbstractDataBase._tableNameFromClass(model));
             Objects.requireNonNull(modelTable, "No table found for model class '" + model + "'");
-            modelTables = modelTables.put(modelTable.getTableName(), modelTable);
+            entityTables = entityTables.put(modelTable.getTableName(), modelTable);
         }
 
         // Now we need to add intermediate tables
         for (EntityTable modelTable : intermediateTables) {
-            modelTables = modelTables.put(modelTable.getTableName(), modelTable);
+            entityTables = entityTables.put(modelTable.getTableName(), modelTable);
         }
         // We are done!
     }
@@ -154,25 +154,25 @@ final class ModelRegistry
     }
 
     public Tuple<EntityTable> getTables() {
-        return modelTables.values();
+        return entityTables.values();
     }
 
     public boolean hasTable(String tableName) {
-        return modelTables.containsKey(tableName);
+        return entityTables.containsKey(tableName);
     }
 
     public EntityTable getTable(String tableName) {
-        return modelTables.get(tableName).orElseThrow();
+        return entityTables.get(tableName).orElseThrow();
     }
 
     public boolean hasTable(Class<? extends Model<?>> modelInterface) {
-        return modelTables.values().stream().anyMatch(t -> t.entityType().isPresent() && t.entityType().get().equals(modelInterface));
+        return entityTables.values().stream().anyMatch(t -> t.entityType().isPresent() && t.entityType().get().equals(modelInterface));
     }
 
     Optional<EntityTable> getTable(Class<? extends Model<?>> modelInterface ) {
         String tableName = AbstractDataBase._tableNameFromClass(modelInterface);
-        var found1 = modelTables.get(tableName).orElse(null);
-        var found2 = modelTables.values()
+        var found1 = entityTables.get(tableName).orElse(null);
+        var found2 = entityTables.values()
                                 .stream()
                                 .filter(t -> t.entityType().isPresent() && t.entityType().get().equals(modelInterface))
                                 .findFirst()
@@ -186,7 +186,7 @@ final class ModelRegistry
     }
 
     public Tuple<IntermediateTable> getIntermediateTables() {
-        return modelTables.values().stream().filter(t -> t instanceof IntermediateTable).map(IntermediateTable.class::cast).collect(Tuple.collectorOf(IntermediateTable.class));
+        return entityTables.values().stream().filter(t -> t instanceof IntermediateTable).map(IntermediateTable.class::cast).collect(Tuple.collectorOf(IntermediateTable.class));
     }
 
     public Tuple<IntermediateTable> getIntermediateTableInvolving(Class<? extends Model<?>> modelInterface) {

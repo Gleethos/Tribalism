@@ -198,8 +198,8 @@ final class ModelProxy<T extends Model<T>> implements InvocationHandler {
                     .invokeWithArguments(args);
         }
 
-        TableField tableField = _modelTable.getField(methodName);
-        if ( tableField == null )
+        EntityTableField entityField = _modelTable.getField(methodName);
+        if ( entityField == null )
             throw new IllegalArgumentException("The model '" + _modelTable.entityType().get().getName() + "' does not have a property named '" + methodName + "'!");
         if ( args != null && args.length != 0 )
             throw new IllegalArgumentException("The model '" + _modelTable.entityType().get().getName() + "' does not have a setter for the property named '" + methodName + "'!");
@@ -210,9 +210,9 @@ final class ModelProxy<T extends Model<T>> implements InvocationHandler {
         ProxyRef<Object> toBeReturned;
 
         if (Val.class.isAssignableFrom(method.getReturnType()))
-            toBeReturned = cachedPropertyProxies.computeIfAbsent(methodName, n -> (ProxyRef) tableField.asProperty(_dataBase, _id, _isEager));
+            toBeReturned = cachedPropertyProxies.computeIfAbsent(methodName, n -> (ProxyRef) entityField.asProperty(_dataBase, _id, _isEager));
         else if (Vals.class.isAssignableFrom(method.getReturnType()))
-            toBeReturned = cachedPropertyProxies.computeIfAbsent(methodName, n -> (ProxyRef) tableField.asProperties(_dataBase, _id, _isEager));
+            toBeReturned = cachedPropertyProxies.computeIfAbsent(methodName, n -> (ProxyRef) entityField.asProperties(_dataBase, _id, _isEager));
         else
             throw new IllegalArgumentException("The model '" + _modelTable.entityType().get().getName() + "' does not have a property named '" + methodName + "'!");
 

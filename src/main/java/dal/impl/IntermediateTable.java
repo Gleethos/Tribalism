@@ -8,23 +8,23 @@ import java.util.Objects;
 
 @NullMarked
 record IntermediateTable(
-    TableField tableField
+    EntityTableField entityField
 ) implements EntityTable {
 
     @Override
     public String getTableName() {
-        return AbstractDataBase._nameFromClass(tableField.ownerModelClass()) + "__" + tableField.name() + INTER_TABLE_POSTFIX;
+        return AbstractDataBase._nameFromClass(entityField.ownerModelClass()) + "__" + entityField.name() + INTER_TABLE_POSTFIX;
     }
 
     @Override
-    public Tuple<TableField> getFields() {
-        return Tuple.of(TableField.class);
+    public Tuple<EntityTableField> getFields() {
+        return Tuple.of(EntityTableField.class);
     }
 
     @Override
     public Tuple<Class<? extends DataBaseEntity>> getReferencedModels() {
-        Class<?> thisTableClass = tableField.ownerModelClass();
-        Class<?> otherTableClass = tableField.itemType();
+        Class<?> thisTableClass = entityField.ownerModelClass();
+        Class<?> otherTableClass = entityField.itemType();
         Objects.requireNonNull(thisTableClass);
         Objects.requireNonNull(otherTableClass);
         return ((Tuple)Tuple.of(Class.class)).addAll((Class<? extends DataBaseEntity>) thisTableClass, (Class<? extends DataBaseEntity>) otherTableClass);
@@ -38,8 +38,8 @@ record IntermediateTable(
                 - foreign_key pointing to the model table of the model to which the list belongs
                 - foreign_key pointing to the model of the property type of the list
              */
-        Class<?> thisTableClass = tableField.ownerModelClass();
-        Class<?> otherTableClass = tableField.itemType();
+        Class<?> thisTableClass = entityField.ownerModelClass();
+        Class<?> otherTableClass = entityField.itemType();
         String thisTable = AbstractDataBase._tableNameFromClass(thisTableClass);
         String otherTable = AbstractDataBase._tableNameFromClass(otherTableClass);
         return "CREATE TABLE " + getTableName() + " (\n" +

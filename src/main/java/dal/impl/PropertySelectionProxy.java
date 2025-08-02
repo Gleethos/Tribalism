@@ -30,7 +30,7 @@ import java.util.function.Function;
 final class PropertySelectionProxy implements InvocationHandler
 {
     private final EntityTable _modelTable;
-    private @Nullable TableField _selection = null;
+    private @Nullable EntityTableField _selection = null;
 
     public PropertySelectionProxy(EntityTable modelTable) {
         _modelTable = modelTable;
@@ -42,8 +42,8 @@ final class PropertySelectionProxy implements InvocationHandler
             Method method,
             Object[] args
     ) throws Throwable {
-        Tuple<TableField> fields = _modelTable.getFields();
-        for (TableField field : fields) {
+        Tuple<EntityTableField> fields = _modelTable.getFields();
+        for (EntityTableField field : fields) {
             if (field.baseName().equals(method.getName())) {
                 _selection = field;
                 Class<?> propType = field.wrapperType();
@@ -65,5 +65,5 @@ final class PropertySelectionProxy implements InvocationHandler
             );
     }
 
-    public Optional<TableField> getSelection() { return Optional.ofNullable(_selection); }
+    public Optional<EntityTableField> getSelection() { return Optional.ofNullable(_selection); }
 }

@@ -13,13 +13,13 @@ import java.lang.reflect.*;
 import java.util.Optional;
 
 @NullMarked
-record TableField(
-        String baseName, // The method baseName from the model class
-        Class<? extends DataBaseEntity> ownerModelClass, // The model class
-        Class<?> wrapperType, // The type of the property and return type of the method
-        Class<?> itemType, // The type of the property value
-        FieldKind kind,
-        boolean allowNull
+record EntityTableField(
+    String baseName, // The method baseName from the model class
+    Class<? extends DataBaseEntity> ownerModelClass, // The model class
+    Class<?> wrapperType, // The type of the property and return type of the method
+    Class<?> itemType, // The type of the property value
+    FieldKind kind,
+    boolean allowNull
 ) {
     sealed interface Params {
         Class<?> type();
@@ -27,7 +27,7 @@ record TableField(
         record TupleOf(Class<?> type) implements Params {}
     }
 
-    public static TableField of(
+    public static EntityTableField of(
         final Method method, // The method from the model class
         final Class<? extends DataBaseEntity> ownerEntityClass, // The model class
         final Tuple<Class<? extends DataBaseEntity>> otherEntities
@@ -214,7 +214,7 @@ record TableField(
             );
 
         allowNull = Model.class.isAssignableFrom(propertyParams.type());
-        return new TableField(
+        return new EntityTableField(
                 method.getName(),
                 ownerEntityClass,
                 propertyType,

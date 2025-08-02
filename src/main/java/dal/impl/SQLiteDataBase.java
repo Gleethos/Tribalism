@@ -24,7 +24,7 @@ public final class SQLiteDataBase extends AbstractDataBase
 {
     private final static Logger log = org.slf4j.LoggerFactory.getLogger(SQLiteDataBase.class);
 
-    private final ModelRegistry _modelRegistry = new ModelRegistry();
+    private final EntityRegistry _entityRegistry = new EntityRegistry();
 
     public SQLiteDataBase(String location, DataBaseProcessor processor) {
         super(location, "", "", processor);
@@ -72,7 +72,7 @@ public final class SQLiteDataBase extends AbstractDataBase
     public void createTablesFor(
             Class<? extends DataBaseEntity>... models
     ) {
-        _modelRegistry.addTables(Arrays.asList(models));
+        _entityRegistry.addTables(Arrays.asList(models));
         for ( String statement : getCreateTableStatements() ) {
             _execute(statement);
         }
@@ -82,7 +82,7 @@ public final class SQLiteDataBase extends AbstractDataBase
     private List<String> getCreateTableStatements() {
         List<String> allExistingTables = listOfAllTableNames();
         List<String> statements = new ArrayList<>();
-        for ( EntityTable modelTable : _modelRegistry.getTables() ) {
+        for ( EntityTable modelTable : _entityRegistry.getTables() ) {
             if ( !allExistingTables.contains(modelTable.getTableName()) )
                 statements.add(modelTable.createTableStatement());
             else {
@@ -172,7 +172,7 @@ public final class SQLiteDataBase extends AbstractDataBase
         if ( !doesTableExist(_tableNameFromClass(model)) )
             throw new IllegalArgumentException("The table for the model '" + model.getName() + "' does not exist!");
 
-        return _modelRegistry.getTable(model)
+        return _entityRegistry.getTable(model)
                             .map(ModelTable.class::cast)
                             .orElseThrow(()->new RuntimeException(
                                 "The model '" + model.getName() + "' does have a " +
@@ -202,10 +202,10 @@ public final class SQLiteDataBase extends AbstractDataBase
         var modelTable = _getTableFor(model);
 
         // Let's first see if the registry already contains a proxy
-        var proxy = _modelRegistry.findModelProxy(_tableNameFromClass(model), id).orElse(null);
+        var proxy = _entityRegistry.findModelProxy(_tableNameFromClass(model), id).orElse(null);
         if ( proxy == null ) {
             proxy = new ModelProxy<>(this, modelTable, id, true);
-            _modelRegistry.addModelProxy(proxy);
+            _entityRegistry.addModelProxy(proxy);
         }
         return  (T) Proxy.newProxyInstance(
                         model.getClassLoader(),
@@ -246,9 +246,9 @@ public final class SQLiteDataBase extends AbstractDataBase
 
         // Now let's create the model
         ModelTable modelTable       = _getTableFor(model);
-        Tuple<TableField> fields    = modelTable.getFields();
+        Tuple<EntityTableField> fields    = modelTable.getFields();
         Tuple<Object> defaultValues = modelTable.getDefaultValues();
-        List<String> fieldNames     = fields.stream().map(TableField::name).collect(Collectors.toList());
+        List<String> fieldNames     = fields.stream().map(EntityTableField::name).collect(Collectors.toList());
         /*
             Now there might be a problem here because some model fields might not actually exist
             in the table explicitly. Namely, if the model references multiple other models
@@ -256,7 +256,7 @@ public final class SQLiteDataBase extends AbstractDataBase
             So we need to check for that and remove those fields from the list of fields
         */
         for ( int i = fields.size()-1; i >= 0; i-- ) {
-            TableField field = fields.get(i);
+            EntityTableField field = fields.get(i);
             if ( field.getKind() == FieldKind.INTERMEDIATE_TABLE ) {
                 fieldNames.remove(i);
                 defaultValues = defaultValues.removeAt(i);
@@ -327,7 +327,7 @@ public final class SQLiteDataBase extends AbstractDataBase
         String tableName = _tableNameFromClass(modelInterfaceClass);
         // First we clean up usages of the model
         // Now we need to find all the intermediate tables that reference this model
-        Tuple<IntermediateTable> intermediateTables = _modelRegistry.getIntermediateTableInvolving((Class<? extends Model<?>>) modelInterfaceClass);
+        Tuple<IntermediateTable> intermediateTables = _entityRegistry.getIntermediateTableInvolving((Class<? extends Model<?>>) modelInterfaceClass);
         intermediateTables.forEach( intermTable -> {
             String intermTableName = intermTable.getTableName();
             Class<?> left = intermTable.getReferencedModels().get(0);
@@ -366,8 +366,8 @@ public final class SQLiteDataBase extends AbstractDataBase
                 }
             });
         });
-        _modelRegistry.findModelProxy(tableName, id).ifPresent( proxy -> {
-            _modelRegistry.removeModelProxy(tableName, id);
+        _entityRegistry.findModelProxy(tableName, id).ifPresent(proxy -> {
+            _entityRegistry.removeModelProxy(tableName, id);
         });
         String sql = "DELETE FROM " + tableName + " WHERE id = ?";
         boolean success = _update(sql, Collections.singletonList(id));
@@ -607,7 +607,7 @@ public final class SQLiteDataBase extends AbstractDataBase
         };
     }
 
-    private <T, M extends Model<M>> TableField _selectTableField(
+    private <T, M extends Model<M>> EntityTableField _selectTableField(
         Function<M, Val<T>> selector,
         Class<M> model
     ) {

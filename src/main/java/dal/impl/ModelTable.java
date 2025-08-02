@@ -12,7 +12,7 @@ import java.util.*;
 
 @NullMarked
 record ModelTable(
-    Tuple<TableField> fields,
+    Tuple<EntityTableField> fields,
     Class<? extends Model<?>> modelInterface
 ) implements EntityTable
 {
@@ -62,7 +62,7 @@ record ModelTable(
         }
         // Now we can get the fields
         Method[] methods = modelInterface.getMethods();
-        List<TableField> fields = new ArrayList<>();
+        List<EntityTableField> fields = new ArrayList<>();
         for (Method method : methods) {
             // First we check if it is a default method, which we can ignore
             if (method.isDefault())
@@ -89,14 +89,14 @@ record ModelTable(
                         "not allowed to be called \""+ EntityTable.ID+"\", " +
                         "because that name is already reserved for the internal table entry id!"
                     );
-                fields.add(TableField.of(method, modelInterface, otherModels));
+                fields.add(EntityTableField.of(method, modelInterface, otherModels));
             }
         }
         // Now we add the id field
         Class<Model> modelClass = Model.class;
         try {
             Method idMethod = modelClass.getMethod(EntityTable.ID);
-            fields.add(0, TableField.of(idMethod, modelInterface, otherModels));
+            fields.add(0, EntityTableField.of(idMethod, modelInterface, otherModels));
         } catch (NoSuchMethodException | SecurityException e) {
             throw new RuntimeException(e);
         }
@@ -108,10 +108,10 @@ record ModelTable(
 
         // Before all that however, let's first sort the fields by name alphabetically
         // to make sure that the initial order is always the same (making thing deterministic)
-        fields.sort(Comparator.comparing(TableField::name));
+        fields.sort(Comparator.comparing(EntityTableField::name));
 
         // Now we prepare the sorted fields list
-        List<TableField> sortedFields = new ArrayList<>(fields);
+        List<EntityTableField> sortedFields = new ArrayList<>(fields);
 
         // Finally we sort the fields by kind and then by name if the kind is the same
         sortedFields.sort((field1, field2) -> {
@@ -124,7 +124,7 @@ record ModelTable(
             return firstKind.compareTo(secondKind);
         });
 
-        return new ModelTable(Tuple.of(TableField.class, sortedFields), modelInterface);
+        return new ModelTable(Tuple.of(EntityTableField.class, sortedFields), modelInterface);
     }
 
     @Override
@@ -133,14 +133,14 @@ record ModelTable(
     }
 
     @Override
-    public Tuple<TableField> getFields() {
+    public Tuple<EntityTableField> getFields() {
         return fields;
     }
 
     @Override
     public Tuple<Class<? extends DataBaseEntity>> getReferencedModels() {
         List<Class<? extends DataBaseEntity>> referencedModels = new ArrayList<>();
-        for (TableField field : fields) {
+        for (EntityTableField field : fields) {
             if (field.isForeignKey()) {
                 referencedModels.add((Class<? extends DataBaseEntity>) field.itemType());
             }
@@ -159,7 +159,7 @@ record ModelTable(
         sb.append("CREATE TABLE IF NOT EXISTS ");
         sb.append(getTableName());
         sb.append(" (");
-        for (TableField field : fields)
+        for (EntityTableField field : fields)
             field.asSqlColumn().ifPresent(col -> {
                 sb.append(col);
                 sb.append(", ");
@@ -173,7 +173,7 @@ record ModelTable(
     @Override
     public Tuple<Object> getDefaultValues() {
         List<Object> defaultValues = new ArrayList<>();
-        for (TableField field : fields) {
+        for (EntityTableField field : fields) {
             if (field.isForeignKey()) {
                 defaultValues.add(null);
             } else {
