@@ -73,9 +73,9 @@ final class ModelRegistry
         List<EntityTable> intermediateTables = new ArrayList<>();
 
         for (EntityTable modelTable : newModelTables.values()) {
-            Tuple<Class<? extends Model<?>>> referencedModels = modelTable.getReferencedModels();
+            Tuple<Class<? extends DataBaseEntity>> referencedModels = modelTable.getReferencedModels();
             List<Class<?>> references = new ArrayList<>();
-            for (Class<? extends Model<?>> referencedModel : referencedModels) {
+            for (Class<? extends DataBaseEntity> referencedModel : referencedModels) {
                 if (!referencedModel.equals(modelTable.entityType().orElse(null))) {
                     references.add(referencedModel);
                 }
@@ -133,7 +133,7 @@ final class ModelRegistry
         if (currentPath.contains(modelTable))
             return true;
         currentPath.add(modelTable);
-        for (Class<? extends Model<?>> referencedModel : modelTable.getReferencedModels()) {
+        for (Class<? extends DataBaseEntity> referencedModel : modelTable.getReferencedModels()) {
             var tableName = AbstractDataBase._tableNameFromClass(referencedModel);
             var foundTable = newModelTables.get(tableName);
             if ( foundTable == null ) {

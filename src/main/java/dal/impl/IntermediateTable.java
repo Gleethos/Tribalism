@@ -1,5 +1,6 @@
 package dal.impl;
 
+import dal.api.DataBaseEntity;
 import dal.api.Model;
 import sprouts.Tuple;
 
@@ -18,12 +19,12 @@ record IntermediateTable(TableField tableField) implements EntityTable {
     }
 
     @Override
-    public Tuple<Class<? extends Model<?>>> getReferencedModels() {
+    public Tuple<Class<? extends DataBaseEntity>> getReferencedModels() {
         Class<?> thisTableClass = tableField.method().getDeclaringClass();
         Class<?> otherTableClass = tableField.itemType();
         Objects.requireNonNull(thisTableClass);
         Objects.requireNonNull(otherTableClass);
-        return ((Tuple)Tuple.of(Class.class)).addAll((Class<? extends Model<?>>) thisTableClass, (Class<? extends Model<?>>) otherTableClass);
+        return ((Tuple)Tuple.of(Class.class)).addAll((Class<? extends DataBaseEntity>) thisTableClass, (Class<? extends DataBaseEntity>) otherTableClass);
     }
 
     @Override

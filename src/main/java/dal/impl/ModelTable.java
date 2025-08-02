@@ -136,11 +136,11 @@ record ModelTable(
     }
 
     @Override
-    public Tuple<Class<? extends Model<?>>> getReferencedModels() {
-        List<Class<? extends Model<?>>> referencedModels = new ArrayList<>();
+    public Tuple<Class<? extends DataBaseEntity>> getReferencedModels() {
+        List<Class<? extends DataBaseEntity>> referencedModels = new ArrayList<>();
         for (TableField field : fields) {
             if (field.isForeignKey()) {
-                referencedModels.add((Class<? extends Model<?>>) field.itemType());
+                referencedModels.add((Class<? extends DataBaseEntity>) field.itemType());
             }
         }
         return ((Tuple)Tuple.of(Class.class)).addAll(referencedModels);

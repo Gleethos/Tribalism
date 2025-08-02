@@ -37,15 +37,15 @@ sealed interface EntityTable permits ModelTable, IntermediateTable
         return false;
     }
 
-    default TableField getField(Class<?> propertyType) {
+    default TableField getField(Class<?> wrapperType) {
         for (TableField field : getFields()) {
-            if (field.wrapperType().equals(propertyType))
+            if (field.wrapperType().equals(wrapperType))
                 return field;
         }
-        throw new IllegalArgumentException("No field with type " + propertyType.getName() + " found!");
+        throw new IllegalArgumentException("No field with type " + wrapperType.getName() + " found!");
     }
 
-    Tuple<Class<? extends Model<?>>> getReferencedModels();
+    Tuple<Class<? extends DataBaseEntity>> getReferencedModels();
 
     default Optional<Class<? extends DataBaseEntity>> entityType() {
         return Optional.empty();
