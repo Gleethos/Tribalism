@@ -18,7 +18,11 @@ record TableField(
     FieldKind kind,
     boolean allowNull
 ) {
-
+    sealed interface Params {
+        Class<?> type();
+        record Single(Class<?> type) implements Params {}
+        record TupleOf(Class<?> type) implements Params {}
+    }
 
     public static TableField of(
         final Method method, // The method from the model class
@@ -26,7 +30,7 @@ record TableField(
         final Tuple<Class<? extends DataBaseEntity>> otherModels
     ) {
         final Class<?> propertyType = method.getReturnType(); // The type of the property and return type of the method
-        Class<?> propertyValueType; // The type of the property value
+        Params propertyParams = null; // The type of the property value
         FieldKind kind;
         boolean allowNull;
 
@@ -87,33 +91,20 @@ record TableField(
 
             Type genericInterface = genericInterfaces[0];
             Type[] actualTypeArguments = ((ParameterizedType) genericInterface).getActualTypeArguments();
-            propertyValueType = (Class<?>) actualTypeArguments[0];
+            propertyParams = extractParamsFrom(actualTypeArguments[0], method);
         } else {
             // The return type is Val<T>, Var<T>, Vals<T> or Vars<T> so we can get the type parameter T easily:
             // However we can not get the declared type from Var,Val... it is a generic type...
             // Instead, we get the type from the method parameter
             var declaredReturnTypeGenericParam = method.getGenericReturnType();
-            if ( declaredReturnTypeGenericParam instanceof ParameterizedType ) {
-                var declaredReturnTypeGenericParamType = ((ParameterizedType) declaredReturnTypeGenericParam).getActualTypeArguments()[0];
-                if ( declaredReturnTypeGenericParamType instanceof Class<?> ) {
-                    propertyValueType = (Class<?>) declaredReturnTypeGenericParamType;
-                } else {
-                    throw new IllegalArgumentException(
-                            "The return type of the method " + method.getName() + " must be a class!"
-                        );
-                }
-            } else {
-                throw new IllegalArgumentException(
-                        "The return type of the method " + method.getName() + " must be a parameterized type!"
-                    );
-            }
+            propertyParams = extractParamsFrom(declaredReturnTypeGenericParam, method);
         }
         // Now we need to determine the kind of the field, here are the possibilities:
         /*
             public interface Person extends Model<Person> {
                 interface Address extends Var<Address> {}  // Kind: FOREIGN_KEY
-                interface Name extends Var<String> {}      // Kind: VALUE
-                interface Age extends Var<Integer> {}      // Kind: VALUE
+                interface Name extends Var<String> {}      // Kind: PRIMITIVE
+                interface Age extends Var<Integer> {}      // Kind: PRIMITIVE
                 interface Children extends Vars<Person> {} // Kind: INTERMEDIATE_TABLE
             }
             // ... and ...
@@ -124,7 +115,7 @@ record TableField(
             }
          */
 
-        // First we check if the field is an ID field
+        // First, we check if the field is an ID field
         if (method.getName().equals(ModelTable.ID)) {
             if (!propertyType.equals(Model.Id.class))
                 throw new IllegalArgumentException(
@@ -134,47 +125,64 @@ record TableField(
         }
         // Then we check if the field is a foreign key field
         else if ( isSubTypeOfVal ) {
-            if (Value.class.isAssignableFrom(propertyValueType)) {
-                if (otherModels.contains((Class<? extends Value>) propertyValueType)) {
-                    throw new RuntimeException("Not yet implemented");
+            if ( propertyParams instanceof Params.TupleOf && Value.class.isAssignableFrom(propertyParams.type()) ) {
+                if (otherModels.contains((Class<? extends Value>) propertyParams.type())) {
+                    kind = FieldKind.INTERMEDIATE_TABLE;
+                } else {
+                    if (AbstractDataBase._isBasicDataType(propertyParams.type()))
+                        throw new IllegalArgumentException(
+                                "List of basic data types cannot be modelled as table fields."
+                        );
+                    else
+                        throw new IllegalArgumentException(
+                            "Cannot establish table field for method '" + method.getName() + "()' for value type '" + ownerModelClass.getName() + "', \n" +
+                            "because the return type of the method is a property referencing a tuple of values " +
+                            "with type '" + propertyParams.type().getName() + "', which is however not known " +
+                            "by the database, please make sure that it is passed to the 'createTablesFor(..)' method alongside " +
+                            "all other value and model types!"
+                        );
+                }
+            } else if (Value.class.isAssignableFrom(propertyParams.type())) {
+                if (otherModels.contains((Class<? extends Value>) propertyParams.type())) {
+                    kind = FieldKind.FOREIGN_KEY;
                 } else
                     throw new IllegalArgumentException(
                         "Cannot establish table field for method '" + method.getName() + "()' for value type '" + ownerModelClass.getName() + "', \n" +
-                        "because the return type of the method is a property referencing another model " +
-                        "called '" + propertyValueType.getName() + "', which is however not known " +
+                        "because the return type of the method is a property referencing another value " +
+                        "called '" + propertyParams.type().getName() + "', which is however not known " +
                         "by the database, please make sure that it is passed to the 'createTablesFor(..)' method alongside " +
                         "all other value and model types!"
                     );
-            } else if (Model.class.isAssignableFrom(propertyValueType)) {
-                if (otherModels.contains((Class<? extends Model<?>>) propertyValueType)) {
+            } else if (Model.class.isAssignableFrom(propertyParams.type())) {
+                if (otherModels.contains((Class<? extends Model<?>>) propertyParams.type())) {
                     kind = FieldKind.FOREIGN_KEY;
                 } else
                     throw new IllegalArgumentException(
                         "Cannot establish table field for method '" + method.getName() + "()' for model '" + ownerModelClass.getName() + "', \n" +
                         "because the return type of " +
-                        "the method is a property referencing another model called '" + propertyValueType.getName() + "', " +
+                        "the method is a property referencing another model called '" + propertyParams.type().getName() + "', " +
                         "which is however not known " +
                         "by the database, please make sure that it is passed to the 'createTablesFor(..)' method alongside " +
                         "all other model types!"
                     );
-            } else if (AbstractDataBase._isBasicDataType(propertyValueType)) {
+            } else if (AbstractDataBase._isBasicDataType(propertyParams.type())) {
                 kind = FieldKind.PRIMITIVE;
             } else {
-                boolean propertyValueIsModel = Model.class.isAssignableFrom(propertyValueType);
+                boolean propertyValueIsModel = Model.class.isAssignableFrom(propertyParams.type());
                 if ( !propertyValueIsModel )
                     throw new IllegalArgumentException(
                             "Failed to create table field '" + method.getName() + "' for model '" + ownerModelClass.getName() + "', because \n" +
-                            "the property value type '" + propertyValueType.getName() + "' in declared method " +
-                            "'public " + propertyType.getSimpleName() + "<" + propertyValueType.getSimpleName() + "> " + method.getName() + "();' " +
+                            "the property value type '" + propertyParams.type().getName() + "' in declared method " +
+                            "'public " + propertyType.getSimpleName() + "<" + propertyParams.type().getSimpleName() + "> " + method.getName() + "();' " +
                             "is not a basic data type and is also not recognisable as another model! \n" +
-                            "If you want this declaration to work, make sure that '" + propertyValueType.getName() + "' is a subtype of the '" + Model.class.getName() + "' interface " +
+                            "If you want this declaration to work, make sure that '" + propertyParams.type().getName() + "' is a subtype of the '" + Model.class.getName() + "' interface " +
                             "and also is passed to the the 'createTablesFor(Class<M>... models);' method."
                         );
                 else // The user has simply not passed the interface class to the createTablesFor(Class<Model... models) method:
                     throw new IllegalArgumentException(
                             "Failed to create table field '" + method.getName() + "' for model '" + ownerModelClass.getName() + "', because \n" +
-                            "the property value type '" + propertyValueType.getName() + "' in declared method " +
-                            "'public " + propertyType.getSimpleName() + "<" + propertyValueType.getSimpleName() + "> " + method.getName() + "();' " +
+                            "the property value type '" + propertyParams.type().getName() + "' in declared method " +
+                            "'public " + propertyType.getSimpleName() + "<" + propertyParams.type().getSimpleName() + "> " + method.getName() + "();' " +
                             "is a model type not known to the database! " +
                             "If you want this declaration to work, make sure that you have passed the interface class of the model to the " +
                             "createTablesFor(Class<M>... models); method!"
@@ -183,10 +191,10 @@ record TableField(
         }
         // Then we check if the field is an intermediate table field
         else if (isSubTypeOfVals) {
-            if (otherModels.contains((Class<? extends Model<?>>) propertyValueType)) {
+            if (otherModels.contains((Class<? extends Model<?>>) propertyParams.type())) {
                 kind = FieldKind.INTERMEDIATE_TABLE;
             } else {
-                if (AbstractDataBase._isBasicDataType(propertyValueType))
+                if (AbstractDataBase._isBasicDataType(propertyParams.type()))
                     throw new IllegalArgumentException(
                             "List of basic data types cannot be modelled as table fields."
                     );
@@ -202,15 +210,66 @@ record TableField(
                             "of " + Val.class.getName() + " or " + Vals.class.getName() + " with one type parameter"
             );
 
-        allowNull = Model.class.isAssignableFrom(propertyValueType);
+        allowNull = Model.class.isAssignableFrom(propertyParams.type());
         return new TableField(
                 method,
                 ownerModelClass,
                 propertyType,
-                propertyValueType,
+                propertyParams.type(),
                 kind,
                 allowNull
             );
+    }
+
+    private static Params extractParamsFrom(Type type, Method method) {
+        if ( type instanceof ParameterizedType ) {
+            if ( !Tuple.class.equals(((ParameterizedType) type).getRawType()) ) {
+                var declaredReturnTypeGenericParamType = ((ParameterizedType) type).getActualTypeArguments()[0];
+                if ( declaredReturnTypeGenericParamType instanceof Class<?> ) {
+                    return new Params.Single((Class<?>) declaredReturnTypeGenericParamType);
+                } else {
+                    throw new IllegalArgumentException(
+                      "The type arguments of return type of the method " + method.getName() + " must be a class!"
+                    );
+                }
+            }
+            /*
+               We have a tuple of things as value, which
+               would like this:
+
+               public interface School extends Model<School> {
+                   interface Students extends Var<Tuple<Person>> {}
+                   interface Teachers extends Var<Tuple<Person>> {}
+               }
+
+               So we need to get the parameter type of the tuple.
+               Which in the above example would be: Person.class
+            */
+            var actualTypeArguments = ((ParameterizedType)type).getActualTypeArguments();
+            if ( actualTypeArguments == null || actualTypeArguments.length != 1 ) {
+                throw new IllegalArgumentException(
+                    "Invalid declaration of method '"+method.getName()+"'!  " +
+                    "Expected a single parameterized type, but found: "+type
+                );
+            } else {
+                var paramType = actualTypeArguments[0];
+                if ( paramType instanceof Class<?> ) {
+                    return new Params.TupleOf((Class<?>) paramType);
+                } else {
+                    throw new IllegalArgumentException(
+                        "Invalid declaration of method  '"+method.getName()+"'!   "+
+                        "Expected a single parameterized type, but found:  "+paramType
+                    );
+                }
+            }
+        } else if ( type instanceof Class ) {
+            return new Params.Single((Class<?>) type);
+        } else {
+            throw new IllegalArgumentException(
+                "Invalid declaration of method '"+method.getName()+"'! " +
+                "Property parameter type of method return type not recognizable!"
+            );
+        }
     }
 
     public String getName() {
