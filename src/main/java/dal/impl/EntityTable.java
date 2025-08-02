@@ -4,10 +4,11 @@ import dal.api.DataBaseEntity;
 import org.jspecify.annotations.NullMarked;
 import sprouts.Tuple;
 
+import java.util.Objects;
 import java.util.Optional;
 
 @NullMarked
-sealed interface EntityTable permits ModelTable, IntermediateTable
+sealed interface EntityTable permits ValueTable, ModelTable, IntermediateTable
 {
     String INTER_TABLE_POSTFIX = "_list_table";
     String INTER_LEFT_FK_PREFIX = "fk_self_";
@@ -40,7 +41,7 @@ sealed interface EntityTable permits ModelTable, IntermediateTable
 
     default EntityTableField getField(Class<?> wrapperType) {
         for (EntityTableField field : getFields()) {
-            if (field.wrapperType().equals(wrapperType))
+            if (Objects.equals(field.wrapperType(),wrapperType))
                 return field;
         }
         throw new IllegalArgumentException("No field with type " + wrapperType.getName() + " found!");

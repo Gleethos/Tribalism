@@ -46,7 +46,14 @@ final class EntityRegistry
                         )
                 );
             } else if (Value.class.isAssignableFrom(modelInterface)) {
-                // TODO
+                ValueTable valueTable = ValueTable.of((Class<? extends Value>) modelInterface, finalModelInterfaces);
+                Objects.requireNonNull(valueTable, "valueTable");
+                newModelTables.put(valueTable.getTableName(), valueTable);
+                valueTable.getFields().forEach(
+                        f -> f.getIntermediateTable().ifPresent(
+                                t -> newModelTables.put(t.getTableName(), t)
+                        )
+                );
             }
         }
         /*

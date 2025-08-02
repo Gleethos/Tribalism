@@ -47,6 +47,10 @@ final class PropertySelectionProxy implements InvocationHandler
             if (field.baseName().equals(method.getName())) {
                 _selection = field;
                 Class<?> propType = field.wrapperType();
+                if ( propType == null )
+                    throw new IllegalStateException(
+                            "Cannot create a property proxy for a field that does not have a wrapper type."
+                        );
                 // We return a proxy that will return the value of the property
                 return java.lang.reflect.Proxy.newProxyInstance(
                         propType.getClassLoader(),
