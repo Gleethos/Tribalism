@@ -1,6 +1,8 @@
 package dal.impl;
 
+import dal.api.DataBaseEntity;
 import dal.api.Model;
+import dal.api.Value;
 import sprouts.*;
 
 import java.lang.invoke.MethodHandles;
@@ -21,7 +23,7 @@ record TableField(
     public static TableField of(
         final Method method, // The method from the model class
         final Class<? extends Model<?>> ownerModelClass, // The model class
-        final Tuple<Class<? extends Model<?>>> otherModels
+        final Tuple<Class<? extends DataBaseEntity>> otherModels
     ) {
         final Class<?> propertyType = method.getReturnType(); // The type of the property and return type of the method
         Class<?> propertyValueType; // The type of the property value
@@ -132,7 +134,18 @@ record TableField(
         }
         // Then we check if the field is a foreign key field
         else if ( isSubTypeOfVal ) {
-            if (Model.class.isAssignableFrom(propertyValueType)) {
+            if (Value.class.isAssignableFrom(propertyValueType)) {
+                if (otherModels.contains((Class<? extends Value>) propertyValueType)) {
+                    throw new RuntimeException("Not yet implemented");
+                } else
+                    throw new IllegalArgumentException(
+                        "Cannot establish table field for method '" + method.getName() + "()' for value type '" + ownerModelClass.getName() + "', \n" +
+                        "because the return type of the method is a property referencing another model " +
+                        "called '" + propertyValueType.getName() + "', which is however not known " +
+                        "by the database, please make sure that it is passed to the 'createTablesFor(..)' method alongside " +
+                        "all other value and model types!"
+                    );
+            } else if (Model.class.isAssignableFrom(propertyValueType)) {
                 if (otherModels.contains((Class<? extends Model<?>>) propertyValueType)) {
                     kind = FieldKind.FOREIGN_KEY;
                 } else

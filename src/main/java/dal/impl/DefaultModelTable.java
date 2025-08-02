@@ -1,5 +1,6 @@
 package dal.impl;
 
+import dal.api.DataBaseEntity;
 import dal.api.Model;
 import sprouts.Tuple;
 
@@ -15,7 +16,7 @@ record DefaultModelTable(
 {
     static DefaultModelTable of(
         Class<? extends Model<?>> modelInterface,
-        Tuple<Class<? extends Model<?>>> otherModels
+        Tuple<Class<? extends DataBaseEntity>> otherModels
     ) {
         // We expect something like this:
         /*

@@ -94,14 +94,14 @@ public interface DataBase
      *
      * @param models The model types to create tables for.
      */
-    void createTablesFor( Class<? extends Model<?>>... models );
+    void createTablesFor( Class<? extends DataBaseEntity>... models );
 
     /**
      *  Drops all tables corresponding to the provided model types.
      *
      * @param models The model types to drop tables for.
      */
-    void dropTablesFor( Class<? extends Model<?>>... models );
+    void dropTablesFor( Class<? extends DataBaseEntity>... models );
 
     /**
      * @return A list of the names of all tables in the database.
@@ -123,11 +123,11 @@ public interface DataBase
      *
      * @param model The model type to drop the table for.
      */
-    void dropTable( Class<? extends Model<?>> model );
+    void dropTable( Class<? extends DataBaseEntity> model );
 
     /**
      *  This method is useful for debugging purposes as it unveils the SQL code
-     *  that that backs the supplied model type.<br>
+     *  that backs the supplied model type.<br>
      *  Note that this only works if a table for the model type has been created
      *  through the {@link DataBase#createTablesFor(Class[])} method.
      *

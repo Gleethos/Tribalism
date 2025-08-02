@@ -1,5 +1,6 @@
 package dal.impl;
 
+import dal.api.DataBaseEntity;
 import dal.api.Model;
 import sprouts.Association;
 import sprouts.Tuple;
@@ -16,29 +17,31 @@ final class ModelRegistry
 
     public ModelRegistry() {}
 
-    public void addTables(List<Class<? extends Model<?>>> modelInterfaces)
+    public void addTables(List<Class<? extends DataBaseEntity>> modelInterfaces)
     {
         modelInterfaces = modelInterfaces
                               .stream()
                               .filter(m -> !modelTables.containsKey(SQLiteDataBase._tableNameFromClass(m)) ) // Filter out already added interfaces
                               .collect(Collectors.toList());
 
-        Set<Class<? extends Model<?>>> distinct = new HashSet<>();
+        Set<Class<? extends DataBaseEntity>> distinct = new HashSet<>();
         for (var modelTable : modelTables.values())
             modelTable.getModelInterface().ifPresent(modelInterface -> distinct.add(modelInterface));
 
         distinct.addAll(modelInterfaces);
-        var finalModelInterfaces = (Tuple<Class<? extends Model<?>>>) ((Tuple) Tuple.of(Class.class)).addAll(distinct);
+        var finalModelInterfaces = (Tuple<Class<? extends DataBaseEntity>>) ((Tuple) Tuple.of(Class.class)).addAll(distinct);
 
         Map<String, ModelTable> newModelTables = new LinkedHashMap<>();
-        for (Class<? extends Model<?>> modelInterface : finalModelInterfaces) {
-            ModelTable modelTable = DefaultModelTable.of(modelInterface, finalModelInterfaces);
-            newModelTables.put(modelTable.getTableName(), modelTable);
-            modelTable.getFields().forEach(
-                    f -> f.getIntermediateTable().ifPresent(
-                            t -> newModelTables.put(t.getTableName(), t)
-                    )
-            );
+        for (Class<? extends DataBaseEntity> modelInterface : finalModelInterfaces) {
+            if ( Model.class.isAssignableFrom(modelInterface) ) {
+                ModelTable modelTable = DefaultModelTable.of((Class<? extends Model<?>>) modelInterface, finalModelInterfaces);
+                newModelTables.put(modelTable.getTableName(), modelTable);
+                modelTable.getFields().forEach(
+                        f -> f.getIntermediateTable().ifPresent(
+                                t -> newModelTables.put(t.getTableName(), t)
+                        )
+                );
+            }
         }
         /*
             Now we need to check if there are any circular references

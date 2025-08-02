@@ -38,9 +38,9 @@ public final class SQLiteDataBase extends AbstractDataBase
 
     @Override
     public void dropTablesFor(
-            Class<? extends Model<?>>... models
+            Class<? extends DataBaseEntity>... models
     ) {
-        for (Class<? extends Model<?>> model : models)
+        for (Class<? extends DataBaseEntity> model : models)
             _dropTableIfExists(model);
     }
 
@@ -49,13 +49,13 @@ public final class SQLiteDataBase extends AbstractDataBase
         _dropAllTables();
     }
 
-    private void _dropTableIfExists(Class<? extends Model<?>> model) {
+    private void _dropTableIfExists(Class<? extends DataBaseEntity> model) {
         if (doesTableExist(_tableNameFromClass(model)))
             dropTable(model);
     }
 
     @Override
-    public void dropTable(Class<? extends Model<?>> model) {
+    public void dropTable(Class<? extends DataBaseEntity> model) {
         String tableName = _tableNameFromClass(model);
         _execute("DROP TABLE IF EXISTS " + tableName);
 
@@ -70,7 +70,7 @@ public final class SQLiteDataBase extends AbstractDataBase
 
     @Override
     public void createTablesFor(
-            Class<? extends Model<?>>... models
+            Class<? extends DataBaseEntity>... models
     ) {
         _modelRegistry.addTables(Arrays.asList(models));
         for ( String statement : getCreateTableStatements() ) {
