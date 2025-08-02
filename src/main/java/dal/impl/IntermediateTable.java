@@ -10,7 +10,7 @@ record IntermediateTable(TableField tableField) implements ModelTable {
 
     @Override
     public String getTableName() {
-        return AbstractDataBase._nameFromClass(tableField.ownerModelClass) + "__" + tableField.getName() + INTER_TABLE_POSTFIX;
+        return AbstractDataBase._nameFromClass(tableField.ownerModelClass()) + "__" + tableField.getName() + INTER_TABLE_POSTFIX;
     }
 
     @Override
@@ -20,8 +20,8 @@ record IntermediateTable(TableField tableField) implements ModelTable {
 
     @Override
     public List<Class<? extends Model<?>>> getReferencedModels() {
-        Class<?> thisTableClass = tableField.method.getDeclaringClass();
-        Class<?> otherTableClass = tableField.propertyValueType;
+        Class<?> thisTableClass = tableField.method().getDeclaringClass();
+        Class<?> otherTableClass = tableField.propertyValueType();
         return Arrays.asList((Class<? extends Model<?>>) thisTableClass, (Class<? extends Model<?>>) otherTableClass);
     }
 
@@ -33,8 +33,8 @@ record IntermediateTable(TableField tableField) implements ModelTable {
                 - foreign_key pointing to the model table of the model to which the list belongs
                 - foreign_key pointing to the model of the property type of the list
              */
-        Class<?> thisTableClass = tableField.method.getDeclaringClass();
-        Class<?> otherTableClass = tableField.propertyValueType;
+        Class<?> thisTableClass = tableField.method().getDeclaringClass();
+        Class<?> otherTableClass = tableField.propertyValueType();
         String thisTable = AbstractDataBase._tableNameFromClass(thisTableClass);
         String otherTable = AbstractDataBase._tableNameFromClass(otherTableClass);
         return "CREATE TABLE " + getTableName() + " (\n" +
