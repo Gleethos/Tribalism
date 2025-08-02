@@ -113,11 +113,11 @@ public final class SQLiteDataBase extends AbstractDataBase
                 if ( !tableSQL.equals(statement) ) {
                     throw new IllegalStateException(
                             "The database at '" + getURL() + "' is not compatible with the provided source code model" +
-                            modelTable.getModelInterface().map( m -> " '" + m.getName() + "'" ).orElse("") + "! \n" +
+                            modelTable.entityType().map(m -> " '" + m.getName() + "'" ).orElse("") + "! \n" +
                             "The sql code of table '" + collision + "' encountered inside the database, \n" +
                             "does not match the table statement generated from " +
                             "the model source code. \nThis means that the database is not compatible with the source code " +
-                            "of the model" + modelTable.getModelInterface().map( m -> " '" + m.getName() + "'" ).orElse("") +
+                            "of the model" + modelTable.entityType().map(m -> " '" + m.getName() + "'" ).orElse("") +
                             ". \nThe sql code of the table is: \n'" + tableSQL + "', \nwhereas the table " +
                             "statement necessary for representing the current model interface is: \n'" + statement + "'."
                         );
@@ -163,7 +163,7 @@ public final class SQLiteDataBase extends AbstractDataBase
         return (String) result.get("sql").get(0);
     }
 
-    private EntityTable _getTableFor(Class<? extends Model<?>> model ) {
+    private ModelTable _getTableFor( Class<? extends Model<?>> model ) {
         // First let's verify that the model is indeed a model
         if ( !Model.class.isAssignableFrom(model) )
             throw new IllegalArgumentException("The provided class is not a model!");
@@ -173,6 +173,7 @@ public final class SQLiteDataBase extends AbstractDataBase
             throw new IllegalArgumentException("The table for the model '" + model.getName() + "' does not exist!");
 
         return _modelRegistry.getTable(model)
+                            .map(ModelTable.class::cast)
                             .orElseThrow(()->new RuntimeException(
                                 "The model '" + model.getName() + "' does have a " +
                                 "table in the database, but the model type is not known " +
@@ -244,7 +245,7 @@ public final class SQLiteDataBase extends AbstractDataBase
             throw new IllegalArgumentException("The table for the model '" + model.getName() + "' does not exist!");
 
         // Now let's create the model
-        EntityTable modelTable       = _getTableFor(model);
+        ModelTable modelTable       = _getTableFor(model);
         Tuple<TableField> fields    = modelTable.getFields();
         Tuple<Object> defaultValues = modelTable.getDefaultValues();
         List<String> fieldNames     = fields.stream().map(TableField::getName).collect(Collectors.toList());

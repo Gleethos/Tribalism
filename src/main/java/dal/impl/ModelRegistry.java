@@ -27,7 +27,7 @@ final class ModelRegistry
 
         Set<Class<? extends DataBaseEntity>> distinct = new HashSet<>();
         for (var modelTable : modelTables.values())
-            modelTable.getModelInterface().ifPresent(modelInterface -> distinct.add(modelInterface));
+            modelTable.entityType().ifPresent(modelInterface -> distinct.add(modelInterface));
 
         distinct.addAll(modelInterfaces);
         var finalModelInterfaces = (Tuple<Class<? extends DataBaseEntity>>) ((Tuple) Tuple.of(Class.class)).addAll(distinct);
@@ -76,11 +76,11 @@ final class ModelRegistry
             Tuple<Class<? extends Model<?>>> referencedModels = modelTable.getReferencedModels();
             List<Class<?>> references = new ArrayList<>();
             for (Class<? extends Model<?>> referencedModel : referencedModels) {
-                if (!referencedModel.equals(modelTable.getModelInterface().orElse(null))) {
+                if (!referencedModel.equals(modelTable.entityType().orElse(null))) {
                     references.add(referencedModel);
                 }
             }
-            modelTable.getModelInterface().ifPresent(m -> modelReferences.put(m, references));
+            modelTable.entityType().ifPresent(m -> modelReferences.put(m, references));
             // If it is not present then it is an intermediate table and we do not need to add it to the map
             // because it is not referenced by any other table, so it can be created at the end.
             if (modelTable instanceof IntermediateTable) {
@@ -163,7 +163,7 @@ final class ModelRegistry
     }
 
     public boolean hasTable(Class<? extends Model<?>> modelInterface) {
-        return modelTables.values().stream().anyMatch(t -> t.getModelInterface().isPresent() && t.getModelInterface().get().equals(modelInterface));
+        return modelTables.values().stream().anyMatch(t -> t.entityType().isPresent() && t.entityType().get().equals(modelInterface));
     }
 
     Optional<EntityTable> getTable(Class<? extends Model<?>> modelInterface ) {
@@ -171,7 +171,7 @@ final class ModelRegistry
         var found1 = modelTables.get(tableName).orElse(null);
         var found2 = modelTables.values()
                                 .stream()
-                                .filter(t -> t.getModelInterface().isPresent() && t.getModelInterface().get().equals(modelInterface))
+                                .filter(t -> t.entityType().isPresent() && t.entityType().get().equals(modelInterface))
                                 .findFirst()
                                 .orElse(null);
 

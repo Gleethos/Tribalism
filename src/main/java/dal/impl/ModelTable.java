@@ -140,14 +140,14 @@ record ModelTable(
         List<Class<? extends Model<?>>> referencedModels = new ArrayList<>();
         for (TableField field : fields) {
             if (field.isForeignKey()) {
-                referencedModels.add((Class<? extends Model<?>>) field.getType());
+                referencedModels.add((Class<? extends Model<?>>) field.itemType());
             }
         }
         return ((Tuple)Tuple.of(Class.class)).addAll(referencedModels);
     }
 
     @Override
-    public Optional<Class<? extends Model<?>>> getModelInterface() {
+    public Optional<Class<? extends DataBaseEntity>> entityType() {
         return Optional.of(modelInterface);
     }
 

@@ -12,9 +12,9 @@ import java.util.Optional;
 
 record TableField(
     Method method, // The method from the model class
-    Class<? extends Model<?>> ownerModelClass, // The model class
-    Class<?> propertyType, // The type of the property and return type of the method
-    Class<?> propertyValueType, // The type of the property value
+    Class<? extends DataBaseEntity> ownerModelClass, // The model class
+    Class<?> wrapperType, // The type of the property and return type of the method
+    Class<?> itemType, // The type of the property value
     FieldKind kind,
     boolean allowNull
 ) {
@@ -26,8 +26,8 @@ record TableField(
 
     public static TableField of(
         final Method method, // The method from the model class
-        final Class<? extends Model<?>> ownerModelClass, // The model class
-        final Tuple<Class<? extends DataBaseEntity>> otherModels
+        final Class<? extends DataBaseEntity> ownerEntityClass, // The model class
+        final Tuple<Class<? extends DataBaseEntity>> otherEntities
     ) {
         final Class<?> propertyType = method.getReturnType(); // The type of the property and return type of the method
         Params propertyParams = null; // The type of the property value
@@ -43,7 +43,7 @@ record TableField(
         if ( !isSubTypeOfVal && !isSubTypeOfVals )
             throw new IllegalArgumentException(
                     "The return type of method '" + method.getName() + "' " +
-                    "in model type '" + ownerModelClass.getName() + "' " +
+                    "in model type '" + ownerEntityClass.getName() + "' " +
                     "is not a subclass of " +
                     "either " + Val.class.getName() + " or " + Vals.class.getName() + ". \n" +
                     "You might want to declare the method as a default method in the model interface " +
@@ -126,7 +126,7 @@ record TableField(
         // Then we check if the field is a foreign key field
         else if ( isSubTypeOfVal ) {
             if ( propertyParams instanceof Params.TupleOf && Value.class.isAssignableFrom(propertyParams.type()) ) {
-                if (otherModels.contains((Class<? extends Value>) propertyParams.type())) {
+                if (otherEntities.contains((Class<? extends Value>) propertyParams.type())) {
                     kind = FieldKind.INTERMEDIATE_TABLE;
                 } else {
                     if (AbstractDataBase._isBasicDataType(propertyParams.type()))
@@ -135,7 +135,7 @@ record TableField(
                         );
                     else
                         throw new IllegalArgumentException(
-                            "Cannot establish table field for method '" + method.getName() + "()' for value type '" + ownerModelClass.getName() + "', \n" +
+                            "Cannot establish table field for method '" + method.getName() + "()' for value type '" + ownerEntityClass.getName() + "', \n" +
                             "because the return type of the method is a property referencing a tuple of values " +
                             "with type '" + propertyParams.type().getName() + "', which is however not known " +
                             "by the database, please make sure that it is passed to the 'createTablesFor(..)' method alongside " +
@@ -143,22 +143,22 @@ record TableField(
                         );
                 }
             } else if (Value.class.isAssignableFrom(propertyParams.type())) {
-                if (otherModels.contains((Class<? extends Value>) propertyParams.type())) {
+                if (otherEntities.contains((Class<? extends Value>) propertyParams.type())) {
                     kind = FieldKind.FOREIGN_KEY;
                 } else
                     throw new IllegalArgumentException(
-                        "Cannot establish table field for method '" + method.getName() + "()' for value type '" + ownerModelClass.getName() + "', \n" +
+                        "Cannot establish table field for method '" + method.getName() + "()' for value type '" + ownerEntityClass.getName() + "', \n" +
                         "because the return type of the method is a property referencing another value " +
                         "called '" + propertyParams.type().getName() + "', which is however not known " +
                         "by the database, please make sure that it is passed to the 'createTablesFor(..)' method alongside " +
                         "all other value and model types!"
                     );
             } else if (Model.class.isAssignableFrom(propertyParams.type())) {
-                if (otherModels.contains((Class<? extends Model<?>>) propertyParams.type())) {
+                if (otherEntities.contains((Class<? extends Model<?>>) propertyParams.type())) {
                     kind = FieldKind.FOREIGN_KEY;
                 } else
                     throw new IllegalArgumentException(
-                        "Cannot establish table field for method '" + method.getName() + "()' for model '" + ownerModelClass.getName() + "', \n" +
+                        "Cannot establish table field for method '" + method.getName() + "()' for model '" + ownerEntityClass.getName() + "', \n" +
                         "because the return type of " +
                         "the method is a property referencing another model called '" + propertyParams.type().getName() + "', " +
                         "which is however not known " +
@@ -171,7 +171,7 @@ record TableField(
                 boolean propertyValueIsModel = Model.class.isAssignableFrom(propertyParams.type());
                 if ( !propertyValueIsModel )
                     throw new IllegalArgumentException(
-                            "Failed to create table field '" + method.getName() + "' for model '" + ownerModelClass.getName() + "', because \n" +
+                            "Failed to create table field '" + method.getName() + "' for model '" + ownerEntityClass.getName() + "', because \n" +
                             "the property value type '" + propertyParams.type().getName() + "' in declared method " +
                             "'public " + propertyType.getSimpleName() + "<" + propertyParams.type().getSimpleName() + "> " + method.getName() + "();' " +
                             "is not a basic data type and is also not recognisable as another model! \n" +
@@ -180,7 +180,7 @@ record TableField(
                         );
                 else // The user has simply not passed the interface class to the createTablesFor(Class<Model... models) method:
                     throw new IllegalArgumentException(
-                            "Failed to create table field '" + method.getName() + "' for model '" + ownerModelClass.getName() + "', because \n" +
+                            "Failed to create table field '" + method.getName() + "' for model '" + ownerEntityClass.getName() + "', because \n" +
                             "the property value type '" + propertyParams.type().getName() + "' in declared method " +
                             "'public " + propertyType.getSimpleName() + "<" + propertyParams.type().getSimpleName() + "> " + method.getName() + "();' " +
                             "is a model type not known to the database! " +
@@ -191,7 +191,7 @@ record TableField(
         }
         // Then we check if the field is an intermediate table field
         else if (isSubTypeOfVals) {
-            if (otherModels.contains((Class<? extends Model<?>>) propertyParams.type())) {
+            if (otherEntities.contains((Class<? extends Model<?>>) propertyParams.type())) {
                 kind = FieldKind.INTERMEDIATE_TABLE;
             } else {
                 if (AbstractDataBase._isBasicDataType(propertyParams.type()))
@@ -213,7 +213,7 @@ record TableField(
         allowNull = Model.class.isAssignableFrom(propertyParams.type());
         return new TableField(
                 method,
-                ownerModelClass,
+                ownerEntityClass,
                 propertyType,
                 propertyParams.type(),
                 kind,
@@ -286,16 +286,12 @@ record TableField(
         return method.getName().equals(name);
     }
 
-    public Class<?> getType() {
-        return propertyValueType;
-    }
-
-    public Class<?> getPropType() {
-        return propertyType;
-    }
-
     public boolean isList() {
-        return Vals.class.isAssignableFrom(propertyType);
+        return Vals.class.isAssignableFrom(wrapperType);
+    }
+
+    public boolean isTuple() {
+        return Tuple.class.isAssignableFrom(wrapperType);
     }
 
     public FieldKind getKind() {
@@ -311,7 +307,7 @@ record TableField(
     }
 
     public String toTableFieldStatement() {
-        return getName() + " " + AbstractDataBase._fromJavaTypeToDBType(propertyValueType);
+        return getName() + " " + AbstractDataBase._fromJavaTypeToDBType(itemType);
     }
 
     public Optional<EntityTable> getIntermediateTable() {
@@ -325,13 +321,13 @@ record TableField(
         var prop = new ModelProperty(
                         db, id, this.getName(),
                         AbstractDataBase._tableNameFromClass(ownerModelClass),
-                propertyValueType,
+                itemType,
                 allowNull,
                         eager
                     );
 
         // Let's check if the property is a Val
-        boolean isVal = Val.class.isAssignableFrom(propertyType);
+        boolean isVal = Val.class.isAssignableFrom(wrapperType);
         if (!isVal)
             throw new IllegalArgumentException(
                     "The return type of the method " + method.getName() + " is not a subclass " +
@@ -340,10 +336,10 @@ record TableField(
 
         // Let's create the proxy:
         return new ProxyRef<>((Val<Object>) Proxy.newProxyInstance(
-                        propertyType.getClassLoader(),
-                        new Class[]{propertyType, Viewable.class},
+                        wrapperType.getClassLoader(),
+                        new Class[]{wrapperType, Viewable.class},
                         (proxy, method, args) -> {
-                            return _handleInvocation(proxy, method, args, prop, propertyType);
+                            return _handleInvocation(proxy, method, args, prop, wrapperType);
                         }
                     ),
                     prop
@@ -404,13 +400,13 @@ record TableField(
 
     public Optional<String> asSqlColumn() {
         String name = getName();
-        if (!Model.class.isAssignableFrom(propertyValueType)) {
+        if (!Model.class.isAssignableFrom(itemType)) {
             String properties = allowNull ? "" : " NOT NULL";
             if (name.equals(EntityTable.ID))
                 properties += " PRIMARY KEY AUTOINCREMENT";
-            return Optional.of(name + " " + AbstractDataBase._fromJavaTypeToDBType(propertyValueType) + properties);
+            return Optional.of(name + " " + AbstractDataBase._fromJavaTypeToDBType(itemType) + properties);
         } else if ( kind == FieldKind.FOREIGN_KEY) {
-            String otherTable = AbstractDataBase._tableNameFromClass(propertyValueType);
+            String otherTable = AbstractDataBase._tableNameFromClass(itemType);
             return Optional.of(name + " INTEGER REFERENCES " + otherTable + "("+ EntityTable.ID+")");
         } else if ( kind == FieldKind.INTERMEDIATE_TABLE) {
             return Optional.empty(); // The field is not a column in the table, but a table itself
@@ -424,26 +420,26 @@ record TableField(
         else if ( kind == FieldKind.INTERMEDIATE_TABLE )
             return null;
         else if ( kind == FieldKind.PRIMITIVE) {
-            if ( propertyValueType == String.class )
+            if ( itemType == String.class )
                 return "";
-            else if ( propertyValueType == Integer.class )
+            else if ( itemType == Integer.class )
                 return 0;
-            else if ( propertyValueType == Double.class )
+            else if ( itemType == Double.class )
                 return 0.0;
-            else if ( propertyValueType == Boolean.class )
+            else if ( itemType == Boolean.class )
                 return false;
-            else if ( propertyValueType == Long.class )
+            else if ( itemType == Long.class )
                 return 0L;
-            else if ( propertyValueType == Float.class )
+            else if ( itemType == Float.class )
                 return 0.0f;
-            else if ( propertyValueType == Short.class )
+            else if ( itemType == Short.class )
                 return (short) 0;
-            else if ( propertyValueType == Byte.class )
+            else if ( itemType == Byte.class )
                 return (byte) 0;
-            else if ( Enum.class.isAssignableFrom(propertyValueType) )
-                return propertyValueType.getEnumConstants()[0];
+            else if ( Enum.class.isAssignableFrom(itemType) )
+                return itemType.getEnumConstants()[0];
             else
-                throw new IllegalStateException( "Unknown property type: " + propertyValueType);
+                throw new IllegalStateException( "Unknown property type: " + itemType);
         } else if ( kind == FieldKind.ID ) {
             return 1;
         } else
@@ -467,14 +463,14 @@ record TableField(
             throw new IllegalStateException("The intermediate table does not exist");
 
 
-        Vars<Object> vars = new ModelProperties(db, ownerModelClass, propertyValueType, intermediateTable, id, eager);
+        Vars<Object> vars = new ModelProperties(db, ownerModelClass, itemType, intermediateTable, id, eager);
 
         // Let's create the proxy:
         return new ProxyRef<>((Vals<Object>) Proxy.newProxyInstance(
-                        propertyType.getClassLoader(),
-                        new Class[]{propertyType, Viewables.class},
+                        wrapperType.getClassLoader(),
+                        new Class[]{wrapperType, Viewables.class},
                         (proxy, method, args) -> {
-                            return _handleInvocation(proxy, method, args, vars, propertyType);
+                            return _handleInvocation(proxy, method, args, vars, wrapperType);
                         }
                     ),
                     vars
@@ -482,7 +478,7 @@ record TableField(
     }
 
     @Override public String toString() {
-        return "TableField[" + "name=" + getName() + ", type=" + propertyValueType + ", kind=" + kind + ']';
+        return "TableField[" + "name=" + getName() + ", type=" + itemType + ", kind=" + kind + ']';
     }
 
 }

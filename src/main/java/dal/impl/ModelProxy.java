@@ -16,14 +16,14 @@ import java.util.function.Consumer;
 
 final class ModelProxy<T extends Model<T>> implements InvocationHandler {
     private final SQLiteDataBase _dataBase;
-    private final EntityTable _modelTable;
+    private final ModelTable _modelTable;
     private final int _id;
     private final boolean _isEager;
     private final Map<String, ProxyRef<Object>> cachedPropertyProxies = new HashMap<>();
 
     public ModelProxy(
         SQLiteDataBase db,
-        EntityTable table,
+        ModelTable table,
         int id,
         boolean isEager
     ) {
@@ -60,7 +60,7 @@ final class ModelProxy<T extends Model<T>> implements InvocationHandler {
                 Let's not be lazy and actually build a string that contains all the properties!
              */
             StringBuilder sb = new StringBuilder();
-            sb.append(_modelTable.getModelInterface().map(Class::getSimpleName).orElse(_modelTable.getTableName()));
+            sb.append(_modelTable.entityType().map(Class::getSimpleName).orElse(_modelTable.getTableName()));
             sb.append("[");
             for ( var field : _modelTable.getFields() ) {
                 if (!field.isList()) {
@@ -130,8 +130,8 @@ final class ModelProxy<T extends Model<T>> implements InvocationHandler {
             // Let's create a proxy that is of the correct type
             var transactionProxy = (T)
                             java.lang.reflect.Proxy.newProxyInstance(
-                                _modelTable.getModelInterface().orElseThrow().getClassLoader(),
-                                new Class[]{_modelTable.getModelInterface().orElseThrow()},
+                                _modelTable.entityType().orElseThrow().getClassLoader(),
+                                new Class[]{_modelTable.entityType().orElseThrow()},
                                 nonEager
                             );
 
@@ -141,7 +141,7 @@ final class ModelProxy<T extends Model<T>> implements InvocationHandler {
             nonEager.executeCommit();
             return null;
         } else if ( methodName.equals("clone") ) {
-            Class<Model> modelInterface = (Class) _modelTable.getModelInterface().orElseThrow();
+            Class<Model> modelInterface = (Class) _modelTable.entityType().orElseThrow();
             var clone = _dataBase.create(modelInterface);
             var thisModel = _dataBase.select(modelInterface, _id);
 
@@ -176,7 +176,7 @@ final class ModelProxy<T extends Model<T>> implements InvocationHandler {
                 Ah, a method that is not a property! Let's check if it is a default method!
             */
             // First we expect there to be a model interface
-            Class<?> modelInterface = _modelTable.getModelInterface().orElseThrow();
+            Class<?> modelInterface = _modelTable.entityType().orElseThrow();
             // Then we expect the method to be declared in the model interface
             Method modelInterfaceMethod = modelInterface.getDeclaredMethod(methodName, method.getParameterTypes());
             // Then we expect the method to be a default method
@@ -197,11 +197,11 @@ final class ModelProxy<T extends Model<T>> implements InvocationHandler {
 
         TableField tableField = _modelTable.getField(methodName);
         if ( tableField == null )
-            throw new IllegalArgumentException("The model '" + _modelTable.getModelInterface().get().getName() + "' does not have a property named '" + methodName + "'!");
+            throw new IllegalArgumentException("The model '" + _modelTable.entityType().get().getName() + "' does not have a property named '" + methodName + "'!");
         if ( args != null && args.length != 0 )
-            throw new IllegalArgumentException("The model '" + _modelTable.getModelInterface().get().getName() + "' does not have a setter for the property named '" + methodName + "'!");
+            throw new IllegalArgumentException("The model '" + _modelTable.entityType().get().getName() + "' does not have a setter for the property named '" + methodName + "'!");
         if ( method.getReturnType() == void.class )
-            throw new IllegalArgumentException("The model '" + _modelTable.getModelInterface().get().getName() + "' does not have a setter for the property named '" + methodName + "'!");
+            throw new IllegalArgumentException("The model '" + _modelTable.entityType().get().getName() + "' does not have a setter for the property named '" + methodName + "'!");
 
         // Now let's get the property value from the database
         ProxyRef<Object> toBeReturned;
@@ -211,11 +211,11 @@ final class ModelProxy<T extends Model<T>> implements InvocationHandler {
         else if (Vals.class.isAssignableFrom(method.getReturnType()))
             toBeReturned = cachedPropertyProxies.computeIfAbsent(methodName, n -> (ProxyRef) tableField.asProperties(_dataBase, _id, _isEager));
         else
-            throw new IllegalArgumentException("The model '" + _modelTable.getModelInterface().get().getName() + "' does not have a property named '" + methodName + "'!");
+            throw new IllegalArgumentException("The model '" + _modelTable.entityType().get().getName() + "' does not have a property named '" + methodName + "'!");
 
         // Now let's check if the property is of the correct type
         if (!method.getReturnType().isAssignableFrom(toBeReturned.proxy().getClass()))
-            throw new IllegalArgumentException("Failed to create a proxy for the model '" + _modelTable.getModelInterface().get().getName() + "' because the property '" + methodName + "' is of type '" + toBeReturned.getClass().getName() + "' but the getter is of type '" + method.getReturnType().getName() + "'!");
+            throw new IllegalArgumentException("Failed to create a proxy for the model '" + _modelTable.entityType().get().getName() + "' because the property '" + methodName + "' is of type '" + toBeReturned.getClass().getName() + "' but the getter is of type '" + method.getReturnType().getName() + "'!");
 
         return toBeReturned.proxy();
     }

@@ -43,7 +43,7 @@ final class PropertySelectionProxy implements InvocationHandler
         for (TableField field : fields) {
             if (field.getMethodName().equals(method.getName())) {
                 _selection = field;
-                Class<?> propType = field.getPropType();
+                Class<?> propType = field.wrapperType();
                 // We return a proxy that will return the value of the property
                 return java.lang.reflect.Proxy.newProxyInstance(
                         propType.getClassLoader(),

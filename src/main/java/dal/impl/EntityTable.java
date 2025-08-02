@@ -1,5 +1,6 @@
 package dal.impl;
 
+import dal.api.DataBaseEntity;
 import dal.api.Model;
 import sprouts.Tuple;
 
@@ -38,7 +39,7 @@ sealed interface EntityTable permits ModelTable, IntermediateTable
 
     default TableField getField(Class<?> propertyType) {
         for (TableField field : getFields()) {
-            if (field.getPropType().equals(propertyType))
+            if (field.wrapperType().equals(propertyType))
                 return field;
         }
         throw new IllegalArgumentException("No field with type " + propertyType.getName() + " found!");
@@ -46,7 +47,7 @@ sealed interface EntityTable permits ModelTable, IntermediateTable
 
     Tuple<Class<? extends Model<?>>> getReferencedModels();
 
-    default Optional<Class<? extends Model<?>>> getModelInterface() {
+    default Optional<Class<? extends DataBaseEntity>> entityType() {
         return Optional.empty();
     }
 

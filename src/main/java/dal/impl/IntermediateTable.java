@@ -20,7 +20,7 @@ record IntermediateTable(TableField tableField) implements EntityTable {
     @Override
     public Tuple<Class<? extends Model<?>>> getReferencedModels() {
         Class<?> thisTableClass = tableField.method().getDeclaringClass();
-        Class<?> otherTableClass = tableField.propertyValueType();
+        Class<?> otherTableClass = tableField.itemType();
         Objects.requireNonNull(thisTableClass);
         Objects.requireNonNull(otherTableClass);
         return ((Tuple)Tuple.of(Class.class)).addAll((Class<? extends Model<?>>) thisTableClass, (Class<? extends Model<?>>) otherTableClass);
@@ -35,7 +35,7 @@ record IntermediateTable(TableField tableField) implements EntityTable {
                 - foreign_key pointing to the model of the property type of the list
              */
         Class<?> thisTableClass = tableField.method().getDeclaringClass();
-        Class<?> otherTableClass = tableField.propertyValueType();
+        Class<?> otherTableClass = tableField.itemType();
         String thisTable = AbstractDataBase._tableNameFromClass(thisTableClass);
         String otherTable = AbstractDataBase._tableNameFromClass(otherTableClass);
         return "CREATE TABLE " + getTableName() + " (\n" +
