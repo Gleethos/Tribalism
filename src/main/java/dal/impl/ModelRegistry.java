@@ -31,7 +31,7 @@ final class ModelRegistry
 
         Map<String, ModelTable> newModelTables = new LinkedHashMap<>();
         for (Class<? extends Model<?>> modelInterface : finalModelInterfaces) {
-            ModelTable modelTable = new DefaultModelTable(modelInterface, finalModelInterfaces);
+            ModelTable modelTable = DefaultModelTable.of(modelInterface, finalModelInterfaces);
             newModelTables.put(modelTable.getTableName(), modelTable);
             modelTable.getFields().forEach(
                     f -> f.getIntermediateTable().ifPresent(

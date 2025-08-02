@@ -8,12 +8,12 @@ import java.lang.reflect.ParameterizedType;
 import java.lang.reflect.Type;
 import java.util.*;
 
-final class DefaultModelTable implements ModelTable
+record DefaultModelTable(
+    Tuple<TableField> fields,
+    Class<? extends Model<?>> modelInterface
+) implements ModelTable
 {
-    private final Tuple<TableField> fields;
-    private final Class<? extends Model<?>> modelInterface;
-
-    DefaultModelTable(
+    static DefaultModelTable of(
         Class<? extends Model<?>> modelInterface,
         Tuple<Class<? extends Model<?>>> otherModels
     ) {
@@ -121,8 +121,7 @@ final class DefaultModelTable implements ModelTable
             return firstKind.compareTo(secondKind);
         });
 
-        this.fields = Tuple.of(TableField.class, sortedFields);
-        this.modelInterface = modelInterface;
+        return new DefaultModelTable(Tuple.of(TableField.class, sortedFields), modelInterface);
     }
 
     @Override
