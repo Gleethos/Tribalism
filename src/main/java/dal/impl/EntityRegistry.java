@@ -176,9 +176,9 @@ final class EntityRegistry
         return entityTables.values().stream().anyMatch(t -> t.entityType().isPresent() && t.entityType().get().equals(modelInterface));
     }
 
-    Optional<EntityTable> getTable(Class<? extends Model<?>> modelInterface ) {
+    Optional<ModelTable> getTable(Class<? extends Model<?>> modelInterface ) {
         String tableName = AbstractDataBase._tableNameFromClass(modelInterface);
-        var found1 = entityTables.get(tableName).orElse(null);
+        var found1 = entityTables.get(tableName).map(ModelTable.class::cast).orElse(null);
         var found2 = entityTables.values()
                                 .stream()
                                 .filter(t -> t.entityType().isPresent() && t.entityType().get().equals(modelInterface))
@@ -188,6 +188,22 @@ final class EntityRegistry
         // Let's do some consistency checks
         if ( found1 != found2 )
             throw new IllegalStateException("The model table for " + modelInterface + " is not consistent!");
+
+        return Optional.ofNullable(found1);
+    }
+
+    Optional<ValueTable> getValueTable(Class<? extends Value> valueClass ) {
+        String tableName = AbstractDataBase._tableNameFromClass(valueClass);
+        var found1 = entityTables.get(tableName).map(ValueTable.class::cast).orElse(null);
+        var found2 = entityTables.values()
+                .stream()
+                .filter(t -> t.entityType().isPresent() && t.entityType().get().equals(valueClass))
+                .findFirst()
+                .orElse(null);
+
+        // Let's do some consistency checks
+        if ( found1 != found2 )
+            throw new IllegalStateException("The value table for " + valueClass + " is not consistent!");
 
         return Optional.ofNullable(found1);
     }

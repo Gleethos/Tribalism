@@ -240,14 +240,30 @@ public final class SQLiteDataBase extends AbstractDataBase
         if ( !Model.class.isAssignableFrom(model) )
             throw new IllegalArgumentException("The provided class is not a model!");
 
+        // Now let's create the model
+        EntityTable modelTable          = _getTableFor(model);
+        Tuple<Object> defaultValues = modelTable.getDefaultValues();
+
+        var id = _storeEntity(modelTable, model, defaultValues);
+
+        return select(model, id);
+    }
+
+    int _storeEntity(
+            EntityTable modelTable,
+            Class<? extends DataBaseEntity> model,
+            Tuple<Object> defaultValues
+    )
+    {
+        // First let's verify that the model is indeed a model
+        if ( !DataBaseEntity.class.isAssignableFrom(model) )
+            throw new IllegalArgumentException("The provided class is not a database entity!");
+
         // Now let's verify that the table exists
         if ( !doesTableExist(_tableNameFromClass(model)) )
             throw new IllegalArgumentException("The table for the model '" + model.getName() + "' does not exist!");
 
-        // Now let's create the model
-        ModelTable modelTable       = _getTableFor(model);
-        Tuple<EntityTableField> fields    = modelTable.getFields();
-        Tuple<Object> defaultValues = modelTable.getDefaultValues();
+        Tuple<EntityTableField> fields  = modelTable.getFields();
         List<String> fieldNames     = fields.stream().map(EntityTableField::name).collect(Collectors.toList());
         /*
             Now there might be a problem here because some model fields might not actually exist
@@ -255,30 +271,29 @@ public final class SQLiteDataBase extends AbstractDataBase
             through a Vars or Vals field!
             So we need to check for that and remove those fields from the list of fields
         */
+        boolean hasId = false;
         for ( int i = fields.size()-1; i >= 0; i-- ) {
             EntityTableField field = fields.get(i);
+            boolean shouldBeRemoved = false;
             if ( field.getKind() == FieldKind.INTERMEDIATE_TABLE ) {
+                shouldBeRemoved = true;
+            }
+            if ( field.name().equals(EntityTable.ID) ) {
+                hasId = true;
+                shouldBeRemoved = true;
+            }
+            if ( shouldBeRemoved ) {
                 fieldNames.remove(i);
                 defaultValues = defaultValues.removeAt(i);
             }
         }
 
-        int idIndex = -1;
-        for ( int i = 0; i < fieldNames.size(); i++ )
-            if ( fieldNames.get(i).equals(EntityTable.ID) ) {
-                idIndex = i;
-                break;
-            }
-
-        if ( idIndex == -1 )
+        if ( !hasId )
             throw new IllegalArgumentException(
                     "The model '" + model.getName() + "' does not have an '"+ EntityTable.ID+"' field. " +
                     "This is most likely a bug in the TopSoil ORM!"
                 );
-        else {
-            defaultValues = defaultValues.removeAt(idIndex);
-            fieldNames.remove(idIndex);
-        }
+
         String tableName = _tableNameFromClass(model);
         String sql =
                 "INSERT INTO " + tableName +
@@ -309,7 +324,7 @@ public final class SQLiteDataBase extends AbstractDataBase
             throw new IllegalArgumentException("There are multiple tables for the model '" + model.getName() + "' in the database!");
         int id = (int) result.get("last_insert_rowid()").get(0);
 
-        return select(model, id);
+        return id;
     }
 
     @Override
@@ -617,7 +632,7 @@ public final class SQLiteDataBase extends AbstractDataBase
                                 new Class<?>[]{model},
                                 propSelector
                             ));
-        if ( selection != null )
+        if ( selection == null )
             log.error("Selection is null!", new Throwable());
         return propSelector.getSelection().orElseThrow();
     }
@@ -631,6 +646,102 @@ public final class SQLiteDataBase extends AbstractDataBase
                                 .map(Object::toString)
                                 .toList()
                     ));
+    }
+
+    int _storeValueAndIncreaseCounter(Value databaseValue) {
+        var valueTable = _entityRegistry.getValueTable(databaseValue.getClass())
+                .orElseThrow(() -> new IllegalArgumentException(
+                        "The value table for " + databaseValue.getClass().getName() + " does not exist!")
+                );
+        int hashCode = databaseValue.hashCode();
+        var existingId = _findIdOfValue(valueTable, databaseValue, hashCode);
+        if ( existingId < 0 ) {
+            // We need to create a new entry in the value table
+            Tuple<Object> rowOfValues = _convertValueToRowOfValues(valueTable, databaseValue, hashCode);
+            existingId = _storeEntity(valueTable, databaseValue.getClass(),rowOfValues);
+        }
+        _modifyUsageCounter(valueTable, existingId, +1);
+        return existingId;
+    }
+
+    int _findIdOfValue(
+        ValueTable valueTable,
+        Value value,
+        int hashCode
+    ) {
+        String sql = "SELECT * FROM " + valueTable.getTableName() + " WHERE "+ValueTable.HASH_FIELD_NAME+" = ?";
+        Map<String, List<Object>> result = _query(sql, Collections.singletonList(hashCode));
+        if ( result.isEmpty() )
+            return -1; // Not found
+        if ( result.values().stream().anyMatch( v -> v.size() != 1 ) )
+            throw new IllegalStateException();
+
+        // Let's check if the value is equal to the value in the database
+        Tuple<Object> rowOfValues = _convertValueToRowOfValues(valueTable, value, hashCode);
+        List<Object> dbValues = new ArrayList<>();
+        for ( var entry : result.entrySet() ) {
+            if ( !entry.getKey().equals(EntityTable.ID) && !entry.getKey().equals(ValueTable.USAGE_FIELD_COUNTER) ) {
+                dbValues.addAll(entry.getValue());
+            }
+        }
+        if ( !dbValues.equals(rowOfValues.toList()) )
+            return -1; // Not found, but the hash code matches
+
+        return (Integer) result.get(EntityTable.ID).get(0);
+    }
+
+    private Tuple<Object> _convertValueToRowOfValues(
+        ValueTable valueTable,
+        Value value,
+        int hashCode
+    ) {
+        List<Object> values = new ArrayList<>();
+        values.add(hashCode);
+        for ( EntityTableField field : valueTable.getFields() ) {
+            if (field.name().equals(ValueTable.HASH_FIELD_NAME) || field.name().equals(ValueTable.USAGE_FIELD_COUNTER))
+                continue;
+            if ( field.name().equals(EntityTable.ID) )
+                continue;
+            try {
+                Method method = value.getClass().getMethod(field.baseName());
+                Object fieldValue = method.invoke(value);
+                if (fieldValue == null) {
+                    values.add(null);
+                } else if (_isBasicDataType(fieldValue.getClass())) {
+                    values.add(fieldValue);
+                } else if (fieldValue instanceof Value) {
+                    // If the field value is a Value, we need to store it in the database
+                    int id = _storeValueAndIncreaseCounter((Value) fieldValue);
+                    values.add(id);
+                } else {
+                    throw new IllegalArgumentException(
+                            "The value '" + value + "' has a field '" + field.name() + "' of type '" +
+                            fieldValue.getClass().getName() + "' which is not supported!"
+                    );
+                }
+            } catch (NoSuchMethodException | IllegalAccessException | InvocationTargetException e) {
+                throw new IllegalArgumentException(
+                        "The value '" + value + "' does not have a method '" + field.name() + "'!",
+                        e
+                );
+            }
+        }
+        return Tuple.of(Object.class, values);
+    }
+
+    private void _modifyUsageCounter(
+        ValueTable valueTable,
+        int id,
+        int delta
+    ) {
+        String sql = "UPDATE " + valueTable.getTableName() + " SET " + ValueTable.USAGE_FIELD_COUNTER + " = " +
+                ValueTable.USAGE_FIELD_COUNTER + " + ? WHERE " + EntityTable.ID + " = ?";
+        boolean success = _update(sql, List.of(delta, id));
+        if ( !success )
+            throw new IllegalArgumentException(
+                    "Failed to update the usage counter for value with id '" + id + "' in table '" +
+                    valueTable.getTableName() + "'!"
+            );
     }
 
 }

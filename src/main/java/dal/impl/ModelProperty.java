@@ -1,6 +1,8 @@
 package dal.impl;
 
+import dal.api.DataBaseEntity;
 import dal.api.Model;
+import dal.api.Value;
 import org.jspecify.annotations.NullMarked;
 import org.jspecify.annotations.Nullable;
 import org.slf4j.Logger;
@@ -137,7 +139,7 @@ final class ModelProperty implements Var<Object>, Viewable<Object>
     }
 
     private void _set( Object newItem ) {
-        if (!(newItem instanceof Model<?>)) {
+        if (!(newItem instanceof DataBaseEntity)) {
             String update = "UPDATE " + _tableName + " " +
                             "SET " + _fieldName + " = ? " +
                             "WHERE id = ?";
@@ -152,19 +154,33 @@ final class ModelProperty implements Var<Object>, Viewable<Object>
             boolean success = _dataBase._update(update, Arrays.asList(valueToStore, _id));
             if (!success)
                 throw new IllegalStateException("Failed to update table entry for id " + _id);
-        } else {
+        } else if (newItem instanceof Model) {
             // We have a model, so we need to update the foreign key
             Model<?> model = (Model<?>) newItem;
-            StringBuilder update = new StringBuilder();
-            update.append("UPDATE ");
-            update.append(_tableName);
-            update.append(" SET ");
-            update.append(_fieldName);
-            update.append(" = ? WHERE id = ?");
-            boolean success = _dataBase._update(update.toString(), Arrays.asList(model.id().get(), _id));
+            boolean success = _updateField(model.id().get());
             if ( !success )
                 throw new IllegalStateException("Failed to update table entry for id " + _id);
+        } else if (newItem instanceof Value) {
+            Value dataBaseValue = (Value) newItem;
+            int id = _dataBase._storeValueAndIncreaseCounter(dataBaseValue);
+            boolean success = _updateField(id);
+            if ( !success )
+                throw new IllegalStateException("Failed to update table entry for id " + _id);
+        } else {
+            throw new IllegalStateException("Unknown type for property field '" + _fieldName + "' " +
+                                            "of type " + _propertyValueType.getName() + ". " +
+                                            "Expected a model or a value, but got " + newItem.getClass().getName());
         }
+    }
+
+    private boolean _updateField( Object newItem ) {
+        StringBuilder update = new StringBuilder();
+        update.append("UPDATE ");
+        update.append(_tableName);
+        update.append(" SET ");
+        update.append(_fieldName);
+        update.append(" = ? WHERE id = ?");
+        return _dataBase._update(update.toString(), Arrays.asList(newItem, _id));
     }
 
     @Override public Var<Object> withId(String id) {

@@ -9,6 +9,7 @@ import groovy.transform.CompileDynamic
 import spock.lang.Narrative
 import spock.lang.Specification
 import spock.lang.Title
+import sprouts.Tuple
 
 @Title("Topsoil Values")
 @Narrative('''
@@ -92,7 +93,7 @@ class DataBase_Values_Spec extends Specification
         db.close()
     }
 
-    def 'We can create a `School` of students and store it in the database.'()
+    def 'Topsoil can create tables for a `School` of students.'()
     {
         given : 'We create a database instance for testing, the database will be opened in a test folder.'
             def db = DataBase.at(TEST_DB_FILE)
@@ -132,6 +133,37 @@ class DataBase_Values_Spec extends Specification
                         "age INTEGER NOT NULL, " +
                         "fk_name_id INTEGER REFERENCES dal_values_FullName_table(id)" +
                     ")"
+    }
+
+
+    def 'We can create a `School` of students and store it in the database.'()
+    {
+        given : 'We create a database instance for testing, the database will be opened in a test folder.'
+            def db = DataBase.at(TEST_DB_FILE)
+            db.dropAllTables()
+        when : 'We create a single table for the school, all other value tables will be created automatically.'
+            db.createTablesFor(School, ClassRoom, FullName, Person)
+        then :
+            noExceptionThrown()
+
+        when : 'We now create some values for the school.'
+            var person1 = new Person(new FullName("Thomas", "Eicher"), 30)
+            var person2 = new Person(new FullName("Mellanie", "Fuchs"), 28)
+            var person3 = new Person(new FullName("Gerhard", "Schmidt"), 45)
+            var person4 = new Person(new FullName("Karina", "Müller"), 53)
+            var classRoom1 = new ClassRoom("Math", 10, person2, Tuple.of(person2, person3))
+            var classRoom2 = new ClassRoom("Science", 11, person2, Tuple.of(person1, person3))
+            var classRoom3 = new ClassRoom("History", 12, person3, Tuple.of(person2))
+        and : 'We create the school model instance itself:'
+            var school = db.create(School)
+        and : 'We populate the school:'
+            school.director().set(person4)
+            school.students().set(Tuple.of(person1, person2, person3))
+            school.classRoom1().set(classRoom1)
+            school.classRoom2().set(classRoom2)
+            school.classRoom3().set(classRoom3)
+        then :
+            school.toString() == ""
     }
 
 }
