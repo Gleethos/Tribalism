@@ -24,9 +24,10 @@ final class ModelProperty implements Var<Object>, Viewable<Object>
     private final int _id;
     private final String _fieldName;
     private final String _tableName;
-    private final Class<?> _propertyValueType;
+    private final EntityTableField.Params _itemType;
     private final boolean _allowNull;
     private final boolean _isEager;
+
     private @Nullable Object _value;
     private boolean _wasSet = false;
 
@@ -38,7 +39,7 @@ final class ModelProperty implements Var<Object>, Viewable<Object>
         int id,
         String fieldName,
         String tableName,
-        Class<?> propertyValueType,
+        EntityTableField.Params propertyValueType,
         boolean allowNull,
         boolean isEager
     ) {
@@ -46,7 +47,7 @@ final class ModelProperty implements Var<Object>, Viewable<Object>
         _id                = id;
         _fieldName         = fieldName;
         _tableName         = tableName;
-        _propertyValueType = propertyValueType;
+        _itemType          = propertyValueType;
         _allowNull         = allowNull;
         _isEager           = isEager;
     }
@@ -75,17 +76,17 @@ final class ModelProperty implements Var<Object>, Viewable<Object>
                 itemToReturn = queryResultColumn.get(0);
         }
 
-        if (!Model.class.isAssignableFrom(_propertyValueType)) {
-            if ( Enum.class.isAssignableFrom(_propertyValueType) ) {
+        if (!Model.class.isAssignableFrom(_itemType.type())) {
+            if ( Enum.class.isAssignableFrom(_itemType.type()) ) {
                 // We parse the enum value
                 if (itemToReturn == null)
                     return null;
                 else {
                     try {
-                        return Enum.valueOf((Class<Enum>) _propertyValueType, itemToReturn.toString());
+                        return Enum.valueOf((Class<Enum>) _itemType.type(), itemToReturn.toString());
                     } catch ( IllegalArgumentException e ) {
                         throw new IllegalStateException(
-                                "Failed to parse enum value " + itemToReturn + " for type " + _propertyValueType.getName()
+                                "Failed to parse enum value " + itemToReturn + " for type " + _itemType.type().getName()
                             );
                     }
                 }
@@ -104,7 +105,7 @@ final class ModelProperty implements Var<Object>, Viewable<Object>
                     return null;
                 // We have a number, so we can find the model
                 int foreignKeyId = ((Number) itemToReturn).intValue();
-                Class<? extends Model<?>> foreignKeyModelClass = (Class<? extends Model<?>>) _propertyValueType;
+                Class<? extends Model<?>> foreignKeyModelClass = (Class<? extends Model<?>>) _itemType.type();
                 itemToReturn = _dataBase.select((Class) foreignKeyModelClass, foreignKeyId);
                 if (itemToReturn == null)
                     throw new IllegalStateException("Failed to find model of type " + foreignKeyModelClass.getName() + " with id " + foreignKeyId);
@@ -145,11 +146,14 @@ final class ModelProperty implements Var<Object>, Viewable<Object>
                             "WHERE id = ?";
 
             Object valueToStore = newItem;
-            if ( Enum.class.isAssignableFrom(_propertyValueType) ) {
+            if ( Enum.class.isAssignableFrom(_itemType.type()) ) {
                 if ( newItem == null )
                     valueToStore = null;
                 else
                     valueToStore = newItem.toString();
+            }
+            if ( _itemType instanceof EntityTableField.Params.TupleOf ) {
+                // TODO
             }
             boolean success = _dataBase._update(update, Arrays.asList(valueToStore, _id));
             if (!success)
@@ -168,7 +172,7 @@ final class ModelProperty implements Var<Object>, Viewable<Object>
                 throw new IllegalStateException("Failed to update table entry for id " + _id);
         } else {
             throw new IllegalStateException("Unknown type for property field '" + _fieldName + "' " +
-                                            "of type " + _propertyValueType.getName() + ". " +
+                                            "of type " + _itemType.type().getName() + ". " +
                                             "Expected a model or a value, but got " + newItem.getClass().getName());
         }
     }
@@ -204,7 +208,12 @@ final class ModelProperty implements Var<Object>, Viewable<Object>
     }
 
     @Override public Class<Object> type() {
-        return (Class<Object>) _propertyValueType;
+        if ( _itemType instanceof EntityTableField.Params.Single ) {
+            return (Class<Object>) _itemType.type();
+        } else if ( _itemType instanceof EntityTableField.Params.TupleOf ) {
+            return (Class) Tuple.class;
+        }
+        throw new UnsupportedOperationException();
     }
 
     @Override public boolean allowsNull() {

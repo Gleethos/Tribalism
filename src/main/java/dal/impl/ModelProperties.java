@@ -83,7 +83,7 @@ public final class ModelProperties implements Vars<Object>, Viewables<Object>
                 ids.get(index),
                 EntityTable.INTER_RIGHT_FK_PREFIX + otherTable + EntityTable.INTER_FK_POSTFIX,
                 intermediateTable.getTableName(),
-                propertyValueType,
+                new EntityTableField.Params.Single(propertyValueType),
                 false,
                 _isEager
             );

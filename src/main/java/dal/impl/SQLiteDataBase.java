@@ -696,7 +696,9 @@ public final class SQLiteDataBase extends AbstractDataBase
         int hashCode
     ) {
         List<Object> values = new ArrayList<>();
+        values.add(-1); // Dummy id
         values.add(hashCode);
+        values.add(0); // Default usages
         for ( EntityTableField field : valueTable.getFields() ) {
             if (field.name().equals(ValueTable.HASH_FIELD_NAME) || field.name().equals(ValueTable.USAGE_FIELD_COUNTER))
                 continue;

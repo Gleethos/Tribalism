@@ -370,7 +370,9 @@ record EntityTableField(
         var prop = new ModelProperty(
                         db, id, this.name(),
                         AbstractDataBase._tableNameFromClass(ownerModelClass),
-                        itemType,
+                        this.isTuple()
+                                ? new EntityTableField.Params.TupleOf(itemType)
+                                : new EntityTableField.Params.Single(itemType),
                         allowNull,
                         eager
                     );
