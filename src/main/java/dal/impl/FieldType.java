@@ -1,75 +1,81 @@
 package dal.impl;
 
-import dal.api.Model;
 import org.jspecify.annotations.Nullable;
 import sprouts.Var;
 import sprouts.Vars;
 
 sealed interface FieldType {
-    record VarOfId(Class<? extends Var<?>> varType, Class<?> itemType) implements FieldType {}
-    record VarOfPrimitive(Class<? extends Var<?>> varType, Class<?> itemType) implements FieldType {}
-    record VarOfValue(Class<? extends Var<?>> varType, Class<? extends Value> itemType) implements FieldType {}
-    record VarOfTuple(Class<? extends Var<?>> varType, Class<? extends Value> itemType) implements FieldType {}
-    record VarOfModel(Class<? extends Var<?>> varType, Class<? extends Model<?>> itemType) implements FieldType {}
+    sealed interface VarOf {
+        record Id(Class<? extends Var<?>> var, Class<?> item) implements FieldType, VarOf {}
+        record Primitive(Class<? extends Var<?>> var, Class<?> item) implements FieldType, VarOf {}
+        record Value(Class<? extends Var<?>> var, Class<? extends dal.api.Value> item) implements FieldType, VarOf {}
+        record Tuple(Class<? extends Var<?>> var, Class<? extends dal.api.Value> item) implements FieldType, VarOf {}
+        record Model(Class<? extends Var<?>> var, Class<? extends dal.api.Model<?>> item) implements FieldType, VarOf {}
 
-    record VarsOfPrimitive(Class<? extends Vars<?>> varsType, Class<?> itemType) implements FieldType {}
-    record VarsOfValue(Class<? extends Vars<?>> varsType, Class<? extends Value> itemType) implements FieldType {}
-    record VarsOfModel(Class<? extends Vars<?>> varsType, Class<? extends Model<?>> itemType) implements FieldType {}
+        Class<?> var();
+    }
+    sealed interface VarsOf {
+        record Primitive(Class<? extends Vars<?>> vars, Class<?> item) implements FieldType, VarsOf {}
+        record Value(Class<? extends Vars<?>> vars, Class<? extends dal.api.Value> item) implements FieldType, VarsOf {}
+        record Model(Class<? extends Vars<?>> vars, Class<? extends dal.api.Model<?>> item) implements FieldType, VarsOf {}
 
-    record Primitive(Class<?> itemType) implements FieldType {}
-    record Value(Class<? extends Value> itemType) implements FieldType {}
-    record Tuple(Class<? extends Value> itemType) implements FieldType {}
+        Class<?> vars();
+    }
 
-    Class<?> itemType();
+    record Primitive(Class<?> item) implements FieldType {}
+    record Value(Class<? extends Value> item) implements FieldType {}
+    record Tuple(Class<? extends Value> item) implements FieldType {}
+
+    Class<?> item();
 
     default @Nullable Class<?> wrapperType() {
         if (this instanceof Value)
             return null;
-        if (this instanceof VarOfValue)
-            return ((VarOfValue) this).varType();
-        if (this instanceof VarOfModel)
-            return ((VarOfModel) this).varType();
-        if (this instanceof VarOfPrimitive)
-            return ((VarOfPrimitive) this).varType();
+        if (this instanceof VarOf.Value)
+            return ((VarOf.Value) this).var();
+        if (this instanceof VarOf.Model)
+            return ((VarOf.Model) this).var();
+        if (this instanceof VarOf.Primitive)
+            return ((VarOf.Primitive) this).var();
         if (this instanceof Primitive)
             return null;
-        if (this instanceof VarsOfPrimitive)
-            return ((VarsOfPrimitive) this).varsType();
-        if (this instanceof VarsOfValue)
-            return ((VarsOfValue) this).varsType();
-        if (this instanceof VarsOfModel)
-            return ((VarsOfModel) this).varsType();
+        if (this instanceof VarsOf.Primitive)
+            return ((VarsOf.Primitive) this).vars();
+        if (this instanceof VarsOf.Value)
+            return ((VarsOf.Value) this).vars();
+        if (this instanceof VarsOf.Model)
+            return ((VarsOf.Model) this).vars();
         if (this instanceof Tuple)
             return null;
-        if (this instanceof VarOfTuple)
-            return ((VarOfTuple) this).varType();
-        if ( this instanceof VarOfId )
-            return ((VarOfId) this).varType();
+        if (this instanceof VarOf.Tuple)
+            return ((VarOf.Tuple) this).var();
+        if ( this instanceof VarOf.Id)
+            return ((VarOf.Id) this).var();
         throw new RuntimeException("unknown kind of field: " + this);
     }
 
     default FieldKind kind() {
-        if (this instanceof VarOfId)
+        if (this instanceof VarOf.Id)
             return FieldKind.ID;
         if (this instanceof Value)
             return FieldKind.FOREIGN_KEY;
-        if (this instanceof VarOfValue)
+        if (this instanceof VarOf.Value)
             return FieldKind.FOREIGN_KEY;
-        if (this instanceof VarOfModel)
+        if (this instanceof VarOf.Model)
             return FieldKind.FOREIGN_KEY;
-        if (this instanceof VarOfPrimitive)
+        if (this instanceof VarOf.Primitive)
             return FieldKind.PRIMITIVE;
         if (this instanceof Primitive)
             return FieldKind.PRIMITIVE;
-        if (this instanceof VarsOfPrimitive)
+        if (this instanceof VarsOf.Primitive)
             return FieldKind.INTERMEDIATE_TABLE;
-        if (this instanceof VarsOfValue)
+        if (this instanceof VarsOf.Value)
             return FieldKind.INTERMEDIATE_TABLE;
-        if (this instanceof VarsOfModel)
+        if (this instanceof VarsOf.Model)
             return FieldKind.INTERMEDIATE_TABLE;
         if (this instanceof Tuple)
             return FieldKind.INTERMEDIATE_TABLE;
-        if (this instanceof VarOfTuple)
+        if (this instanceof VarOf.Tuple)
             return FieldKind.INTERMEDIATE_TABLE;
         throw new RuntimeException("unknown kind of field: " + this);
     }

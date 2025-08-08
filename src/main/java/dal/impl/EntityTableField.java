@@ -263,29 +263,29 @@ record EntityTableField(
         FieldType fieldType = null;
         if ( isSubTypeOfVal ) {
             if ( kind == FieldKind.ID )
-                fieldType = new FieldType.VarOfId((Class) methodReturnType, propertyParams.type());
+                fieldType = new FieldType.VarOf.Id((Class) methodReturnType, propertyParams.type());
             if ( itemIsModel )
-                fieldType = new FieldType.VarOfModel((Class) methodReturnType, (Class) propertyParams.type());
+                fieldType = new FieldType.VarOf.Model((Class) methodReturnType, (Class) propertyParams.type());
             if ( kind == FieldKind.PRIMITIVE )
-                fieldType = new FieldType.VarOfPrimitive((Class) methodReturnType, propertyParams.type());
+                fieldType = new FieldType.VarOf.Primitive((Class) methodReturnType, propertyParams.type());
             if ( itemIsValue ) {
                 if ( kind == FieldKind.INTERMEDIATE_TABLE )
-                    fieldType = new FieldType.VarOfTuple((Class) methodReturnType, (Class) propertyParams.type());
+                    fieldType = new FieldType.VarOf.Tuple((Class) methodReturnType, (Class) propertyParams.type());
                 else
-                    fieldType = new FieldType.VarOfValue((Class) methodReturnType, (Class) propertyParams.type());
+                    fieldType = new FieldType.VarOf.Value((Class) methodReturnType, (Class) propertyParams.type());
             } else if ( kind == FieldKind.INTERMEDIATE_TABLE ) {
-                fieldType = new FieldType.VarOfModel((Class) methodReturnType, (Class) propertyParams.type());
+                fieldType = new FieldType.VarOf.Model((Class) methodReturnType, (Class) propertyParams.type());
             }
         }
         if ( isSubTypeOfVals ) {
             if ( itemIsModel )
-                fieldType = new FieldType.VarsOfModel((Class) methodReturnType, (Class) propertyParams.type());
+                fieldType = new FieldType.VarsOf.Model((Class) methodReturnType, (Class) propertyParams.type());
             if ( kind == FieldKind.PRIMITIVE )
-                fieldType = new FieldType.VarsOfPrimitive((Class) methodReturnType, propertyParams.type());
+                fieldType = new FieldType.VarsOf.Primitive((Class) methodReturnType, propertyParams.type());
             if ( itemIsValue )
-                fieldType = new FieldType.VarsOfValue((Class) methodReturnType, (Class)propertyParams.type());
+                fieldType = new FieldType.VarsOf.Value((Class) methodReturnType, (Class)propertyParams.type());
             if ( kind == FieldKind.INTERMEDIATE_TABLE ) {
-                fieldType = new FieldType.VarsOfModel((Class) methodReturnType, (Class) propertyParams.type());
+                fieldType = new FieldType.VarsOf.Model((Class) methodReturnType, (Class) propertyParams.type());
             }
         }
         return new EntityTableField(
@@ -385,7 +385,7 @@ record EntityTableField(
     }
 
     public String toTableFieldStatement() {
-        return name() + " " + AbstractDataBase._fromJavaTypeToDBType(type().itemType());
+        return name() + " " + AbstractDataBase._fromJavaTypeToDBType(type().item());
     }
 
     public Optional<EntityTable> getIntermediateTable() {
@@ -397,7 +397,7 @@ record EntityTableField(
 
     public ProxyRef<Val<Object>> asProperty(SQLiteDataBase db, int id, boolean eager ) {
         var wrapperType = type().wrapperType();
-        var itemType = type().itemType();
+        var itemType = type().item();
         if ( wrapperType == null )
             throw new IllegalStateException(
                             "Cannot create a property proxy for a field that does not have a wrapper type."
@@ -486,7 +486,7 @@ record EntityTableField(
     }
 
     public Optional<String> asSqlColumn() {
-        var itemType = type.itemType();
+        var itemType = type.item();
         var kind = type.kind();
         String name = name();
         if (!DataBaseEntity.class.isAssignableFrom(itemType)) {
@@ -504,7 +504,7 @@ record EntityTableField(
     }
 
     public @Nullable Object getDefaultValue() {
-        var itemType = type.itemType();
+        var itemType = type.item();
         var kind = type.kind();
         if ( kind == FieldKind.FOREIGN_KEY )
             return null;
@@ -539,7 +539,7 @@ record EntityTableField(
 
     public ProxyRef<Vals<Object>> asProperties( SQLiteDataBase db, int id, boolean eager ) {
         var wrapperType = type.wrapperType();
-        var itemType = type.itemType();
+        var itemType = type.item();
         if ( wrapperType == null )
             throw new IllegalStateException(
                     "Cannot create a property list proxy type for a field that does not have a wrapper type."
@@ -575,7 +575,7 @@ record EntityTableField(
     }
 
     @Override public String toString() {
-        var itemType = type.itemType();
+        var itemType = type.item();
         var kind = type.kind();
         return "TableField[" + "baseName=" + name() + ", type=" + itemType + ", kind=" + kind + ']';
     }
