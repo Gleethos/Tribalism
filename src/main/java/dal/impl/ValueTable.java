@@ -87,25 +87,19 @@ record ValueTable(
         sortedFields.add(0, new EntityTableField(
                 EntityTable.ID,
                 valueType,
-                null,
-                Integer.class,
-                FieldKind.ID,
+                new FieldType.Primitive(Integer.class),
                 false
         ));
         sortedFields.add(1, new EntityTableField(
                 HASH_FIELD_NAME,
                 valueType,
-                null,
-                Long.class,
-                FieldKind.PRIMITIVE,
+                new FieldType.Primitive(Long.class),
                 false
         ));
         sortedFields.add(2, new EntityTableField(
                 USAGE_FIELD_COUNTER,
                 valueType,
-                null,
-                Long.class,
-                FieldKind.PRIMITIVE,
+                new FieldType.Primitive(Long.class),
                 false
         ));
 
@@ -127,7 +121,7 @@ record ValueTable(
         List<Class<? extends DataBaseEntity>> referencedModels = new ArrayList<>();
         for (EntityTableField field : fields) {
             if (field.isForeignKey()) {
-                referencedModels.add((Class<? extends DataBaseEntity>) field.itemType());
+                referencedModels.add((Class<? extends DataBaseEntity>) field.type().itemType());
             }
         }
         return ((Tuple)Tuple.of(Class.class)).addAll(referencedModels);

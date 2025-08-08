@@ -146,7 +146,7 @@ record ModelTable(
         List<Class<? extends DataBaseEntity>> referencedModels = new ArrayList<>();
         for (EntityTableField field : fields) {
             if (field.isForeignKey()) {
-                referencedModels.add((Class<? extends DataBaseEntity>) field.itemType());
+                referencedModels.add((Class<? extends DataBaseEntity>) field.type().itemType());
             }
         }
         return ((Tuple)Tuple.of(Class.class)).addAll(referencedModels);

@@ -46,7 +46,7 @@ final class PropertySelectionProxy implements InvocationHandler
         for (EntityTableField field : fields) {
             if (field.baseName().equals(method.getName())) {
                 _selection = field;
-                Class<?> propType = field.wrapperType();
+                Class<?> propType = field.type().wrapperType();
                 if ( propType == null )
                     throw new IllegalStateException(
                             "Cannot create a property proxy for a field that does not have a wrapper type."

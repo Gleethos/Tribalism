@@ -10,15 +10,14 @@ import sprouts.*;
 import java.lang.invoke.MethodHandles;
 import java.lang.invoke.MethodType;
 import java.lang.reflect.*;
+import java.util.Objects;
 import java.util.Optional;
 
 @NullMarked
 record EntityTableField(
     String baseName, // The method baseName from the model class
     Class<? extends DataBaseEntity> ownerModelClass, // The model class
-    @Nullable Class<?> wrapperType, // The type of the property and return type of the method
-    Class<?> itemType, // The type of the property value
-    FieldKind kind,
+    FieldType type,
     boolean allowNull
 ) {
     sealed interface Params {
@@ -53,12 +52,17 @@ record EntityTableField(
             kind = FieldKind.PRIMITIVE;
         else
             kind = FieldKind.FOREIGN_KEY;
+        FieldType fieldType = null;
+        if ( isTuple )
+            fieldType = new FieldType.Tuple((Class)params.type());
+        if ( isPrimitive )
+            fieldType = new FieldType.Primitive(params.type());
+        if ( isValue )
+            fieldType = new FieldType.Value((Class)params.type());
         return new EntityTableField(
                 methodName,
                 ownerEntityClass,
-                isTuple ? Tuple.class : null,
-                params.type(),
-                kind,
+                Objects.requireNonNull(fieldType),
                 false
         );
     }
@@ -73,7 +77,7 @@ record EntityTableField(
         final Type declaredReturnTypeGenericParam = method.getGenericReturnType();
         Params propertyParams = null; // The type of the property value
         FieldKind kind;
-        boolean allowNull;
+        boolean itemIsModel;
 
         // First we check if the return type is a subclass of Val or Vals
         boolean isSubTypeOfVal  = Val.class.isAssignableFrom(methodReturnType);
@@ -254,14 +258,41 @@ record EntityTableField(
                             "of " + Val.class.getName() + " or " + Vals.class.getName() + " with one type parameter"
             );
 
-        allowNull = Model.class.isAssignableFrom(propertyParams.type());
+        itemIsModel = Model.class.isAssignableFrom(propertyParams.type());
+        var itemIsValue = Value.class.isAssignableFrom(propertyParams.type());
+        FieldType fieldType = null;
+        if ( isSubTypeOfVal ) {
+            if ( kind == FieldKind.ID )
+                fieldType = new FieldType.VarOfId((Class) methodReturnType, propertyParams.type());
+            if ( itemIsModel )
+                fieldType = new FieldType.VarOfModel((Class) methodReturnType, (Class) propertyParams.type());
+            if ( kind == FieldKind.PRIMITIVE )
+                fieldType = new FieldType.VarOfPrimitive((Class) methodReturnType, propertyParams.type());
+            if ( itemIsValue ) {
+                if ( kind == FieldKind.INTERMEDIATE_TABLE )
+                    fieldType = new FieldType.VarOfTuple((Class) methodReturnType, (Class) propertyParams.type());
+                else
+                    fieldType = new FieldType.VarOfValue((Class) methodReturnType, (Class) propertyParams.type());
+            } else if ( kind == FieldKind.INTERMEDIATE_TABLE ) {
+                fieldType = new FieldType.VarOfModel((Class) methodReturnType, (Class) propertyParams.type());
+            }
+        }
+        if ( isSubTypeOfVals ) {
+            if ( itemIsModel )
+                fieldType = new FieldType.VarsOfModel((Class) methodReturnType, (Class) propertyParams.type());
+            if ( kind == FieldKind.PRIMITIVE )
+                fieldType = new FieldType.VarsOfPrimitive((Class) methodReturnType, propertyParams.type());
+            if ( itemIsValue )
+                fieldType = new FieldType.VarsOfValue((Class) methodReturnType, (Class)propertyParams.type());
+            if ( kind == FieldKind.INTERMEDIATE_TABLE ) {
+                fieldType = new FieldType.VarsOfModel((Class) methodReturnType, (Class) propertyParams.type());
+            }
+        }
         return new EntityTableField(
                 methodName,
                 ownerEntityClass,
-                methodReturnType,
-                propertyParams.type(),
-                kind,
-                allowNull
+                Objects.requireNonNull(fieldType),
+                itemIsModel
             );
     }
 
@@ -317,7 +348,7 @@ record EntityTableField(
     }
 
     public String name() {
-        if ( kind == FieldKind.FOREIGN_KEY )
+        if ( type().kind() == FieldKind.FOREIGN_KEY )
             return EntityTable.FK_PREFIX + baseName() + EntityTable.FK_POSTFIX;
         return baseName();
     }
@@ -327,12 +358,14 @@ record EntityTableField(
     }
 
     public boolean isList() {
+        var wrapperType = type().wrapperType();
         if ( wrapperType == null )
             return false;
         return Vals.class.isAssignableFrom(wrapperType);
     }
 
     public boolean isTuple() {
+        var wrapperType = type().wrapperType();
         if ( wrapperType == null )
             return false;
         // TODO: This only works for 'Tuple<T>' fields, but not 'Var<Tuple<T>>' fields.
@@ -340,19 +373,19 @@ record EntityTableField(
     }
 
     public FieldKind getKind() {
-        return kind;
+        return type().kind();
     }
 
     public boolean requiresIntermediateTable() {
-        return kind == FieldKind.INTERMEDIATE_TABLE;
+        return type().kind() == FieldKind.INTERMEDIATE_TABLE;
     }
 
     public boolean isForeignKey() {
-        return kind == FieldKind.FOREIGN_KEY;
+        return type().kind() == FieldKind.FOREIGN_KEY;
     }
 
     public String toTableFieldStatement() {
-        return name() + " " + AbstractDataBase._fromJavaTypeToDBType(itemType);
+        return name() + " " + AbstractDataBase._fromJavaTypeToDBType(type().itemType());
     }
 
     public Optional<EntityTable> getIntermediateTable() {
@@ -363,6 +396,8 @@ record EntityTableField(
     }
 
     public ProxyRef<Val<Object>> asProperty(SQLiteDataBase db, int id, boolean eager ) {
+        var wrapperType = type().wrapperType();
+        var itemType = type().itemType();
         if ( wrapperType == null )
             throw new IllegalStateException(
                             "Cannot create a property proxy for a field that does not have a wrapper type."
@@ -451,6 +486,8 @@ record EntityTableField(
     }
 
     public Optional<String> asSqlColumn() {
+        var itemType = type.itemType();
+        var kind = type.kind();
         String name = name();
         if (!DataBaseEntity.class.isAssignableFrom(itemType)) {
             String properties = allowNull ? "" : " NOT NULL";
@@ -467,6 +504,8 @@ record EntityTableField(
     }
 
     public @Nullable Object getDefaultValue() {
+        var itemType = type.itemType();
+        var kind = type.kind();
         if ( kind == FieldKind.FOREIGN_KEY )
             return null;
         else if ( kind == FieldKind.INTERMEDIATE_TABLE )
@@ -499,6 +538,8 @@ record EntityTableField(
     }
 
     public ProxyRef<Vals<Object>> asProperties( SQLiteDataBase db, int id, boolean eager ) {
+        var wrapperType = type.wrapperType();
+        var itemType = type.itemType();
         if ( wrapperType == null )
             throw new IllegalStateException(
                     "Cannot create a property list proxy type for a field that does not have a wrapper type."
@@ -534,6 +575,8 @@ record EntityTableField(
     }
 
     @Override public String toString() {
+        var itemType = type.itemType();
+        var kind = type.kind();
         return "TableField[" + "baseName=" + name() + ", type=" + itemType + ", kind=" + kind + ']';
     }
 

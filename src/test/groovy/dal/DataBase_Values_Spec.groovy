@@ -111,6 +111,7 @@ class DataBase_Values_Spec extends Specification
                         "fk_classRoom3_id INTEGER REFERENCES dal_values_ClassRoom_table(id), " +
                         "fk_director_id INTEGER REFERENCES dal_values_Person_table(id)" +
                     ")"
+            db.listOfAllTableNames().contains("dal_values_School__students_list_table")
             db.sqlCodeOfTable(ClassRoom) == "CREATE TABLE dal_values_ClassRoom_table (" +
                         "id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT, " +
                         "hash_code BIGINT NOT NULL, " +

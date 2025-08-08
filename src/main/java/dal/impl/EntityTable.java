@@ -41,7 +41,7 @@ sealed interface EntityTable permits ValueTable, ModelTable, IntermediateTable
 
     default EntityTableField getField(Class<?> wrapperType) {
         for (EntityTableField field : getFields()) {
-            if (Objects.equals(field.wrapperType(),wrapperType))
+            if (Objects.equals(field.type().wrapperType(),wrapperType))
                 return field;
         }
         throw new IllegalArgumentException("No field with type " + wrapperType.getName() + " found!");
