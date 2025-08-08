@@ -13,6 +13,7 @@ sealed interface FieldType {
         record Model(Class<? extends Var<?>> var, Class<? extends dal.api.Model<?>> item) implements FieldType, VarOf {}
 
         Class<?> var();
+        Class<?> item();
     }
     sealed interface VarsOf {
         record Primitive(Class<? extends Vars<?>> vars, Class<?> item) implements FieldType, VarsOf {}
@@ -20,6 +21,7 @@ sealed interface FieldType {
         record Model(Class<? extends Vars<?>> vars, Class<? extends dal.api.Model<?>> item) implements FieldType, VarsOf {}
 
         Class<?> vars();
+        Class<?> item();
     }
 
     record Primitive(Class<?> item) implements FieldType {}

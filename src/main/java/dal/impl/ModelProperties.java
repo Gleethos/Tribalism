@@ -1,6 +1,7 @@
 package dal.impl;
 
 import dal.api.Model;
+import dal.api.Value;
 import org.jspecify.annotations.NullMarked;
 import sprouts.*;
 import sprouts.Observable;
@@ -78,12 +79,25 @@ public final class ModelProperties implements Vars<Object>, Viewables<Object>
 
     @Override
     public Var<Object> at(int index) {
+        FieldType.VarOf varType = null;
+        if ( AbstractDataBase._isBasicDataType(propertyValueType) )
+            varType = new FieldType.VarOf.Primitive((Class)Var.class, propertyValueType);
+        else if ( Value.class.isAssignableFrom(propertyValueType) )
+            varType = new FieldType.VarOf.Value((Class)Var.class, (Class)propertyValueType);
+        else if ( Model.class.isAssignableFrom(propertyValueType) )
+            varType = new FieldType.VarOf.Model((Class)Var.class, (Class)propertyValueType);
+        else if ( Tuple.class.isAssignableFrom(propertyValueType) )
+            varType = new FieldType.VarOf.Tuple((Class)Var.class, (Class)propertyValueType);
+        else
+            throw new IllegalArgumentException(
+                    "The type of the property is not supported: " + propertyValueType.getName()
+                );
         return new ModelProperty(
                 db,
                 ids.get(index),
                 EntityTable.INTER_RIGHT_FK_PREFIX + otherTable + EntityTable.INTER_FK_POSTFIX,
                 intermediateTable.getTableName(),
-                new EntityTableField.Params.Single(propertyValueType),
+                varType,
                 false,
                 _isEager
             );

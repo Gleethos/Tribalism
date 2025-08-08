@@ -406,9 +406,7 @@ record EntityTableField(
         var prop = new ModelProperty(
                         db, id, this.name(),
                         AbstractDataBase._tableNameFromClass(ownerModelClass),
-                        this.isTuple()
-                                ? new EntityTableField.Params.TupleOf(itemType)
-                                : new EntityTableField.Params.Single(itemType),
+                        (FieldType.VarOf) this.type,
                         allowNull,
                         eager
                     );
