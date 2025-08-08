@@ -50,6 +50,9 @@ final class ModelProperty implements Var<Object>, Viewable<Object>
         _fieldType         = fieldType;
         _allowNull         = allowNull;
         _isEager           = isEager;
+        if ( fieldType instanceof FieldType.VarOf.Tuple ) {
+            _value = Tuple.of(fieldType.item());
+        }
     }
 
     @Override
