@@ -664,6 +664,42 @@ public final class SQLiteDataBase extends AbstractDataBase
         return existingId;
     }
 
+    int _removeValueAndDecrementCounter(Value databaseValue) {
+        var valueTable = _entityRegistry.getValueTable(databaseValue.getClass())
+                                            .orElseThrow(() -> new IllegalArgumentException(
+                                                "The value table for " + databaseValue.getClass().getName() + " " +
+                                                "does not exist!"
+                                            ));
+        int hashCode = databaseValue.hashCode();
+        var existingId = _findIdOfValue(valueTable, databaseValue, hashCode);
+        if ( existingId >= 0 ) {
+            String sql = "SELECT "+ValueTable.USAGE_FIELD_COUNTER+" FROM " + valueTable.getTableName() +
+                         " WHERE "+ModelTable.ID+" = ?";
+            Map<String, List<Object>> result = _query(sql, Collections.singletonList(existingId));
+            if ( result.isEmpty() )
+                return -1; // Not found
+            if ( result.values().stream().anyMatch( v -> v.size() != 1 ) )
+                throw new IllegalStateException();
+            var usages = (Integer) result.get(ValueTable.USAGE_FIELD_COUNTER).get(0);
+            if ( usages == 1 ) {
+                // Delete
+                _delete(valueTable.getTableName(), Collections.singletonList(existingId));
+            } else {
+                // Reduce usage counter
+                _modifyUsageCounter(valueTable, existingId, -1);
+            }
+        }
+        return existingId;
+    }
+
+    private void _delete(String tableName, List<Integer> ids) {
+        String sql = "DELETE * FROM " + tableName + " WHERE "+ModelTable.ID+" = ?";
+        boolean success = _update(sql, Collections.singletonList(ids));
+        if (!success ) {
+            throw new RuntimeException("Could not delete from " + tableName);
+        }
+    }
+
     int _findIdOfValue(
         ValueTable valueTable,
         Value value,

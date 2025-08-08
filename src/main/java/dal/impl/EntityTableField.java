@@ -335,6 +335,7 @@ record EntityTableField(
     public boolean isTuple() {
         if ( wrapperType == null )
             return false;
+        // TODO: This only works for 'Tuple<T>' fields, but not 'Var<Tuple<T>>' fields.
         return Tuple.class.isAssignableFrom(wrapperType);
     }
 

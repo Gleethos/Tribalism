@@ -153,7 +153,28 @@ final class ModelProperty implements Var<Object>, Viewable<Object>
                     valueToStore = newItem.toString();
             }
             if ( _itemType instanceof EntityTableField.Params.TupleOf ) {
-                // TODO
+                var oldTuple = (Tuple<Value>) Objects.requireNonNull(_value);
+                var newTuple = (Tuple<Value>) Objects.requireNonNull(newItem);
+                Set<Value> oldSet = oldTuple.toSet();
+                Set<Value> newSet = newTuple.toSet();
+                Set<Value> all = new HashSet<Value>();
+                all.addAll(oldSet);
+                all.addAll(newSet);
+                for ( Value o : all ) {
+                    var isInOldSet  = oldSet.contains(o);
+                    var isInNewSet  = newSet.contains(o);
+                    if ( isInOldSet && isInNewSet )
+                        continue;
+                    if (!isInOldSet && isInNewSet ) {
+                        int id = _dataBase._storeValueAndIncreaseCounter( o );
+                        if ( id < 0 )
+                            throw new IllegalArgumentException("Invalid id " + id + ", expected >= 0");
+                    } else if (isInOldSet && !isInNewSet ) {
+                        _dataBase._removeValueAndDecrementCounter(o);
+                    } else {
+                        throw new IllegalArgumentException("Invalid state");
+                    }
+                }
             }
             boolean success = _dataBase._update(update, Arrays.asList(valueToStore, _id));
             if (!success)
