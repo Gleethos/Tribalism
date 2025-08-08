@@ -22,6 +22,15 @@ sealed interface FieldType {
 
         Class<?> vars();
         Class<?> item();
+        default VarOf varOf() {
+            if (this instanceof VarsOf.Primitive)
+                return new VarOf.Primitive((Class)Var.class, item());
+            else if (this instanceof VarsOf.Value)
+                return new VarOf.Value((Class)Var.class, (Class)item());
+            else if (this instanceof VarsOf.Model)
+                return new VarOf.Model((Class)Var.class, (Class)item());
+            throw new RuntimeException("unknown kind of vars: " + this);
+        }
     }
 
     record Primitive(Class<?> item) implements FieldType {}

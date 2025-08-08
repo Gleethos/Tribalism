@@ -17,7 +17,7 @@ public final class ModelProperties implements Vars<Object>, Viewables<Object>
     private final int id; // The id of the model to which the properties belong
     private final EntityTable intermediateTable;
     private final String otherTable;
-    private final Class<?> propertyValueType;
+    private final FieldType.VarsOf fieldType;
     private final String otherTableIdColumn;
     private final String thisTableIdColumn;
     private final boolean _isEager;
@@ -25,20 +25,20 @@ public final class ModelProperties implements Vars<Object>, Viewables<Object>
     public ModelProperties(
             SQLiteDataBase db,
             Class<?> ownerModelClass,
-            Class<?> propertyValueType,
+            FieldType.VarsOf fieldType,
             EntityTable intermediateTable,
             int id,
             boolean isEager
     ) {
         this.db = db;
-        this.propertyValueType = propertyValueType;
+        this.fieldType = fieldType;
         this.intermediateTable = intermediateTable;
         this.id = id;
         _isEager = isEager;
 
         // We need to find the name of the column that contains the ids of the models
         // that are referenced by the intermediate table:
-        this.otherTable = AbstractDataBase._tableNameFromClass(propertyValueType);
+        this.otherTable = AbstractDataBase._tableNameFromClass(fieldType.item());
         this.otherTableIdColumn = EntityTable.INTER_RIGHT_FK_PREFIX + otherTable + EntityTable.INTER_FK_POSTFIX;
         this.thisTableIdColumn = EntityTable.INTER_LEFT_FK_PREFIX + AbstractDataBase._tableNameFromClass(ownerModelClass) + EntityTable.INTER_FK_POSTFIX;
         String query = "SELECT " + otherTableIdColumn + " FROM " + intermediateTable.getTableName() + " WHERE " + thisTableIdColumn + " = ?";
@@ -59,7 +59,7 @@ public final class ModelProperties implements Vars<Object>, Viewables<Object>
 
     private Model<?> _select( int id ) {
         // We need to get the model from the database:
-        Class<Model> propertyValueType = (Class<Model>) this.propertyValueType;
+        Class<Model> propertyValueType = (Class<Model>) this.fieldType.item();
         Model<?> model = db.select(propertyValueType, id);
         return model;
     }
@@ -73,25 +73,13 @@ public final class ModelProperties implements Vars<Object>, Viewables<Object>
         }).iterator();
     }
 
-    @Override public Class<Object> type() { return (Class<Object>) propertyValueType; }
+    @Override public Class<Object> type() { return (Class<Object>) fieldType.item(); }
 
     @Override public int size() { return ids.size(); }
 
     @Override
     public Var<Object> at(int index) {
-        FieldType.VarOf varType = null;
-        if ( AbstractDataBase._isBasicDataType(propertyValueType) )
-            varType = new FieldType.VarOf.Primitive((Class)Var.class, propertyValueType);
-        else if ( Value.class.isAssignableFrom(propertyValueType) )
-            varType = new FieldType.VarOf.Value((Class)Var.class, (Class)propertyValueType);
-        else if ( Model.class.isAssignableFrom(propertyValueType) )
-            varType = new FieldType.VarOf.Model((Class)Var.class, (Class)propertyValueType);
-        else if ( Tuple.class.isAssignableFrom(propertyValueType) )
-            varType = new FieldType.VarOf.Tuple((Class)Var.class, (Class)propertyValueType);
-        else
-            throw new IllegalArgumentException(
-                    "The type of the property is not supported: " + propertyValueType.getName()
-                );
+        FieldType.VarOf varType = fieldType.varOf();
         return new ModelProperty(
                 db,
                 ids.get(index),
@@ -175,7 +163,7 @@ public final class ModelProperties implements Vars<Object>, Viewables<Object>
 
         Objects.requireNonNull(var);
         // First let's verify the type:
-        if ( !propertyValueType.isAssignableFrom(var.type()) )
+        if ( !fieldType.item().isAssignableFrom(var.type()) )
             throw new IllegalArgumentException("The type of the var is not the same as the type of the property");
 
         /*

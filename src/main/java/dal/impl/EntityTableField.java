@@ -537,7 +537,6 @@ record EntityTableField(
 
     public ProxyRef<Vals<Object>> asProperties( SQLiteDataBase db, int id, boolean eager ) {
         var wrapperType = type.wrapperType();
-        var itemType = type.item();
         if ( wrapperType == null )
             throw new IllegalStateException(
                     "Cannot create a property list proxy type for a field that does not have a wrapper type."
@@ -558,7 +557,9 @@ record EntityTableField(
             throw new IllegalStateException("The intermediate table does not exist");
 
 
-        Vars<Object> vars = new ModelProperties(db, ownerModelClass, itemType, intermediateTable, id, eager);
+        Vars<Object> vars = new ModelProperties(
+                db, ownerModelClass, (FieldType.VarsOf) type, intermediateTable, id, eager
+        );
 
         // Let's create the proxy:
         return new ProxyRef<>((Vals<Object>) Proxy.newProxyInstance(
