@@ -24,7 +24,7 @@ final class ModelProxy<T extends Model<T>> implements InvocationHandler {
     private final boolean _isEager;
     private final Map<String, ProxyRef<Object>> cachedPropertyProxies = new HashMap<>();
 
-    public ModelProxy(
+    ModelProxy(
         SQLiteDataBase db,
         ModelTable table,
         int id,

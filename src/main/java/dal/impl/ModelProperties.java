@@ -10,30 +10,30 @@ import sprouts.Observer;
 import java.util.*;
 
 @NullMarked
-public final class ModelProperties implements Vars<Object>, Viewables<Object>
+final class ModelProperties implements Vars<Object>, Viewables<Object>
 {
     private final SQLiteDataBase db;
     private final List<Integer> ids;
     private final int id; // The id of the model to which the properties belong
-    private final EntityTable intermediateTable;
+    private final IntermediateTable intermediateTable;
     private final String otherTable;
-    private final FieldType.VarsOf fieldType;
     private final String otherTableIdColumn;
     private final String thisTableIdColumn;
     private final boolean _isEager;
 
-    public ModelProperties(
-            SQLiteDataBase db,
-            Class<?> ownerModelClass,
-            FieldType.VarsOf fieldType,
-            EntityTable intermediateTable,
-            int id,
-            boolean isEager
+    ModelProperties(
+        SQLiteDataBase db,
+        Class<?> ownerModelClass,
+        FieldType.VarsOf fieldType,
+        IntermediateTable intermediateTable,
+        int id,
+        boolean isEager
     ) {
         this.db = db;
-        this.fieldType = fieldType;
         this.intermediateTable = intermediateTable;
         this.id = id;
+        if ( !(intermediateTable.entityField().type() instanceof FieldType.VarsOf) )
+            throw new IllegalStateException("Connected to a field which is not a property list!");
         _isEager = isEager;
 
         // We need to find the name of the column that contains the ids of the models
@@ -57,9 +57,13 @@ public final class ModelProperties implements Vars<Object>, Viewables<Object>
         this.ids = new ArrayList<>(found.stream().map(o -> (Integer) o).toList());
     }
 
+    private FieldType.VarsOf fieldType() {
+        return (FieldType.VarsOf) intermediateTable.entityField().type();
+    }
+
     private Model<?> _select( int id ) {
         // We need to get the model from the database:
-        Class<Model> propertyValueType = (Class<Model>) this.fieldType.item();
+        Class<Model> propertyValueType = (Class<Model>) this.fieldType().item();
         Model<?> model = db.select(propertyValueType, id);
         return model;
     }
@@ -73,13 +77,13 @@ public final class ModelProperties implements Vars<Object>, Viewables<Object>
         }).iterator();
     }
 
-    @Override public Class<Object> type() { return (Class<Object>) fieldType.item(); }
+    @Override public Class<Object> type() { return (Class<Object>) fieldType().item(); }
 
     @Override public int size() { return ids.size(); }
 
     @Override
     public Var<Object> at(int index) {
-        FieldType.VarOf varType = fieldType.varOf();
+        FieldType.VarOf varType = fieldType().varOf();
         return new ModelProperty(
                 db,
                 ids.get(index),
@@ -163,7 +167,7 @@ public final class ModelProperties implements Vars<Object>, Viewables<Object>
 
         Objects.requireNonNull(var);
         // First let's verify the type:
-        if ( !fieldType.item().isAssignableFrom(var.type()) )
+        if ( !fieldType().item().isAssignableFrom(var.type()) )
             throw new IllegalArgumentException("The type of the var is not the same as the type of the property");
 
         /*

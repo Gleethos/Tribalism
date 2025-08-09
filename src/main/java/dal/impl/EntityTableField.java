@@ -388,7 +388,7 @@ record EntityTableField(
         return name() + " " + AbstractDataBase._fromJavaTypeToDBType(type().item());
     }
 
-    public Optional<EntityTable> getIntermediateTable() {
+    public Optional<IntermediateTable> getIntermediateTable() {
         if (requiresIntermediateTable())
             return Optional.of(new IntermediateTable(this));
         else
@@ -551,7 +551,7 @@ record EntityTableField(
             referenced by the intermediate table.
             So we need to query the table to find out.
         */
-        EntityTable intermediateTable = getIntermediateTable().orElse(null);
+        IntermediateTable intermediateTable = getIntermediateTable().orElse(null);
         // We expect it to exist:
         if (intermediateTable == null)
             throw new IllegalStateException("The intermediate table does not exist");
