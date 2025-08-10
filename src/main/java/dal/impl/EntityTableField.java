@@ -395,7 +395,7 @@ record EntityTableField(
             return Optional.empty();
     }
 
-    public ProxyRef<Val<Object>> asProperty(SQLiteDataBase db, int id, boolean eager ) {
+    public ProxyRef<Val<Object>> asProperty(SQLiteDataBase db, long id, boolean eager ) {
         var wrapperType = type().wrapperType();
         var itemType = type().item();
         if ( wrapperType == null )
@@ -535,7 +535,7 @@ record EntityTableField(
             throw new IllegalStateException("Unknown field kind: " + kind);
     }
 
-    public ProxyRef<Vals<Object>> asProperties( SQLiteDataBase db, int id, boolean eager ) {
+    public ProxyRef<Vals<Object>> asProperties( SQLiteDataBase db, long id, boolean eager ) {
         var wrapperType = type.wrapperType();
         if ( wrapperType == null )
             throw new IllegalStateException(

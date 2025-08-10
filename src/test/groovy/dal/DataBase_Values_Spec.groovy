@@ -114,24 +114,24 @@ class DataBase_Values_Spec extends Specification
             db.listOfAllTableNames().contains("dal_values_School__students_list_table")
             db.sqlCodeOfTable(ClassRoom) == "CREATE TABLE dal_values_ClassRoom_table (" +
                         "id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT, " +
-                        "hash_code BIGINT NOT NULL, " +
-                        "usages BIGINT NOT NULL, " +
-                        "grade INTEGER NOT NULL, " +
+                        "hash_code INTEGER NOT NULL, " +
+                        "usages INTEGER NOT NULL, " +
+                        "grade INT NOT NULL, " +
                         "name TEXT NOT NULL, " +
                         "fk_teacher_id INTEGER REFERENCES dal_values_Person_table(id)" +
                     ")"
             db.sqlCodeOfTable(FullName) == "CREATE TABLE dal_values_FullName_table (" +
                         "id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT, " +
-                        "hash_code BIGINT NOT NULL, " +
-                        "usages BIGINT NOT NULL, " +
+                        "hash_code INTEGER NOT NULL, " +
+                        "usages INTEGER NOT NULL, " +
                         "firstName TEXT NOT NULL, " +
                         "lastName TEXT NOT NULL" +
                     ")"
             db.sqlCodeOfTable(Person) == "CREATE TABLE dal_values_Person_table (" +
                         "id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT, " +
-                        "hash_code BIGINT NOT NULL, " +
-                        "usages BIGINT NOT NULL, " +
-                        "age INTEGER NOT NULL, " +
+                        "hash_code INTEGER NOT NULL, " +
+                        "usages INTEGER NOT NULL, " +
+                        "age INT NOT NULL, " +
                         "fk_name_id INTEGER REFERENCES dal_values_FullName_table(id)" +
                     ")"
     }

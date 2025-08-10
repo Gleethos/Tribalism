@@ -21,7 +21,7 @@ final class ModelProperty implements Var<Object>, Viewable<Object>
     private static final Logger log = LoggerFactory.getLogger(ModelProperty.class);
 
     private final SQLiteDataBase _dataBase;
-    private final int _id;
+    private final long _id;
     private final String _fieldName;
     private final String _tableName;
     private final FieldType.VarOf _fieldType;
@@ -36,7 +36,7 @@ final class ModelProperty implements Var<Object>, Viewable<Object>
 
     ModelProperty(
         SQLiteDataBase dataBase,
-        int id,
+        long id,
         String fieldName,
         String tableName,
         FieldType.VarOf fieldType,
@@ -104,10 +104,10 @@ final class ModelProperty implements Var<Object>, Viewable<Object>
             else if (!Number.class.isAssignableFrom(itemToReturn.getClass()))
                 throw new IllegalStateException("The foreign key value is not a number");
             else {
-                if (Objects.equals(itemToReturn, 0) )
+                if (Objects.equals(itemToReturn, 0L) )
                     return null;
                 // We have a number, so we can find the model
-                int foreignKeyId = ((Number) itemToReturn).intValue();
+                long foreignKeyId = ((Number) itemToReturn).longValue();
                 Class<? extends Model<?>> foreignKeyModelClass = (Class<? extends Model<?>>) _fieldType.item();
                 itemToReturn = _dataBase.select((Class) foreignKeyModelClass, foreignKeyId);
                 if (itemToReturn == null)
@@ -169,7 +169,7 @@ final class ModelProperty implements Var<Object>, Viewable<Object>
                     if ( isInOldSet && isInNewSet )
                         continue;
                     if (!isInOldSet && isInNewSet ) {
-                        int id = _dataBase._storeValueAndIncreaseCounter( o );
+                        long id = _dataBase._findIdOfValue( o );
                         if ( id < 0 )
                             throw new IllegalArgumentException("Invalid id " + id + ", expected >= 0");
                     } else if (isInOldSet && !isInNewSet ) {
@@ -190,7 +190,7 @@ final class ModelProperty implements Var<Object>, Viewable<Object>
                 throw new IllegalStateException("Failed to update table entry for id " + _id);
         } else if (newItem instanceof Value) {
             Value dataBaseValue = (Value) newItem;
-            int id = _dataBase._storeValueAndIncreaseCounter(dataBaseValue);
+            long id = _dataBase._storeValueAndIncreaseCounter(dataBaseValue);
             boolean success = _updateField(id);
             if ( !success )
                 throw new IllegalStateException("Failed to update table entry for id " + _id);

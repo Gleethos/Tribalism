@@ -16,7 +16,7 @@ final class EntityRegistry
 {
     private Association<String, EntityTable> entityTables = Association.betweenLinked(String.class, EntityTable.class);
 
-    private final Map<String, Map<Integer, WeakReference<ModelProxy<?>>>> modelProxies = new LinkedHashMap<>();
+    private final Map<String, Map<Long, WeakReference<ModelProxy<?>>>> modelProxies = new LinkedHashMap<>();
 
     public EntityRegistry() {}
 
@@ -216,7 +216,7 @@ final class EntityRegistry
         return getIntermediateTables().stream().filter(t -> t.getReferencedModels().contains(modelInterface)).collect(Tuple.collectorOf(IntermediateTable.class));
     }
 
-    public Optional<ModelProxy<?>> findModelProxy(String tableName, int id) {
+    public Optional<ModelProxy<?>> findModelProxy(String tableName, long id) {
         var proxies = this.modelProxies.get(tableName);
         if (proxies == null) {
             return Optional.empty();
@@ -244,7 +244,7 @@ final class EntityRegistry
         }
     }
 
-    public void removeModelProxy(String tableName, int id ) {
+    public void removeModelProxy(String tableName, long id ) {
         var proxies = this.modelProxies.get(tableName);
         if (proxies == null) {
             return;

@@ -87,7 +87,7 @@ record ValueTable(
         sortedFields.add(0, new EntityTableField(
                 EntityTable.ID,
                 valueType,
-                new FieldType.Primitive(Integer.class),
+                new FieldType.Primitive(Long.class),
                 false
         ));
         sortedFields.add(1, new EntityTableField(

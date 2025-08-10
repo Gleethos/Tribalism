@@ -173,7 +173,6 @@ public final class SQLiteDataBase extends AbstractDataBase
             throw new IllegalArgumentException("The table for the model '" + model.getName() + "' does not exist!");
 
         return _entityRegistry.getTable(model)
-                            .map(ModelTable.class::cast)
                             .orElseThrow(()->new RuntimeException(
                                 "The model '" + model.getName() + "' does have a " +
                                 "table in the database, but the model type is not known " +
@@ -184,7 +183,7 @@ public final class SQLiteDataBase extends AbstractDataBase
     }
 
     @Override
-    public <T extends Model<T>> T select( Class<T> model, int id )
+    public <T extends Model<T>> T select( Class<T> model, long id )
     {
         // Now let's verify that the id is valid
         if ( id <= 0 )
@@ -228,7 +227,7 @@ public final class SQLiteDataBase extends AbstractDataBase
 
         List<M> modelsList = new ArrayList<>();
         for ( Object id : ids )
-            modelsList.add(select(models, (int) id));
+            modelsList.add(select(models, (long) id));
 
         return modelsList;
     }
@@ -249,7 +248,7 @@ public final class SQLiteDataBase extends AbstractDataBase
         return select(model, id);
     }
 
-    int _storeEntity(
+    long _storeEntity(
             EntityTable modelTable,
             Class<? extends DataBaseEntity> model,
             Tuple<Object> defaultValues
@@ -322,7 +321,7 @@ public final class SQLiteDataBase extends AbstractDataBase
             throw new IllegalArgumentException("The model '" + model.getName() + "' does not have a table in the database!");
         if ( result.size() > 1 )
             throw new IllegalArgumentException("There are multiple tables for the model '" + model.getName() + "' in the database!");
-        int id = (int) result.get("last_insert_rowid()").get(0);
+        long id = (long) result.get("last_insert_rowid()").get(0);
 
         return id;
     }
@@ -338,7 +337,7 @@ public final class SQLiteDataBase extends AbstractDataBase
                         .findFirst()
                         .orElseThrow();
 
-        int id = modelToBeRemoved.id().get();
+        long id = modelToBeRemoved.id().get();
         String tableName = _tableNameFromClass(modelInterfaceClass);
         // First we clean up usages of the model
         // Now we need to find all the intermediate tables that reference this model
@@ -360,7 +359,7 @@ public final class SQLiteDataBase extends AbstractDataBase
                             );
 
             if ( result.isEmpty() ) return;
-            List<Integer> refIds = result.get(leftName).stream().map( o -> (Integer) o ).distinct().toList();
+            List<Long> refIds = result.get(leftName).stream().map( o -> (Long) o ).distinct().toList();
             refIds.forEach( refId -> {
                 var refModel = select((Class<Model>) left, refId);
                 String prefix = _nameFromClass(left) + "__";
@@ -586,9 +585,9 @@ public final class SQLiteDataBase extends AbstractDataBase
                     sqlString = sqlString.substring(0, sqlString.length()-7);
 
                 Map<String, List<Object>> result = _query(sqlString, values);
-                List<Integer> ids = result.getOrDefault(EntityTable.ID, Collections.emptyList())
+                List<Long> ids = result.getOrDefault(EntityTable.ID, Collections.emptyList())
                                             .stream()
-                                            .map( o -> (int) o )
+                                            .map( o -> (long) o )
                                             .toList();
 
                 // Now let's select them:
@@ -648,7 +647,7 @@ public final class SQLiteDataBase extends AbstractDataBase
                     ));
     }
 
-    int _storeValueAndIncreaseCounter(Value databaseValue) {
+    long _storeValueAndIncreaseCounter(Value databaseValue) {
         var valueTable = _entityRegistry.getValueTable(databaseValue.getClass())
                 .orElseThrow(() -> new IllegalArgumentException(
                         "The value table for " + databaseValue.getClass().getName() + " does not exist!")
@@ -664,7 +663,25 @@ public final class SQLiteDataBase extends AbstractDataBase
         return existingId;
     }
 
-    int _removeValueAndDecrementCounter(Value databaseValue) {
+    long _findIdOfValue(
+        Value value
+    ) {
+        var valueTable = _entityRegistry.getValueTable(value.getClass())
+                                        .orElseThrow(() -> new IllegalArgumentException(
+                                                "The value table for " + value.getClass().getName() + " does not exist!"
+                                        ));
+        int hashCode = value.hashCode();
+        long id = _findIdOfValue(valueTable, value, hashCode);
+        if ( id < 0 ) {
+            throw new IllegalStateException(
+                    "The value '" + value + "' does not exist in the database! " +
+                    "This is most likely an internal bug in the TopSoil ORM implementation."
+                );
+        }
+        return id;
+    }
+
+    long _removeValueAndDecrementCounter(Value databaseValue) {
         var valueTable = _entityRegistry.getValueTable(databaseValue.getClass())
                                             .orElseThrow(() -> new IllegalArgumentException(
                                                 "The value table for " + databaseValue.getClass().getName() + " " +
@@ -692,7 +709,7 @@ public final class SQLiteDataBase extends AbstractDataBase
         return existingId;
     }
 
-    private void _delete(String tableName, List<Integer> ids) {
+    private void _delete(String tableName, List<Long> ids) {
         String sql = "DELETE * FROM " + tableName + " WHERE "+ModelTable.ID+" = ?";
         boolean success = _update(sql, Collections.singletonList(ids));
         if (!success ) {
@@ -700,7 +717,7 @@ public final class SQLiteDataBase extends AbstractDataBase
         }
     }
 
-    int _findIdOfValue(
+    long _findIdOfValue(
         ValueTable valueTable,
         Value value,
         int hashCode
@@ -749,7 +766,7 @@ public final class SQLiteDataBase extends AbstractDataBase
                     values.add(fieldValue);
                 } else if (fieldValue instanceof Value) {
                     // If the field value is a Value, we need to store it in the database
-                    int id = _storeValueAndIncreaseCounter((Value) fieldValue);
+                    long id = _storeValueAndIncreaseCounter((Value) fieldValue);
                     values.add(id);
                 } else {
                     throw new IllegalArgumentException(
@@ -769,7 +786,7 @@ public final class SQLiteDataBase extends AbstractDataBase
 
     private void _modifyUsageCounter(
         ValueTable valueTable,
-        int id,
+        long id,
         int delta
     ) {
         String sql = "UPDATE " + valueTable.getTableName() + " SET " + ValueTable.USAGE_FIELD_COUNTER + " = " +

@@ -154,7 +154,7 @@ public interface DataBase
      * @param <T> The generic type of the model, to ensure type safety.
      * @return The model with the specified id or null if no such model exists.
      */
-    <T extends Model<T>> T select( Class<T> model, int id );
+    <T extends Model<T>> T select( Class<T> model, long id );
 
     /**
      *  Selects all the {@link Model}s of the specified type from the database.<br>

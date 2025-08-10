@@ -13,8 +13,8 @@ import java.util.*;
 final class ModelProperties implements Vars<Object>, Viewables<Object>
 {
     private final SQLiteDataBase db;
-    private final List<Integer> ids;
-    private final int id; // The id of the model to which the properties belong
+    private final List<Long> ids;
+    private final long id; // The id of the model to which the properties belong
     private final IntermediateTable intermediateTable;
     private final String otherTable;
     private final String otherTableIdColumn;
@@ -26,7 +26,7 @@ final class ModelProperties implements Vars<Object>, Viewables<Object>
         Class<?> ownerModelClass,
         FieldType.VarsOf fieldType,
         IntermediateTable intermediateTable,
-        int id,
+        long id,
         boolean isEager
     ) {
         this.db = db;
@@ -54,14 +54,14 @@ final class ModelProperties implements Vars<Object>, Viewables<Object>
             throw new IllegalStateException("The column should be named after the id column of the other table");
         // The column should contain a list of ids:
         List<Object> found = result.get(otherTableIdColumn);
-        this.ids = new ArrayList<>(found.stream().map(o -> (Integer) o).toList());
+        this.ids = new ArrayList<>(found.stream().map(o -> ((Number) o).longValue()).toList());
     }
 
     private FieldType.VarsOf fieldType() {
         return (FieldType.VarsOf) intermediateTable.entityField().type();
     }
 
-    private Model<?> _select( int id ) {
+    private Model<?> _select( long id ) {
         // We need to get the model from the database:
         Class<Model> propertyValueType = (Class<Model>) this.fieldType().item();
         Model<?> model = db.select(propertyValueType, id);
@@ -150,8 +150,8 @@ final class ModelProperties implements Vars<Object>, Viewables<Object>
             Which row? The one that contains the id of the left model and the id of the
             model at the given index.
         */
-        int leftId = id;
-        int rightId = ids.get(index);
+        long leftId = id;
+        long rightId = ids.get(index);
         String query = "DELETE FROM " + intermediateTable.getTableName() + " " +
                 "WHERE " + thisTableIdColumn + " = ? AND " + otherTableIdColumn + " = ?";
         List<Object> params = List.of(leftId, rightId);
@@ -174,8 +174,8 @@ final class ModelProperties implements Vars<Object>, Viewables<Object>
             We need to insert a row into the intermediate table! Basic stuff...
         */
         Object o = var.get();
-        int leftId = id;
-        int rightId = ((Model) o).id().get();
+        long leftId = id;
+        long rightId = ((Model) o).id().get();
         String query = "INSERT INTO " + intermediateTable.getTableName() + " " +
                 "(" + thisTableIdColumn + ", " + otherTableIdColumn + ") " +
                 "VALUES (?, ?)";
@@ -198,9 +198,9 @@ final class ModelProperties implements Vars<Object>, Viewables<Object>
             More specifically, we need to update the id of the model that is referenced
             by the intermediate table.
         */
-        int leftId = id;
-        int rightId = (Integer) var.get();
-        int oldRightId = ids.get(index);
+        long leftId = id;
+        long rightId = (Integer) var.get();
+        long oldRightId = ids.get(index);
 
         String update = "UPDATE " + intermediateTable.getTableName() +
                 " SET " + otherTableIdColumn +

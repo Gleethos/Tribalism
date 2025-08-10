@@ -20,14 +20,14 @@ import java.util.function.Consumer;
 final class ModelProxy<T extends Model<T>> implements InvocationHandler {
     private final SQLiteDataBase _dataBase;
     private final ModelTable _modelTable;
-    private final int _id;
+    private final long _id;
     private final boolean _isEager;
     private final Map<String, ProxyRef<Object>> cachedPropertyProxies = new HashMap<>();
 
     ModelProxy(
         SQLiteDataBase db,
         ModelTable table,
-        int id,
+        long id,
         boolean isEager
     ) {
         _dataBase = db;
@@ -55,7 +55,7 @@ final class ModelProxy<T extends Model<T>> implements InvocationHandler {
             return _id == ((Model<?>) args[0]).id().get();
         }
         if (methodName.equals("hashCode")) {
-            return _id;
+            return Long.hashCode(_id);
         }
         // Something a little more complicated: toString
         if (methodName.equals("toString")) {
@@ -223,7 +223,7 @@ final class ModelProxy<T extends Model<T>> implements InvocationHandler {
         return toBeReturned.proxy();
     }
 
-    public int getId() {
+    public long getId() {
         return _id;
     }
 

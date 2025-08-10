@@ -283,7 +283,7 @@ abstract class AbstractDataBase implements DataBase {
                                     Objects.requireNonNull(result.get(column_name)).add(rs.getArray(column_name));
                                 }
                                 else if(rsmd.getColumnType(i)==java.sql.Types.BIGINT) {
-                                    Objects.requireNonNull(result.get(column_name)).add(rs.getInt(column_name));
+                                    Objects.requireNonNull(result.get(column_name)).add(rs.getLong(column_name));
                                 }
                                 else if(rsmd.getColumnType(i)==java.sql.Types.BOOLEAN) {
                                     Objects.requireNonNull(result.get(column_name)).add(rs.getBoolean(column_name));
@@ -298,7 +298,7 @@ abstract class AbstractDataBase implements DataBase {
                                     Objects.requireNonNull(result.get(column_name)).add(rs.getFloat(column_name));
                                 }
                                 else if(rsmd.getColumnType(i)==java.sql.Types.INTEGER) {
-                                    Objects.requireNonNull(result.get(column_name)).add(rs.getInt(column_name));
+                                    Objects.requireNonNull(result.get(column_name)).add(rs.getLong(column_name));
                                 }
                                 else if(rsmd.getColumnType(i)==java.sql.Types.NVARCHAR) {
                                     Objects.requireNonNull(result.get(column_name)).add(rs.getNString(column_name));
@@ -406,7 +406,7 @@ abstract class AbstractDataBase implements DataBase {
 
     protected static String _fromJavaTypeToDBType(Class<?> type) {
         if ( type == Integer.class || type == int.class )
-            return "INTEGER";
+            return "INT";
         else if ( type == String.class)
             return "TEXT";
         else if ( type == Boolean.class || type == boolean.class )
@@ -416,7 +416,7 @@ abstract class AbstractDataBase implements DataBase {
         else if ( type == Float.class || type == float.class )
             return "FLOAT";
         else if ( type == Long.class || type == long.class )
-            return "BIGINT";
+            return "INTEGER";
         else if ( type == Short.class || type == short.class )
             return "SMALLINT";
         else if ( type == Byte.class || type == byte.class )
@@ -431,12 +431,12 @@ abstract class AbstractDataBase implements DataBase {
 
     protected static Class<?> _fromDBTypeToJavaType(String type) {
         return switch (type) {
-            case "INT", "INTEGER" -> Integer.class;
+            case "INT"-> Integer.class;
             case "TEXT" -> String.class;
             case "BOOLEAN" -> Boolean.class;
             case "DOUBLE" -> Double.class;
             case "FLOAT" -> Float.class;
-            case "BIGINT" -> Long.class;
+            case "BIGINT", "INTEGER" -> Long.class;
             case "SMALLINT" -> Short.class;
             case "TINYINT" -> Byte.class;
             default -> throw new IllegalArgumentException("The type " + type + " is not supported");
