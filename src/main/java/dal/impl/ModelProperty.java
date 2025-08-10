@@ -1,106 +1,133 @@
 package dal.impl;
 
+import dal.api.DataBaseEntity;
 import dal.api.Model;
-import sprouts.Action;
-import sprouts.Val;
-import sprouts.Var;
-import swingtree.api.mvvm.*;
+import dal.api.Value;
+import org.jspecify.annotations.NullMarked;
+import org.jspecify.annotations.Nullable;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import sprouts.*;
+import sprouts.Observable;
+import sprouts.Observer;
+import sprouts.impl.PropertyChangeListeners;
+import sprouts.impl.Sprouts;
 
 import java.util.*;
-import java.util.function.Consumer;
-import java.util.function.Function;
 
-class ModelProperty implements Var<Object>
+@NullMarked
+final class ModelProperty implements Var<Object>, Viewable<Object>
 {
+    private static final Logger log = LoggerFactory.getLogger(ModelProperty.class);
+
     private final SQLiteDataBase _dataBase;
     private final int _id;
     private final String _fieldName;
     private final String _tableName;
-    private final Class<?> _propertyValueType;
+    private final FieldType.VarOf _fieldType;
     private final boolean _allowNull;
     private final boolean _isEager;
-    private Object _value;
+
+    private @Nullable Object _value;
     private boolean _wasSet = false;
 
     // Observers:
-
-    private final List<Action<Val<Object>>> _showActions = new ArrayList<>();
-    private final List<Action<Val<Object>>> _actActions = new ArrayList<>();
-    private final List<Consumer<Object>> _viewers = new ArrayList<>(0);
-
+    private final PropertyChangeListeners<Object> _listeners = new PropertyChangeListeners<>();
 
     ModelProperty(
-            SQLiteDataBase dataBase,
-            int id,
-            String fieldName,
-            String tableName,
-            Class<?> propertyValueType,
-            boolean allowNull,
-            boolean isEager
+        SQLiteDataBase dataBase,
+        int id,
+        String fieldName,
+        String tableName,
+        FieldType.VarOf fieldType,
+        boolean allowNull,
+        boolean isEager
     ) {
-        _dataBase = dataBase;
-        _id = id;
-        _fieldName = fieldName;
-        _tableName = tableName;
-        _propertyValueType = propertyValueType;
-        _allowNull = allowNull;
-        _isEager = isEager;
+        _dataBase          = dataBase;
+        _id                = id;
+        _fieldName         = fieldName;
+        _tableName         = tableName;
+        _fieldType         = fieldType;
+        _allowNull         = allowNull;
+        _isEager           = isEager;
+        if ( fieldType instanceof FieldType.VarOf.Tuple ) {
+            _value = Tuple.of(fieldType.item());
+        }
     }
 
     @Override
-    public Object orElseNull()
+    public @Nullable Object orElseNull()
     {
         if ( _wasSet && !_isEager ) return _value;
 
-        Object value;
-        StringBuilder select = new StringBuilder();
-        select.append("SELECT ").append(_fieldName)
-                .append(" FROM ").append(_tableName)
-                .append(" WHERE id = ?");
+        Object itemToReturn;
+        String select = "SELECT " + _fieldName +
+                        " FROM " + _tableName +
+                        " WHERE id = ?";
 
-        Map<String, List<Object>> result = _dataBase._query(select.toString(), Collections.singletonList(_id));
+        Map<String, List<Object>> result = _dataBase._query(select, Collections.singletonList(_id));
         if (result.isEmpty())
             return null;
         else {
-            List<Object> values = result.get(_fieldName);
-            if (values.isEmpty())
+            List<Object> queryResultColumn = result.get(_fieldName);
+            Objects.requireNonNull(queryResultColumn, "Query result column was empty");
+            if (queryResultColumn.isEmpty())
                 throw new IllegalStateException("Failed to find table entry for id " + _id);
-            else if (values.size() > 1)
+            else if (queryResultColumn.size() > 1)
                 throw new IllegalStateException("Found more than one table entry for id " + _id);
             else
-                value = values.get(0);
+                itemToReturn = queryResultColumn.get(0);
         }
 
-        if (!Model.class.isAssignableFrom(_propertyValueType))
-            return value;
-        else {
+        if (!Model.class.isAssignableFrom(_fieldType.item())) {
+            if ( Enum.class.isAssignableFrom(_fieldType.item()) ) {
+                // We parse the enum value
+                if (itemToReturn == null)
+                    return null;
+                else {
+                    try {
+                        return Enum.valueOf((Class<Enum>) _fieldType.item(), itemToReturn.toString());
+                    } catch ( IllegalArgumentException e ) {
+                        throw new IllegalStateException(
+                                "Failed to parse enum value " + itemToReturn + " for type " + _fieldType.item().getName()
+                            );
+                    }
+                }
+            }
+            return itemToReturn;
+        } else {
             // A foreign key to another model! We already have the id, so we can just create the model
             // and return it.
             // But first let's check if the object we found is not null and actually a number
-            if (value == null)
+            if (itemToReturn == null)
                 throw new IllegalStateException("The foreign key value is null");
-            else if (!Number.class.isAssignableFrom(value.getClass()))
+            else if (!Number.class.isAssignableFrom(itemToReturn.getClass()))
                 throw new IllegalStateException("The foreign key value is not a number");
             else {
+                if (Objects.equals(itemToReturn, 0) )
+                    return null;
                 // We have a number, so we can find the model
-                int foreignKeyId = ((Number) value).intValue();
-                Class<? extends Model<?>> foreignKeyModelClass = (Class<? extends Model<?>>) _propertyValueType;
-                value = _dataBase.select((Class) foreignKeyModelClass, foreignKeyId);
-                if (value == null)
+                int foreignKeyId = ((Number) itemToReturn).intValue();
+                Class<? extends Model<?>> foreignKeyModelClass = (Class<? extends Model<?>>) _fieldType.item();
+                itemToReturn = _dataBase.select((Class) foreignKeyModelClass, foreignKeyId);
+                if (itemToReturn == null)
                     throw new IllegalStateException("Failed to find model of type " + foreignKeyModelClass.getName() + " with id " + foreignKeyId);
                 else
-                    return value;
+                    return itemToReturn;
             }
         }
     }
 
     @Override
-    public Var<Object> set( Object newItem ) {
-        _setNonSilent(newItem);
+    public Var<Object> set( Channel channel, Object newItem ) {
+        Objects.requireNonNull(channel);
+        if ( newItem == null && !_allowNull )
+            throw new NullPointerException("Cannot set a null value to a non-nullable property");
+        _setNonSilent(newItem, channel);
         return this;
     }
 
-    private void _setNonSilent( Object newItem ) {
+    private void _setNonSilent( Object newItem, Channel channel ) {
         Object oldValue;
         if ( _isEager ) {
             oldValue = orElseNull();
@@ -112,113 +139,144 @@ class ModelProperty implements Var<Object>
         }
         _wasSet = true;
         if ( !Val.equals( oldValue, newItem ) )
-            fireSet();
+            _listeners.fireChange(this, channel, newItem, oldValue);
     }
 
     private void _set( Object newItem ) {
-        if (!(newItem instanceof Model<?>)) {
-            String update = "UPDATE " + _tableName +
-                    " SET " + _fieldName +
-                    " = ? WHERE id = ?";
-            boolean success = _dataBase._update(update, Arrays.asList(newItem, _id));
+        if (!(newItem instanceof DataBaseEntity)) {
+            String update = "UPDATE " + _tableName + " " +
+                            "SET " + _fieldName + " = ? " +
+                            "WHERE id = ?";
+
+            Object valueToStore = newItem;
+            if ( Enum.class.isAssignableFrom(_fieldType.item()) ) {
+                if ( newItem == null )
+                    valueToStore = null;
+                else
+                    valueToStore = newItem.toString();
+            }
+            if ( _fieldType instanceof FieldType.VarOf.Tuple ) {
+                var oldTuple = (Tuple<Value>) Objects.requireNonNull(_value);
+                var newTuple = (Tuple<Value>) Objects.requireNonNull(newItem);
+                Set<Value> oldSet = oldTuple.toSet();
+                Set<Value> newSet = newTuple.toSet();
+                Set<Value> all = new HashSet<Value>();
+                all.addAll(oldSet);
+                all.addAll(newSet);
+                for ( Value o : all ) {
+                    var isInOldSet  = oldSet.contains(o);
+                    var isInNewSet  = newSet.contains(o);
+                    if ( isInOldSet && isInNewSet )
+                        continue;
+                    if (!isInOldSet && isInNewSet ) {
+                        int id = _dataBase._storeValueAndIncreaseCounter( o );
+                        if ( id < 0 )
+                            throw new IllegalArgumentException("Invalid id " + id + ", expected >= 0");
+                    } else if (isInOldSet && !isInNewSet ) {
+                        _dataBase._removeValueAndDecrementCounter(o);
+                    } else {
+                        throw new IllegalArgumentException("Invalid state");
+                    }
+                }
+            }
+            boolean success = _dataBase._update(update, Arrays.asList(valueToStore, _id));
             if (!success)
                 throw new IllegalStateException("Failed to update table entry for id " + _id);
-        } else {
+        } else if (newItem instanceof Model) {
             // We have a model, so we need to update the foreign key
             Model<?> model = (Model<?>) newItem;
-            StringBuilder update = new StringBuilder();
-            update.append("UPDATE ");
-            update.append(_tableName);
-            update.append(" SET ");
-            update.append(_fieldName);
-            update.append(" = ? WHERE id = ?");
-            boolean success = _dataBase._update(update.toString(), Arrays.asList(model.id().get(), _id));
+            boolean success = _updateField(model.id().get());
             if ( !success )
                 throw new IllegalStateException("Failed to update table entry for id " + _id);
-        }
-    }
-
-    @Override public Var<Object> withId(String id) { throw new UnsupportedOperationException(); }
-
-    @Override
-    public Var<Object> onAct( Action<Val<Object>> action ) {
-        _actActions.add(action);
-        return this;
-    }
-
-    @Override
-    public Var<Object> fireAct() {
-        _triggerActions(_actActions);
-        _viewers.forEach( v -> v.accept(_value) );
-        return this;
-    }
-
-    @Override
-    public Var<Object> act(Object newItem) {
-        Object oldValue;
-        if ( _isEager ) {
-            oldValue = orElseNull();
-            _set(newItem);
+        } else if (newItem instanceof Value) {
+            Value dataBaseValue = (Value) newItem;
+            int id = _dataBase._storeValueAndIncreaseCounter(dataBaseValue);
+            boolean success = _updateField(id);
+            if ( !success )
+                throw new IllegalStateException("Failed to update table entry for id " + _id);
         } else {
-            if ( _wasSet ) oldValue = _value;
-            else oldValue = orElseNull();
-            _value = newItem;
+            throw new IllegalStateException("Unknown type for property field '" + _fieldName + "' " +
+                                            "of type " + _fieldType.item().getName() + ". " +
+                                            "Expected a model or a value, but got " + newItem.getClass().getName());
         }
-        _wasSet = true;
-        if ( !Val.equals( oldValue, newItem ) )
-            fireAct();
+    }
 
+    private boolean _updateField( Object newItem ) {
+        StringBuilder update = new StringBuilder();
+        update.append("UPDATE ");
+        update.append(_tableName);
+        update.append(" SET ");
+        update.append(_fieldName);
+        update.append(" = ? WHERE id = ?");
+        return _dataBase._update(update.toString(), Arrays.asList(newItem, _id));
+    }
+
+    @Override public Var<Object> withId(String id) {
+        throw new UnsupportedOperationException();
+    }
+
+    @Override
+    public Viewable<Object> onChange( Channel channel, Action<ValDelegate<Object>> action ) {
+        _listeners.onChange(channel, action);
         return this;
     }
 
     @Override
-    public <U> Val<U> viewAs(Class<U> type, Function<Object, U> mapper) {
-        Var<U> var = mapTo(type, mapper);
-        // Now we register a live update listener to this property
-        this.onSet( v -> var.set( mapper.apply( v.orElseNull() ) ));
-        _viewers.add( v -> var.act( mapper.apply( v ) ) );
-        return var;
+    public Var<Object> fireChange(Channel channel) {
+        _listeners.fireChange(this, channel, _value, _value);
+        return this;
     }
 
-    @Override public String id() { return Val.NO_ID; }
+    @Override public String id() {
+        return Sprouts.factory().defaultId();
+    }
 
-    @Override public Class<Object> type() { return (Class<Object>) _propertyValueType; }
+    @Override public Class<Object> type() {
+        if ( _fieldType instanceof FieldType.VarOf.Tuple ) {
+            return (Class) Tuple.class;
+        }
+        return (Class<Object>) _fieldType.item();
+    }
+
+    @Override public boolean allowsNull() {
+        return _allowNull;
+    }
 
     @Override
-    public Val<Object> onSet(Action<Val<Object>> displayAction) {
-        _showActions.add(displayAction);
+    public boolean isMutable() {
+        return true;
+    }
+
+    boolean wasSet() {
+        return _wasSet;
+    }
+
+    @Nullable Object getSetVal() {
+        return _value;
+    }
+
+    String getFieldName() {
+        return _fieldName;
+    }
+
+    @Override
+    public Observable subscribe(Observer listener) {
+        _listeners.onChange(listener);
         return this;
     }
 
     @Override
-    public Val<Object> fireSet() {
-        _triggerActions(_showActions);
+    public Observable unsubscribe(Subscriber listener) {
+        _listeners.unsubscribe(listener);
         return this;
     }
 
-    @Override public boolean allowsNull() { return _allowNull; }
-
-
-    protected void _triggerActions(
-            List<Action<Val<Object>>> actions
-    ) {
-        List<Action<Val<Object>>> removableActions = new ArrayList<>();
-        for ( Action<Val<Object>> action : new ArrayList<>(actions) ) // We copy the list to avoid concurrent modification
-            try {
-                if ( action.canBeRemoved() )
-                    removableActions.add(action);
-                else {
-                    action.accept(ModelProperty.this);
-                }
-            } catch ( Exception e ) {
-                e.printStackTrace();
-            }
-        actions.removeAll(removableActions);
+    @Override
+    public void unsubscribeAll() {
+        _listeners.unsubscribeAll();
     }
 
-    public boolean wasSet() { return _wasSet; }
-
-    public Object getSetVal() { return _value; }
-
-    public String getFieldName() { return _fieldName; }
+    public long numberOfChangeListeners() {
+        return _listeners.numberOfChangeListeners();
+    }
 }

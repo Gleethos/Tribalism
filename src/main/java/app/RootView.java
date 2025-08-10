@@ -1,5 +1,9 @@
 package app;
 
+import app.dev.BootstrapView;
+import app.dev.DataBaseView;
+import app.dev.ServerView;
+
 import static swingtree.UI.*;
 
 /**
@@ -18,14 +22,14 @@ public class RootView extends javax.swing.JPanel
         .applyIf(vm.developerTabsAreShown(), it ->
             it.add(GROW,
                 tabbedPane()
-                .add(tab("Server").add(vm.serverViewModel().createView()))
-                .add(tab("Content").add(vm.mainViewModel().createView()))
-                .add(tab("Database").add(vm.dataBaseViewModel().createView()))
-                .add(tab("Bootstrap").add(vm.bootstrapViewModel().createView()))
+                .add(tab("Server").add(new ServerView(vm.serverViewModel())))
+                .add(tab("Content").add(new ContentView(vm.mainViewModel())))
+                .add(tab("Database").add(new DataBaseView(vm.dataBaseViewModel())))
+                .add(tab("Bootstrap").add(new BootstrapView(vm.bootstrapViewModel())))
             )
         )
         .applyIf(!vm.developerTabsAreShown(),
-            it -> it.add(GROW, vm.mainViewModel().createView())
+            it -> it.add(GROW, new ContentView(vm.mainViewModel()))
         );
     }
 }

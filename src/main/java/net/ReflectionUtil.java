@@ -1,11 +1,9 @@
 package net;
 
+import app.ViewModel;
 import org.json.JSONArray;
 import org.json.JSONObject;
-import sprouts.Action;
-import sprouts.Val;
-import sprouts.Var;
-import swingtree.api.mvvm.Viewable;
+import sprouts.*;
 
 import java.util.List;
 
@@ -56,7 +54,7 @@ public class ReflectionUtil {
 
         if ( newValue == null ) {
             if ( prop.allowsNull() )
-                prop.act(null);
+                prop.set(From.VIEW, null);
             else
                 throw new RuntimeException(
                         "Property '" + id + "' does not allow null values, but view attempted to set it to null!"
@@ -68,19 +66,19 @@ public class ReflectionUtil {
         Class<?> type = prop.type();
         // Now let's convert the value to the correct type
         if ( type == String.class ) {
-            prop.act(newValue);
+            prop.set(From.VIEW, newValue);
         }
         else if ( type == Integer.class ) {
-            prop.act(Integer.parseInt(newValue));
+            prop.set(From.VIEW, Integer.parseInt(newValue));
         }
         else if ( type == Double.class ) {
-            prop.act(Double.parseDouble(newValue));
+            prop.set(From.VIEW, Double.parseDouble(newValue));
         }
         else if ( type == Boolean.class ) {
-            prop.act(Boolean.parseBoolean(newValue));
+            prop.set(From.VIEW, Boolean.parseBoolean(newValue));
         }
         else if ( Enum.class.isAssignableFrom(type) ) {
-            prop.act(Enum.valueOf((Class<Enum>) type, newValue));
+            prop.set(From.VIEW, Enum.valueOf((Class<Enum>) type, newValue));
         }
         // Now on to array, first primitives and then normal object arrays:
         else {
@@ -91,7 +89,7 @@ public class ReflectionUtil {
                 byte[] bytes = new byte[parts.length];
                 for ( int i = 0; i < parts.length; i++ )
                     bytes[i] = Byte.parseByte(parts[i]);
-                prop.act(bytes);
+                prop.set(From.VIEW, bytes);
             }
             else if ( type == short[].class ) {
                 // We expect this to be an array like [1,2,3,4,5]
@@ -99,7 +97,7 @@ public class ReflectionUtil {
                 short[] shorts = new short[parts.length];
                 for ( int i = 0; i < parts.length; i++ )
                     shorts[i] = Short.parseShort(parts[i]);
-                prop.act(shorts);
+                prop.set(From.VIEW, shorts);
             }
             else if ( type == int[].class ) {
                 // We expect this to be an array like [1,2,3,4,5]
@@ -107,7 +105,7 @@ public class ReflectionUtil {
                 int[] ints = new int[parts.length];
                 for ( int i = 0; i < parts.length; i++ )
                     ints[i] = Integer.parseInt(parts[i]);
-                prop.act(ints);
+                prop.set(From.VIEW, ints);
             }
             else if ( type == long[].class ) {
                 // We expect this to be an array like [1,2,3,4,5]
@@ -115,7 +113,7 @@ public class ReflectionUtil {
                 long[] longs = new long[parts.length];
                 for ( int i = 0; i < parts.length; i++ )
                     longs[i] = Long.parseLong(parts[i]);
-                prop.act(longs);
+                prop.set(From.VIEW, longs);
             }
             else if ( type == float[].class ) {
                 // We expect this to be an array like [1,2,3,4,5]
@@ -123,7 +121,7 @@ public class ReflectionUtil {
                 float[] floats = new float[parts.length];
                 for ( int i = 0; i < parts.length; i++ )
                     floats[i] = Float.parseFloat(parts[i]);
-                prop.act(floats);
+                prop.set(From.VIEW, floats);
             }
             else if ( type == double[].class ) {
                 // We expect this to be an array like [1,2,3,4,5]
@@ -131,7 +129,7 @@ public class ReflectionUtil {
                 double[] doubles = new double[parts.length];
                 for ( int i = 0; i < parts.length; i++ )
                     doubles[i] = Double.parseDouble(parts[i]);
-                prop.act(doubles);
+                prop.set(From.VIEW, doubles);
             }
             else if ( type == boolean[].class ) {
                 // We expect this to be an array like [true,false,true]
@@ -139,7 +137,7 @@ public class ReflectionUtil {
                 boolean[] booleans = new boolean[parts.length];
                 for ( int i = 0; i < parts.length; i++ )
                     booleans[i] = Boolean.parseBoolean(parts[i]);
-                prop.act(booleans);
+                prop.set(From.VIEW, booleans);
             }
             else if ( type == char[].class ) {
                 // We expect this to be an array like [a,b,c]
@@ -147,14 +145,14 @@ public class ReflectionUtil {
                 char[] chars = new char[parts.length];
                 for ( int i = 0; i < parts.length; i++ )
                     chars[i] = parts[i].charAt(0);
-                prop.act(chars);
+                prop.set(From.VIEW, chars);
             }
             else if ( type == String[].class ) {
                 // We expect this to be an array like ["a","b","c"]
                 String[] parts = strings;
                 for ( int i = 0; i < parts.length; i++ )
                     parts[i] = parts[i].substring(1, parts[i].length()-1);
-                prop.act(parts);
+                prop.set(From.VIEW, parts);
             }
             else {
                 throw new RuntimeException("Property '" + id + "' has an unsupported type '" + type.getName() + "'");
@@ -164,9 +162,22 @@ public class ReflectionUtil {
 
     public static void bind(
             Object vm,
+            Action<ValDelegate<Object>> observer
+    ) {
+        ReflectionUtil.findPropertiesInViewModel(vm).forEach(p -> {
+            Viewable.cast(p).onChange(From.VIEW_MODEL, observer);
+            if ( p instanceof Viewable<Object> var )
+                var.onChange(From.VIEW, observer);
+        } );
+    }
+
+    public static void unbind(
+            Object vm,
             Action<Val<Object>> observer
     ) {
-        ReflectionUtil.findPropertiesInViewModel(vm).forEach(p -> p.onSet(observer) );
+        ReflectionUtil.findPropertiesInViewModel(vm).forEach(p -> {
+            Viewable.cast(p).unsubscribe(observer);
+        });
     }
 
     static JSONArray getMethodsForViewModel(Object vm) {
@@ -198,7 +209,7 @@ public class ReflectionUtil {
                 for ( var param : method.getParameters() )
                     args.put(Constants.METHOD_ARG_NAME, param.getName())
                             .put(Constants.METHOD_ARG_TYPE, param.getType().getSimpleName())
-                            .put(Constants.TYPE_IS_VM, Viewable.class.isAssignableFrom(method.getReturnType()));
+                            .put(Constants.TYPE_IS_VM, ViewModel.class.isAssignableFrom(method.getReturnType()));
 
                 publicMethods.put(
                         new JSONObject()
@@ -207,7 +218,7 @@ public class ReflectionUtil {
                                 .put(Constants.METHOD_RETURNS,
                                         new JSONObject()
                                                 .put(Constants.TYPE_NAME, returnType)
-                                                .put(Constants.TYPE_IS_VM, Viewable.class.isAssignableFrom(method.getReturnType()))
+                                                .put(Constants.TYPE_IS_VM, ViewModel.class.isAssignableFrom(method.getReturnType()))
                                 )
                 );
             } catch (Exception e) {

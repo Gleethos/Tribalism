@@ -1,6 +1,8 @@
 package dal.impl;
 
 import dal.api.Model;
+import org.jspecify.annotations.NullMarked;
+import org.jspecify.annotations.Nullable;
 import sprouts.Val;
 import sprouts.Vals;
 import sprouts.Var;
@@ -14,14 +16,15 @@ import java.util.List;
 import java.util.Map;
 import java.util.function.Consumer;
 
-class ModelProxy<T extends Model<T>> implements InvocationHandler {
+@NullMarked
+final class ModelProxy<T extends Model<T>> implements InvocationHandler {
     private final SQLiteDataBase _dataBase;
     private final ModelTable _modelTable;
     private final int _id;
     private final boolean _isEager;
     private final Map<String, ProxyRef<Object>> cachedPropertyProxies = new HashMap<>();
 
-    public ModelProxy(
+    ModelProxy(
         SQLiteDataBase db,
         ModelTable table,
         int id,
@@ -34,7 +37,7 @@ class ModelProxy<T extends Model<T>> implements InvocationHandler {
     }
 
     @Override
-    public Object invoke(Object proxy, Method method, Object[] args) throws Throwable {
+    public @Nullable Object invoke(Object proxy, Method method, Object[] args) throws Throwable {
         String methodName = method.getName();
 
         /*
@@ -45,6 +48,8 @@ class ModelProxy<T extends Model<T>> implements InvocationHandler {
         if (methodName.equals("equals")) {
             if (args.length != 1)
                 throw new IllegalArgumentException("The equals method must have exactly one argument!");
+            if (args[0] == null)
+                return false;
             if (!Model.class.isAssignableFrom(args[0].getClass()))
                 return false;
             return _id == ((Model<?>) args[0]).id().get();
@@ -58,7 +63,7 @@ class ModelProxy<T extends Model<T>> implements InvocationHandler {
                 Let's not be lazy and actually build a string that contains all the properties!
              */
             StringBuilder sb = new StringBuilder();
-            sb.append(_modelTable.getModelInterface().map(Class::getSimpleName).orElse(_modelTable.getTableName()));
+            sb.append(_modelTable.entityType().map(Class::getSimpleName).orElse(_modelTable.getTableName()));
             sb.append("[");
             for ( var field : _modelTable.getFields() ) {
                 if (!field.isList()) {
@@ -71,11 +76,11 @@ class ModelProxy<T extends Model<T>> implements InvocationHandler {
                     else
                         asString = o.toString();
 
-                    sb.append(field.getMethodName());
+                    sb.append(field.baseName());
                     sb.append("=").append(asString);
                     sb.append(", ");
                 } else {
-                    sb.append(field.getMethodName());
+                    sb.append(field.baseName());
                     sb.append("=[");
                     Vals<Object> props = field.asProperties(_dataBase, _id, true).impl();
                     for ( Object o : props ) {
@@ -128,8 +133,8 @@ class ModelProxy<T extends Model<T>> implements InvocationHandler {
             // Let's create a proxy that is of the correct type
             var transactionProxy = (T)
                             java.lang.reflect.Proxy.newProxyInstance(
-                                _modelTable.getModelInterface().orElseThrow().getClassLoader(),
-                                new Class[]{_modelTable.getModelInterface().orElseThrow()},
+                                _modelTable.entityType().orElseThrow().getClassLoader(),
+                                new Class[]{_modelTable.entityType().orElseThrow()},
                                 nonEager
                             );
 
@@ -139,7 +144,7 @@ class ModelProxy<T extends Model<T>> implements InvocationHandler {
             nonEager.executeCommit();
             return null;
         } else if ( methodName.equals("clone") ) {
-            Class<Model> modelInterface = (Class) _modelTable.getModelInterface().orElseThrow();
+            Class<Model> modelInterface = (Class) _modelTable.entityType().orElseThrow();
             var clone = _dataBase.create(modelInterface);
             var thisModel = _dataBase.select(modelInterface, _id);
 
@@ -152,7 +157,7 @@ class ModelProxy<T extends Model<T>> implements InvocationHandler {
                     Method m1 = methods1[ii];
                     System.out.println(m0.getName()+" "+m1.getName());
                     if ( m0.getName().equals(m1.getName()) ) {
-                        if (!m0.getName().equals("id") && m0.getParameterCount() == 0) {
+                        if (!m0.getName().equals(EntityTable.ID) && m0.getParameterCount() == 0) {
                             // The return type of the method must be a subtype of Var:
                             if (!Val.class.isAssignableFrom(m0.getReturnType()))
                                 continue;
@@ -174,7 +179,7 @@ class ModelProxy<T extends Model<T>> implements InvocationHandler {
                 Ah, a method that is not a property! Let's check if it is a default method!
             */
             // First we expect there to be a model interface
-            Class<?> modelInterface = _modelTable.getModelInterface().orElseThrow();
+            Class<?> modelInterface = _modelTable.entityType().orElseThrow();
             // Then we expect the method to be declared in the model interface
             Method modelInterfaceMethod = modelInterface.getDeclaredMethod(methodName, method.getParameterTypes());
             // Then we expect the method to be a default method
@@ -193,27 +198,27 @@ class ModelProxy<T extends Model<T>> implements InvocationHandler {
                     .invokeWithArguments(args);
         }
 
-        TableField tableField = _modelTable.getField(methodName);
-        if ( tableField == null )
-            throw new IllegalArgumentException("The model '" + _modelTable.getModelInterface().get().getName() + "' does not have a property named '" + methodName + "'!");
+        EntityTableField entityField = _modelTable.getField(methodName);
+        if ( entityField == null )
+            throw new IllegalArgumentException("The model '" + _modelTable.entityType().get().getName() + "' does not have a property named '" + methodName + "'!");
         if ( args != null && args.length != 0 )
-            throw new IllegalArgumentException("The model '" + _modelTable.getModelInterface().get().getName() + "' does not have a setter for the property named '" + methodName + "'!");
+            throw new IllegalArgumentException("The model '" + _modelTable.entityType().get().getName() + "' does not have a setter for the property named '" + methodName + "'!");
         if ( method.getReturnType() == void.class )
-            throw new IllegalArgumentException("The model '" + _modelTable.getModelInterface().get().getName() + "' does not have a setter for the property named '" + methodName + "'!");
+            throw new IllegalArgumentException("The model '" + _modelTable.entityType().get().getName() + "' does not have a setter for the property named '" + methodName + "'!");
 
         // Now let's get the property value from the database
         ProxyRef<Object> toBeReturned;
 
         if (Val.class.isAssignableFrom(method.getReturnType()))
-            toBeReturned = cachedPropertyProxies.computeIfAbsent(methodName, n -> (ProxyRef) tableField.asProperty(_dataBase, _id, _isEager));
+            toBeReturned = cachedPropertyProxies.computeIfAbsent(methodName, n -> (ProxyRef) entityField.asProperty(_dataBase, _id, _isEager));
         else if (Vals.class.isAssignableFrom(method.getReturnType()))
-            toBeReturned = cachedPropertyProxies.computeIfAbsent(methodName, n -> (ProxyRef) tableField.asProperties(_dataBase, _id, _isEager));
+            toBeReturned = cachedPropertyProxies.computeIfAbsent(methodName, n -> (ProxyRef) entityField.asProperties(_dataBase, _id, _isEager));
         else
-            throw new IllegalArgumentException("The model '" + _modelTable.getModelInterface().get().getName() + "' does not have a property named '" + methodName + "'!");
+            throw new IllegalArgumentException("The model '" + _modelTable.entityType().get().getName() + "' does not have a property named '" + methodName + "'!");
 
         // Now let's check if the property is of the correct type
         if (!method.getReturnType().isAssignableFrom(toBeReturned.proxy().getClass()))
-            throw new IllegalArgumentException("Failed to create a proxy for the model '" + _modelTable.getModelInterface().get().getName() + "' because the property '" + methodName + "' is of type '" + toBeReturned.getClass().getName() + "' but the getter is of type '" + method.getReturnType().getName() + "'!");
+            throw new IllegalArgumentException("Failed to create a proxy for the model '" + _modelTable.entityType().get().getName() + "' because the property '" + methodName + "' is of type '" + toBeReturned.getClass().getName() + "' but the getter is of type '" + method.getReturnType().getName() + "'!");
 
         return toBeReturned.proxy();
     }

@@ -1,8 +1,11 @@
 package dal.impl;
 
+import org.jspecify.annotations.NullMarked;
+
+@NullMarked
 enum FieldKind {
     ID,
-    VALUE,
+    PRIMITIVE,
     FOREIGN_KEY,
     INTERMEDIATE_TABLE
 }

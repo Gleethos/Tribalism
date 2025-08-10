@@ -3,13 +3,15 @@ package app.user;
 import app.AppContext;
 import app.ContentViewModel;
 import app.models.User;
+import sprouts.From;
 import sprouts.Val;
 import sprouts.Var;
-import swingtree.api.mvvm.Viewable;
+import app.ViewModel;
+import sprouts.Viewable;
 
 import java.awt.*;
 
-public class RegisterViewModel implements Viewable
+public class RegisterViewModel implements ViewModel
 {
     private final AppContext context;
     private final ContentViewModel contentViewModel;
@@ -27,8 +29,8 @@ public class RegisterViewModel implements Viewable
     public RegisterViewModel(AppContext context, ContentViewModel contentViewModel) {
         this.context = context;
         this.contentViewModel = contentViewModel;
-        this.username          = Var.of("").withId("username").onAct( it -> validateAll() );
-        this.password          = Var.of("").withId("password").onAct( it -> validateAll() );
+        this.username          = Var.of("").withId("username");
+        this.password          = Var.of("").withId("password");
         this.usernameIsValid   = Var.of(false).withId("usernameIsValid");
         this.passwordIsValid   = Var.of(false).withId("passwordIsValid");
         this.usernameBackgroundColor = Var.of(Color.WHITE).withId("usernameBackgroundColor");
@@ -36,6 +38,8 @@ public class RegisterViewModel implements Viewable
         this.feedback          = Var.of("").withId("feedback");
         this.feedbackColor     = Var.of(Color.BLACK).withId("feedbackColor");
         this.allInputsDisabled = Var.of(false).withId("allInputsDisabled");
+        Viewable.cast(username).onChange(From.VIEW, it -> validateAll() );
+        Viewable.cast(password).onChange(From.VIEW, it -> validateAll() );
         validateAll();
     }
 
@@ -116,12 +120,12 @@ public class RegisterViewModel implements Viewable
 
     private void rebroadcast() {
         // We rebroadcast all properties:
-        username.fireSet();
-        password.fireSet();
-        feedbackColor.fireSet();
-        feedback.fireSet();
-        usernameBackgroundColor.fireSet();
-        passwordBackgroundColor.fireSet();
+        username.fireChange(From.VIEW_MODEL);
+        password.fireChange(From.VIEW_MODEL);
+        feedbackColor.fireChange(From.VIEW_MODEL);
+        feedback.fireChange(From.VIEW_MODEL);
+        usernameBackgroundColor.fireChange(From.VIEW_MODEL);
+        passwordBackgroundColor.fireChange(From.VIEW_MODEL);
         /*
             This method is COMPLETELY redundant when we have only one view.
             But if we had multiple views, we would need to rebroadcast all properties
@@ -177,11 +181,6 @@ public class RegisterViewModel implements Viewable
         feedbackColor.set(Color.BLACK);
         allInputsDisabled.set(false);
         validateAll();
-    }
-
-    @Override
-    public <V> V createView(Class<V> viewType) {
-        return viewType.cast(new RegisterView(this));
     }
 
 }

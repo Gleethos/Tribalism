@@ -1,6 +1,7 @@
 package net;
 
 import org.eclipse.jetty.websocket.api.Session;
+import org.eclipse.jetty.websocket.api.annotations.OnWebSocketClose;
 import org.eclipse.jetty.websocket.api.annotations.OnWebSocketConnect;
 import org.eclipse.jetty.websocket.api.annotations.OnWebSocketMessage;
 import org.eclipse.jetty.websocket.api.annotations.WebSocket;
@@ -9,6 +10,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import javax.servlet.http.HttpSession;
+import java.util.List;
 import java.util.concurrent.Future;
 
 /**
@@ -70,16 +72,23 @@ public class Connection
         userSession.receive(json);
     }
 
+    @OnWebSocketClose
+    public void onClose(int statusCode, String reason) {
+        log.info("Closed connection with status code: " + statusCode + " and reason: " + reason);
+        socketSession.onCloseListeners.forEach(Runnable::run);
+    }
+
     /**
      *  A simple implementation of the {@link SocketSession} interface,
      *  which abstracts away the Jetty websocket implementation and
      *  makes message sending easier (json is automatically converted to string).
      */
-    private class SocketSession
+    private static class SocketSession
     implements net.SocketSession
     {
         private final HttpSession httpSession;
         private final WebUserContext webUserContext;
+        private final List<Runnable> onCloseListeners = new java.util.ArrayList<>();
 
         private Session session;
 
@@ -146,6 +155,11 @@ public class Connection
             public long creationTime() {
                 return httpSession.getCreationTime();
             }
+
+        @Override
+        public void onClose(Runnable r) {
+            onCloseListeners.add(r);
         }
+    }
 
 }

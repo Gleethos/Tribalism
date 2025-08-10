@@ -13,4 +13,6 @@ public interface SocketSession
     boolean isOpen();
 
     long creationTime();
+
+    void onClose(Runnable r);
 }

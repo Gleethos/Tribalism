@@ -2,8 +2,13 @@ package app;
 
 import com.beust.jcommander.Parameter;
 import com.formdev.flatlaf.FlatLightLaf;
-import swingtree.EventProcessor;
+import swingtree.style.SvgIcon;
+import swingtree.threading.EventProcessor;
 import swingtree.UI;
+
+import javax.swing.*;
+import java.awt.event.WindowAdapter;
+import java.awt.event.WindowEvent;
 
 /**
  *  The start class of the application which simply holds the startup parameters and
@@ -141,10 +146,37 @@ public final class App implements Runnable
             if (!isHeadless()) {
                 UI.runLater(()->{
                     FlatLightLaf.setup();
-                    UI.show(UI.use(EventProcessor.DECOUPLED, () -> new RootView(vm)));
+                    UI.use(EventProcessor.DECOUPLED, () ->
+                        UI.frame("Tribalism")
+                        .peek( f -> {
+                            try {
+                                // On close, we ask the user if they really want to close the application:
+                                // If the user says yes, we close the application and exit.
+                                f.setDefaultCloseOperation(WindowConstants.DO_NOTHING_ON_CLOSE);
+                                var icon = UI.findIcon("/web/walking-male-zombie-svgrepo-com.svg").orElseThrow();
+                                var svg = ((SvgIcon) icon).withIconHeight(32).withIconWidth(32);
+                                f.setIconImage(svg.getImage());
+                            } catch (Exception e) {
+                                e.printStackTrace();
+                            }
+                        })
+                        .onClose( it -> {
+                            var answer = UI.confirmation("Are you sure you want to close the application?")
+                                        .titled("Close Application")
+                                        .showAsWarning();
+
+                            if ( answer.isYes() ) {
+                                // The user wants to close the application, so we close it:
+                                it.get().dispose();
+                                System.exit(0);
+                            }
+                        })
+                        .add(new RootView(vm))
+                    )
+                    .show();
                 });
             }
-            UI.joinDecoupledEventProcessor(); // We are using the Swing-Tree event processor!
+            EventProcessor.DECOUPLED.join(); // We are using the Swing-Tree event processor!
         } catch (Exception e) {
             // Something went severely wrong! What do we do?
             // Well we don't want to let our users hanging! We need to let them know what happened!
@@ -156,7 +188,7 @@ public final class App implements Runnable
                     FlatLightLaf.setup();
                     UI.showUsing(EventProcessor.DECOUPLED, f -> new FatalErrorView(e));
                 });
-                UI.joinDecoupledEventProcessor();
+                EventProcessor.DECOUPLED.join();
             }
             else System.exit(1); // We have to exit the application, otherwise it will hang!
         }

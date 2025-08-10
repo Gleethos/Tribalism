@@ -3,14 +3,15 @@ package app.user;
 import app.AppContext;
 import app.ContentViewModel;
 import app.UserContext;
+import sprouts.From;
 import sprouts.Val;
 import sprouts.Var;
-import swingtree.api.mvvm.Viewable;
+import app.ViewModel;
+import sprouts.Viewable;
 
-import javax.swing.*;
 import java.awt.*;
 
-public class LoginViewModel implements Viewable
+public class LoginViewModel implements ViewModel
 {
     private final AppContext context;
     private final ContentViewModel contentViewModel;
@@ -31,8 +32,8 @@ public class LoginViewModel implements Viewable
     public LoginViewModel(AppContext context, ContentViewModel contentViewModel) {
         this.context = context;
         this.contentViewModel = contentViewModel;
-        this.username = Var.of("").withId("username").onAct( it -> validate() );
-        this.password = Var.of("").withId("password").onAct( it -> validate() );
+        this.username = Var.of("").withId("username");
+        this.password = Var.of("").withId("password");
         this.feedback = Var.of("").withId("feedback");
         this.usernameIsValid = Var.of(false).withId("usernameIsValid");
         this.passwordIsValid = Var.of(false).withId("passwordIsValid");
@@ -42,6 +43,8 @@ public class LoginViewModel implements Viewable
         this.textFieldsEnabled = Var.of(true).withId("textFieldsEnabled");
         this.inputValid = Var.of(false).withId("inputValid");
         this.feedbackColor = Var.of(Color.RED).withId("feedbackColor");
+        Viewable.cast(username).onChange(From.VIEW, it -> validate() );
+        Viewable.cast(password).onChange(From.VIEW, it -> validate() );
     }
 
     private void adjustFeedbackStyles() {
@@ -118,11 +121,4 @@ public class LoginViewModel implements Viewable
         contentViewModel.showRegister();
     }
 
-    @Override
-    public <V> V createView(Class<V> viewType) {
-        if ( JComponent.class.isAssignableFrom(viewType) )
-            return viewType.cast(new LoginView(this));
-        else
-            throw new IllegalArgumentException("Unsupported view type: " + viewType);
-    }
 }

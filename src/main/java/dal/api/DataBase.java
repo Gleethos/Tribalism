@@ -72,12 +72,21 @@ public interface DataBase
         });
     }
 
-
+    /**
+     * Creates a new {@link DataBase} instance representing a database at
+     * the specified path, together with a custom {@link DataBaseProcessor},
+     * which is used to process database operations.
+     * If a database already exists at the specified path it will be opened,
+     * otherwise a new database file will be created.
+     *
+     * @param path The path to the database file.
+     * @param processor The processor to use for processing database operations.
+     * @return A new {@link DataBase} instance.
+     */
     static DataBase at( String path, DataBaseProcessor processor ) {
         Objects.requireNonNull(path);
         return new SQLiteDataBase(path, processor);
     }
-
 
     /**
      *  Creates tables for the specified model types.
@@ -85,14 +94,14 @@ public interface DataBase
      *
      * @param models The model types to create tables for.
      */
-    void createTablesFor( Class<? extends Model<?>>... models );
+    void createTablesFor( Class<? extends DataBaseEntity>... models );
 
     /**
      *  Drops all tables corresponding to the provided model types.
      *
      * @param models The model types to drop tables for.
      */
-    void dropTablesFor( Class<? extends Model<?>>... models );
+    void dropTablesFor( Class<? extends DataBaseEntity>... models );
 
     /**
      * @return A list of the names of all tables in the database.
@@ -114,22 +123,85 @@ public interface DataBase
      *
      * @param model The model type to drop the table for.
      */
-    void dropTable( Class<? extends Model<?>> model );
+    void dropTable( Class<? extends DataBaseEntity> model );
 
-    String sqlCodeOfTable( Class<? extends Model<?>> model );
+    /**
+     *  This method is useful for debugging purposes as it unveils the SQL code
+     *  that backs the supplied model type.<br>
+     *  Note that this only works if a table for the model type has been created
+     *  through the {@link DataBase#createTablesFor(Class[])} method.
+     *
+     *  @param model The model type to get the table SQL code for.
+     *  @return The SQL code of the table corresponding to the provided model type.
+     */
+    String sqlCodeOfTable( Class<? extends DataBaseEntity> model );
 
+    /**
+     *  Creates and returns a new instance of the specified {@link Model} type.<br>
+     *  The returned model instance is an eager representation of a database record.
+     *
+     * @param model The type of the model to create and return.
+     * @param <M> The type of the model.
+     * @return A new instance of the specified model type.
+     */
     <M extends Model<M>> M create( Class<M> model );
 
+    /**
+     *  Selects a single {@link Model} instance from the database by its id.<br>
+     *
+     * @param model The type of the model to select and return as that type.
+     * @param id The id of the model to select.
+     * @param <T> The generic type of the model, to ensure type safety.
+     * @return The model with the specified id or null if no such model exists.
+     */
     <T extends Model<T>> T select( Class<T> model, int id );
 
+    /**
+     *  Selects all the {@link Model}s of the specified type from the database.<br>
+     *  This is equivalent to:
+     *  <pre>{@code
+     *      db.select(User.class).asList();
+     *  }</pre>
+     *
+     * @param models The type of the models to select.
+     * @param <M> The type of the models.
+     * @return A list of all the models of the specified type.
+     */
     <M extends Model<M>> List<M> selectAll( Class<M> models );
 
+    /**
+     *  Deletes the supplied {@link Model} from the database.
+     *
+     * @param model The model to delete.
+     * @param <M> The type of the model.
+     */
     <M extends Model<M>> void delete( M model );
 
+    /**
+     *  Deletes all the {@link Model}s in the supplied list.
+     *
+     * @param models The models to delete.
+     * @param <M> The type of the models.
+     */
     default <M extends Model<M>> void delete( List<M> models ) {
         models.forEach(this::delete);
     }
 
+    /**
+     *  Deletes all the {@link Model}s in the supplied query.<br>
+     *  In practice, this may look like this:
+     *  <pre>{@code
+     *      db.delete(
+     *          db.select(User.class)
+     *          .where(User::age)
+     *          .greaterThan(42)
+     *      );
+     *      // Deletes all users with an age greater than 42.
+     *  }</pre>
+     *
+     * @param modelQuery The query to delete models from.
+     * @param <M> The type of the models.
+     */
     default <M extends Model<M>> void delete( Query<M> modelQuery ) {
         modelQuery.asList().forEach(this::delete);
     }
@@ -146,12 +218,14 @@ public interface DataBase
      * }</pre>
      * @param model The model type class used to find the table in the database.
      * @return A {@link Query} object which exposes a fluent builder API.
-     * @param <M> The type of the model to query.
+     * @param <M> The type of the {@link Model} to query.
      */
     <M extends Model<M>> Where<M> select( Class<M> model );
 
     /**
-     *  Closes the database connection.
+     *  Closes the native database connection.<br>
+     *  This will effectively close the database and all its resources
+     *  and will make the database instance unusable after this method is called.
      */
     void close();
 

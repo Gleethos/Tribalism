@@ -8,7 +8,23 @@ import java.util.function.Function;
 /**
  *   A step in the fluent query builder API of the {@link DataBase}
  *   which defines a chain of boolean operations in the where clause
- *   of the query or simply returns the result of the query.
+ *   of the query or simply returns the result of the query.<br>
+ *   <br>
+ *   So given the following example:
+ *   <pre>{@code
+ *     var foods = db.select(Food.class)
+ *                 .where(Food::carbs)
+ *                 .lessThan(50)
+ *                 .and(Food::protein)
+ *                 .greaterThan(20)
+ *                 .or(Food::fat)
+ *                 .lessThan(10)
+ *                 .and(Food::calories)
+ *                 .greaterThan(200)
+ *                 .asList();
+ *   }</pre>
+ *   The {@link Junction} interface is used to
+ *   combine {@link Compare} objects with the logical AND, and OR operators.
  *
  * @param <M> The type of the model to query.
  */

@@ -1,41 +1,46 @@
 package dal.impl;
 
 import dal.api.Model;
+import dal.api.Value;
+import org.jspecify.annotations.NullMarked;
 import sprouts.*;
+import sprouts.Observable;
+import sprouts.Observer;
 
 import java.util.*;
 
-public class ModelProperties implements Vars<Object>
+@NullMarked
+final class ModelProperties implements Vars<Object>, Viewables<Object>
 {
     private final SQLiteDataBase db;
     private final List<Integer> ids;
     private final int id; // The id of the model to which the properties belong
-    private final ModelTable intermediateTable;
+    private final IntermediateTable intermediateTable;
     private final String otherTable;
-    private final Class<?> propertyValueType;
     private final String otherTableIdColumn;
     private final String thisTableIdColumn;
     private final boolean _isEager;
 
-    public ModelProperties(
-            SQLiteDataBase db,
-            Class<?> ownerModelClass,
-            Class<?> propertyValueType,
-            ModelTable intermediateTable,
-            int id,
-            boolean isEager
+    ModelProperties(
+        SQLiteDataBase db,
+        Class<?> ownerModelClass,
+        FieldType.VarsOf fieldType,
+        IntermediateTable intermediateTable,
+        int id,
+        boolean isEager
     ) {
         this.db = db;
-        this.propertyValueType = propertyValueType;
         this.intermediateTable = intermediateTable;
         this.id = id;
+        if ( !(intermediateTable.entityField().type() instanceof FieldType.VarsOf) )
+            throw new IllegalStateException("Connected to a field which is not a property list!");
         _isEager = isEager;
 
         // We need to find the name of the column that contains the ids of the models
         // that are referenced by the intermediate table:
-        this.otherTable = AbstractDataBase._tableNameFromClass(propertyValueType);
-        this.otherTableIdColumn = ModelTable.INTER_RIGHT_FK_PREFIX + otherTable + ModelTable.INTER_FK_POSTFIX;
-        this.thisTableIdColumn = ModelTable.INTER_LEFT_FK_PREFIX + AbstractDataBase._tableNameFromClass(ownerModelClass) + ModelTable.INTER_FK_POSTFIX;
+        this.otherTable = AbstractDataBase._tableNameFromClass(fieldType.item());
+        this.otherTableIdColumn = EntityTable.INTER_RIGHT_FK_PREFIX + otherTable + EntityTable.INTER_FK_POSTFIX;
+        this.thisTableIdColumn = EntityTable.INTER_LEFT_FK_PREFIX + AbstractDataBase._tableNameFromClass(ownerModelClass) + EntityTable.INTER_FK_POSTFIX;
         String query = "SELECT " + otherTableIdColumn + " FROM " + intermediateTable.getTableName() + " WHERE " + thisTableIdColumn + " = ?";
 
         List<Object> param = Collections.singletonList(id);
@@ -52,9 +57,13 @@ public class ModelProperties implements Vars<Object>
         this.ids = new ArrayList<>(found.stream().map(o -> (Integer) o).toList());
     }
 
+    private FieldType.VarsOf fieldType() {
+        return (FieldType.VarsOf) intermediateTable.entityField().type();
+    }
+
     private Model<?> _select( int id ) {
         // We need to get the model from the database:
-        Class<Model> propertyValueType = (Class<Model>) this.propertyValueType;
+        Class<Model> propertyValueType = (Class<Model>) this.fieldType().item();
         Model<?> model = db.select(propertyValueType, id);
         return model;
     }
@@ -68,25 +77,26 @@ public class ModelProperties implements Vars<Object>
         }).iterator();
     }
 
-    @Override public Class<Object> type() { return (Class<Object>) propertyValueType; }
+    @Override public Class<Object> type() { return (Class<Object>) fieldType().item(); }
 
     @Override public int size() { return ids.size(); }
 
     @Override
     public Var<Object> at(int index) {
+        FieldType.VarOf varType = fieldType().varOf();
         return new ModelProperty(
                 db,
                 ids.get(index),
-                ModelTable.INTER_RIGHT_FK_PREFIX + otherTable + ModelTable.INTER_FK_POSTFIX,
+                EntityTable.INTER_RIGHT_FK_PREFIX + otherTable + EntityTable.INTER_FK_POSTFIX,
                 intermediateTable.getTableName(),
-                propertyValueType,
+                varType,
                 false,
                 _isEager
             );
     }
 
     @Override
-    public Vals<Object> onChange(Action<ValsDelegate<Object>> action) {
+    public Viewables<Object> onChange(Action<ValsDelegate<Object>> action) {
         throw new UnsupportedOperationException("Not supported yet.");
     }
 
@@ -96,11 +106,41 @@ public class ModelProperties implements Vars<Object>
     }
 
     @Override
+    public boolean allowsNull() {
+        return false;
+    }
+
+    @Override
+    public boolean isMutable() {
+        return false;
+    }
+
+    @Override
+    public boolean isView() {
+        return false;
+    }
+
+    @Override
     public Vars<Object> removeAt(int index)
     {
         if ( !_isEager )
             throw new UnsupportedOperationException("Transactional modification of lists (intermediate tables) is not supported yet.");
         _removeAt(index);
+        return this;
+    }
+
+    @Override
+    public Vars<Object> popRange(int from, int to) {
+        throw new UnsupportedOperationException("Not supported yet.");
+    }
+
+    @Override
+    public Vars<Object> removeRange(int from, int to) {
+        if ( !_isEager )
+            throw new UnsupportedOperationException("Transactional modification of lists (intermediate tables) is not supported yet.");
+        for ( int i = to - 1; i >= from; i-- ) {
+            _removeAt(i);
+        }
         return this;
     }
 
@@ -127,7 +167,7 @@ public class ModelProperties implements Vars<Object>
 
         Objects.requireNonNull(var);
         // First let's verify the type:
-        if ( !propertyValueType.isAssignableFrom(var.type()) )
+        if ( !fieldType().item().isAssignableFrom(var.type()) )
             throw new IllegalArgumentException("The type of the var is not the same as the type of the property");
 
         /*
@@ -173,7 +213,30 @@ public class ModelProperties implements Vars<Object>
     }
 
     @Override
-    public Vars<Object> retainAll(Vars<Object> vars) {
+    public Vars<Object> setRange(int from, int to, Object value) {
+        throw new UnsupportedOperationException("Not supported yet.");
+    }
+
+    @Override
+    public Vars<Object> setRange(int from, int to, Var<Object> value) {
+        throw new UnsupportedOperationException("Not supported yet.");
+    }
+
+    @Override
+    public Vars<Object> addAllAt(int index, Vars<Object> vars) {
+        for ( int i = 0; i < vars.size(); i++ ) {
+            addAt(index + i, vars.at(i));
+        }
+        return this;
+    }
+
+    @Override
+    public Vars<Object> setAllAt(int index, Vars<Object> vars) {
+        throw new UnsupportedOperationException("Not supported yet.");
+    }
+
+    @Override
+    public Vars<Object> retainAll(Vals<Object> vars) {
         Vars<Object> toRemove = Vars.of(this.type());
         for ( Object o : this ) {
             if ( !vars.contains(o) )
@@ -224,8 +287,8 @@ public class ModelProperties implements Vars<Object>
     }
 
     @Override
-    public Vars<Object> removeAll( Vars<Object> vars ) {
-        for ( Object o : vars ) _removeAt(indexOf(o));
+    public Vars<Object> removeAll( Vals<Object> vars ) {
+        for ( Object o : vars ) _removeAt(firstIndexOf(o));
         return this;
     }
 
@@ -252,13 +315,27 @@ public class ModelProperties implements Vars<Object>
     }
 
     @Override
-    public void makeDistinct() {
+    public Vars<Object> makeDistinct() {
         throw new UnsupportedOperationException("Not supported yet."); // How to make distinct on a database?
     }
 
     @Override
-    public Vars<Object> revert() {
+    public Vars<Object> reversed() {
         throw new UnsupportedOperationException("Not supported yet.");
     }
 
+    @Override
+    public Observable subscribe(Observer listener) {
+        throw new IllegalStateException(); // TODO
+    }
+
+    @Override
+    public Observable unsubscribe(Subscriber listener) {
+        throw new IllegalStateException(); // TODO
+    }
+
+    @Override
+    public void unsubscribeAll() {
+        throw new IllegalStateException(); // TODO
+    }
 }

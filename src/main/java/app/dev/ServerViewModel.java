@@ -7,8 +7,10 @@ import org.eclipse.jetty.server.ServerConnector;
 import org.eclipse.jetty.servlet.DefaultServlet;
 import org.eclipse.jetty.servlet.ServletContextHandler;
 import org.eclipse.jetty.servlet.ServletHolder;
+import sprouts.From;
 import sprouts.Val;
 import sprouts.Var;
+import sprouts.Viewable;
 
 import javax.swing.*;
 
@@ -39,18 +41,19 @@ public class ServerViewModel
     public ServerViewModel(AppContext context) {
         this.port = Var.of(context.app().getServerPort());
         this.portIsValid = Var.of(true);
-        this.portString = Var.of(port.itemAsString()).onAct( it -> {
+        this.portString = Var.of(port.itemAsString());
+        Viewable.cast(this.portString).onChange(From.VIEW, it -> {
             try {
-                port.set(Integer.parseInt(it.get()));
+                port.set(Integer.parseInt(it.currentValue().orElseThrowUnchecked()));
                 portIsValid.set(true);
             } catch (NumberFormatException e) {
                 port.set(context.app().getServerPort());
                 portIsValid.set(false);
             }
         });
-        this.status = Var.of(Status.OFFLINE);
+        this.status     = Var.of(Status.OFFLINE);
         this.buttonText = Var.of("Start");
-        this.statusText = Var.of("");
+        this.statusText = Var.of("Offline");
         this.context = context;
         this.server = null;
         if ( context.app().isStartServer() )
@@ -95,7 +98,7 @@ public class ServerViewModel
         server = null;
         status.set(Status.OFFLINE);
         buttonText.set("Start");
-        statusText.set("");
+        statusText.set("Offline");
     }
 
     public void start() {
@@ -147,7 +150,5 @@ public class ServerViewModel
             }
         }
     }
-
-    public JComponent createView() { return new ServerView(this); }
 
 }

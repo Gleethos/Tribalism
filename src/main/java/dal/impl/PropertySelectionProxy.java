@@ -1,16 +1,38 @@
 package dal.impl;
 
+import org.jspecify.annotations.NullMarked;
+import org.jspecify.annotations.Nullable;
+import sprouts.Tuple;
+
 import java.lang.reflect.InvocationHandler;
 import java.lang.reflect.Method;
-import java.util.List;
 import java.util.Optional;
+import java.util.function.Function;
 
-public class PropertySelectionProxy implements InvocationHandler
+/**
+ *  This proxy delegates a {@link dal.api.Model} sub-interface
+ *  to give a user the ability to select a particular {@link sprouts.Val} or {@link sprouts.Var} property
+ *  defined in the sub-interface as part of the {@link dal.api.DataBase} API.
+ *  <p>
+ *  A typical example would be the {@link dal.api.Where#where(Function)} method, which will
+ *  expose a "selector model" to the user that allows to select a property of the model
+ *  by using a method reference.
+ *  <p>
+ *  This might look something like this:
+ *  <pre>{@code
+ *    var foods = db.select(Food.class)
+ *                  .where(Food::name)
+ *                  .is("Chana Masala")
+ *                  .asList()
+ *  }</pre>
+ */
+@NullMarked
+final class PropertySelectionProxy implements InvocationHandler
 {
-    private final ModelTable _modelTable;
-    private TableField _selection = null;
+    private final EntityTable _modelTable;
+    private @Nullable EntityTableField _selection = null;
 
-    public PropertySelectionProxy(ModelTable modelTable) {
+    public PropertySelectionProxy(EntityTable modelTable) {
         _modelTable = modelTable;
     }
 
@@ -20,11 +42,15 @@ public class PropertySelectionProxy implements InvocationHandler
             Method method,
             Object[] args
     ) throws Throwable {
-        List<TableField> fields = _modelTable.getFields();
-        for (TableField field : fields) {
-            if (field.getName().equals(method.getName())) {
+        Tuple<EntityTableField> fields = _modelTable.getFields();
+        for (EntityTableField field : fields) {
+            if (field.baseName().equals(method.getName())) {
                 _selection = field;
-                Class<?> propType = field.getPropType();
+                Class<?> propType = field.type().wrapperType();
+                if ( propType == null )
+                    throw new IllegalStateException(
+                            "Cannot create a property proxy for a field that does not have a wrapper type."
+                        );
                 // We return a proxy that will return the value of the property
                 return java.lang.reflect.Proxy.newProxyInstance(
                         propType.getClassLoader(),
@@ -43,5 +69,5 @@ public class PropertySelectionProxy implements InvocationHandler
             );
     }
 
-    public Optional<TableField> getSelection() { return Optional.ofNullable(_selection); }
+    public Optional<EntityTableField> getSelection() { return Optional.ofNullable(_selection); }
 }

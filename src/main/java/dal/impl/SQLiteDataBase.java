@@ -2,6 +2,7 @@ package dal.impl;
 
 import dal.api.*;
 import org.slf4j.Logger;
+import sprouts.Tuple;
 import sprouts.Val;
 import sprouts.Vars;
 
@@ -13,17 +14,17 @@ import java.util.function.Function;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
-import static dal.impl.ModelTable.INTER_TABLE_POSTFIX;
+import static dal.impl.EntityTable.INTER_TABLE_POSTFIX;
 
 /**
  *  This class constitutes both a representation of a database
  *  and define an API which is in essence an interface based ORM.
  */
-public class SQLiteDataBase extends AbstractDataBase
+public final class SQLiteDataBase extends AbstractDataBase
 {
     private final static Logger log = org.slf4j.LoggerFactory.getLogger(SQLiteDataBase.class);
 
-    private final ModelRegistry _modelRegistry = new ModelRegistry();
+    private final EntityRegistry _entityRegistry = new EntityRegistry();
 
     public SQLiteDataBase(String location, DataBaseProcessor processor) {
         super(location, "", "", processor);
@@ -37,9 +38,9 @@ public class SQLiteDataBase extends AbstractDataBase
 
     @Override
     public void dropTablesFor(
-            Class<? extends Model<?>>... models
+            Class<? extends DataBaseEntity>... models
     ) {
-        for (Class<? extends Model<?>> model : models)
+        for (Class<? extends DataBaseEntity> model : models)
             _dropTableIfExists(model);
     }
 
@@ -48,13 +49,13 @@ public class SQLiteDataBase extends AbstractDataBase
         _dropAllTables();
     }
 
-    private void _dropTableIfExists(Class<? extends Model<?>> model) {
+    private void _dropTableIfExists(Class<? extends DataBaseEntity> model) {
         if (doesTableExist(_tableNameFromClass(model)))
             dropTable(model);
     }
 
     @Override
-    public void dropTable(Class<? extends Model<?>> model) {
+    public void dropTable(Class<? extends DataBaseEntity> model) {
         String tableName = _tableNameFromClass(model);
         _execute("DROP TABLE IF EXISTS " + tableName);
 
@@ -69,9 +70,9 @@ public class SQLiteDataBase extends AbstractDataBase
 
     @Override
     public void createTablesFor(
-            Class<? extends Model<?>>... models
+            Class<? extends DataBaseEntity>... models
     ) {
-        _modelRegistry.addTables(Arrays.asList(models));
+        _entityRegistry.addTables(Arrays.asList(models));
         for ( String statement : getCreateTableStatements() ) {
             _execute(statement);
         }
@@ -81,7 +82,7 @@ public class SQLiteDataBase extends AbstractDataBase
     private List<String> getCreateTableStatements() {
         List<String> allExistingTables = listOfAllTableNames();
         List<String> statements = new ArrayList<>();
-        for ( ModelTable modelTable : _modelRegistry.getTables() ) {
+        for ( EntityTable modelTable : _entityRegistry.getTables() ) {
             if ( !allExistingTables.contains(modelTable.getTableName()) )
                 statements.add(modelTable.createTableStatement());
             else {
@@ -112,11 +113,11 @@ public class SQLiteDataBase extends AbstractDataBase
                 if ( !tableSQL.equals(statement) ) {
                     throw new IllegalStateException(
                             "The database at '" + getURL() + "' is not compatible with the provided source code model" +
-                            modelTable.getModelInterface().map( m -> " '" + m.getName() + "'" ).orElse("") + "! \n" +
+                            modelTable.entityType().map(m -> " '" + m.getName() + "'" ).orElse("") + "! \n" +
                             "The sql code of table '" + collision + "' encountered inside the database, \n" +
                             "does not match the table statement generated from " +
                             "the model source code. \nThis means that the database is not compatible with the source code " +
-                            "of the model" + modelTable.getModelInterface().map( m -> " '" + m.getName() + "'" ).orElse("") +
+                            "of the model" + modelTable.entityType().map(m -> " '" + m.getName() + "'" ).orElse("") +
                             ". \nThe sql code of the table is: \n'" + tableSQL + "', \nwhereas the table " +
                             "statement necessary for representing the current model interface is: \n'" + statement + "'."
                         );
@@ -134,7 +135,7 @@ public class SQLiteDataBase extends AbstractDataBase
      * @return The sql defining the table of the provided model type
      */
     @Override
-    public String sqlCodeOfTable(Class<? extends Model<?>> model) {
+    public String sqlCodeOfTable(Class<? extends DataBaseEntity> model) {
         // We query the database for the sql code of the table
         var sql = new StringBuilder();
         sql.append("SELECT sql FROM sqlite_master WHERE type='table' AND name='");
@@ -171,7 +172,8 @@ public class SQLiteDataBase extends AbstractDataBase
         if ( !doesTableExist(_tableNameFromClass(model)) )
             throw new IllegalArgumentException("The table for the model '" + model.getName() + "' does not exist!");
 
-        return _modelRegistry.getTable(model)
+        return _entityRegistry.getTable(model)
+                            .map(ModelTable.class::cast)
                             .orElseThrow(()->new RuntimeException(
                                 "The model '" + model.getName() + "' does have a " +
                                 "table in the database, but the model type is not known " +
@@ -185,7 +187,7 @@ public class SQLiteDataBase extends AbstractDataBase
     public <T extends Model<T>> T select( Class<T> model, int id )
     {
         // Now let's verify that the id is valid
-        if ( id < 0 )
+        if ( id <= 0 )
             throw new IllegalArgumentException("The id must be a positive integer!");
         /*
             Now you might think we simply do a single database query to get the model
@@ -200,10 +202,10 @@ public class SQLiteDataBase extends AbstractDataBase
         var modelTable = _getTableFor(model);
 
         // Let's first see if the registry already contains a proxy
-        var proxy = _modelRegistry.findModelProxy(_tableNameFromClass(model), id).orElse(null);
+        var proxy = _entityRegistry.findModelProxy(_tableNameFromClass(model), id).orElse(null);
         if ( proxy == null ) {
             proxy = new ModelProxy<>(this, modelTable, id, true);
-            _modelRegistry.addModelProxy(proxy);
+            _entityRegistry.addModelProxy(proxy);
         }
         return  (T) Proxy.newProxyInstance(
                         model.getClassLoader(),
@@ -222,7 +224,7 @@ public class SQLiteDataBase extends AbstractDataBase
             throw new IllegalArgumentException("The model '" + models.getName() + "' does not have a table in the database!");
         if ( result.size() > 1 )
             throw new IllegalArgumentException("There are multiple tables for the model '" + models.getName() + "' in the database!");
-        List<Object> ids = result.get("id");
+        List<Object> ids = result.get(EntityTable.ID);
 
         List<M> modelsList = new ArrayList<>();
         for ( Object id : ids )
@@ -238,48 +240,66 @@ public class SQLiteDataBase extends AbstractDataBase
         if ( !Model.class.isAssignableFrom(model) )
             throw new IllegalArgumentException("The provided class is not a model!");
 
+        // Now let's create the model
+        EntityTable modelTable          = _getTableFor(model);
+        Tuple<Object> defaultValues = modelTable.getDefaultValues();
+
+        var id = _storeEntity(modelTable, model, defaultValues);
+
+        return select(model, id);
+    }
+
+    int _storeEntity(
+            EntityTable modelTable,
+            Class<? extends DataBaseEntity> model,
+            Tuple<Object> defaultValues
+    )
+    {
+        // First let's verify that the model is indeed a model
+        if ( !DataBaseEntity.class.isAssignableFrom(model) )
+            throw new IllegalArgumentException("The provided class is not a database entity!");
+
         // Now let's verify that the table exists
         if ( !doesTableExist(_tableNameFromClass(model)) )
             throw new IllegalArgumentException("The table for the model '" + model.getName() + "' does not exist!");
 
-        // Now let's create the model
-        ModelTable modelTable      = _getTableFor(model);
-        List<TableField> fields    = modelTable.getFields();
-        List<Object> defaultValues = modelTable.getDefaultValues();
-        List<String> fieldNames    = fields.stream().map(TableField::getName).collect(Collectors.toList());
+        Tuple<EntityTableField> fields  = modelTable.getFields();
+        List<String> fieldNames     = fields.stream().map(EntityTableField::name).collect(Collectors.toList());
         /*
             Now there might be a problem here because some model fields might not actually exist
             in the table explicitly. Namely, if the model references multiple other models
             through a Vars or Vals field!
             So we need to check for that and remove those fields from the list of fields
         */
+        boolean hasId = false;
         for ( int i = fields.size()-1; i >= 0; i-- ) {
-            TableField field = fields.get(i);
+            EntityTableField field = fields.get(i);
+            boolean shouldBeRemoved = false;
             if ( field.getKind() == FieldKind.INTERMEDIATE_TABLE ) {
+                shouldBeRemoved = true;
+            }
+            if ( field.name().equals(EntityTable.ID) ) {
+                hasId = true;
+                shouldBeRemoved = true;
+            }
+            if ( shouldBeRemoved ) {
                 fieldNames.remove(i);
-                defaultValues.remove(i);
+                defaultValues = defaultValues.removeAt(i);
             }
         }
 
-        int idIndex = -1;
-        for ( int i = 0; i < fieldNames.size(); i++ )
-            if ( fieldNames.get(i).equals("id") ) {
-                idIndex = i;
-                break;
-            }
+        if ( !hasId )
+            throw new IllegalArgumentException(
+                    "The model '" + model.getName() + "' does not have an '"+ EntityTable.ID+"' field. " +
+                    "This is most likely a bug in the TopSoil ORM!"
+                );
 
-        if ( idIndex == -1 )
-            throw new IllegalArgumentException("The model '" + model.getName() + "' does not have an id field!");
-        else {
-            defaultValues.remove(idIndex);
-            fieldNames.remove(idIndex);
-        }
         String tableName = _tableNameFromClass(model);
         String sql =
                 "INSERT INTO " + tableName +
                 " (" + String.join(", ", fieldNames) + ") " +
                 "VALUES (" + IntStream.range(0, fieldNames.size()).mapToObj(i -> " ? ").collect(Collectors.joining(",")) + ")";
-        boolean success = _update(sql, defaultValues);
+        boolean success = _update(sql, defaultValues.toList());
         if ( !success )
             throw new IllegalArgumentException(
                     "Failed to create create a database entry for model '" + model.getName() + "' " +
@@ -304,7 +324,7 @@ public class SQLiteDataBase extends AbstractDataBase
             throw new IllegalArgumentException("There are multiple tables for the model '" + model.getName() + "' in the database!");
         int id = (int) result.get("last_insert_rowid()").get(0);
 
-        return select(model, id);
+        return id;
     }
 
     @Override
@@ -322,13 +342,13 @@ public class SQLiteDataBase extends AbstractDataBase
         String tableName = _tableNameFromClass(modelInterfaceClass);
         // First we clean up usages of the model
         // Now we need to find all the intermediate tables that reference this model
-        List<ModelTable> intermediateTables = _modelRegistry.getIntermediateTableInvolving((Class<? extends Model<?>>) modelInterfaceClass);
+        Tuple<IntermediateTable> intermediateTables = _entityRegistry.getIntermediateTableInvolving((Class<? extends Model<?>>) modelInterfaceClass);
         intermediateTables.forEach( intermTable -> {
             String intermTableName = intermTable.getTableName();
             Class<?> left = intermTable.getReferencedModels().get(0);
             Class<?> right = intermTable.getReferencedModels().get(1);
-            String leftName = ModelTable.INTER_LEFT_FK_PREFIX + _tableNameFromClass(left) + ModelTable.INTER_FK_POSTFIX;
-            String rightName = ModelTable.INTER_RIGHT_FK_PREFIX + _tableNameFromClass(right) + ModelTable.INTER_FK_POSTFIX;
+            String leftName = EntityTable.INTER_LEFT_FK_PREFIX + _tableNameFromClass(left) + EntityTable.INTER_FK_POSTFIX;
+            String rightName = EntityTable.INTER_RIGHT_FK_PREFIX + _tableNameFromClass(right) + EntityTable.INTER_FK_POSTFIX;
             // We need to find all entries where 'fk_..._id' is this 'id'
             // Then we need to find all the referencing (containing "self") models and simply
             // call the right property using reflection and tell it to remove the model...
@@ -361,8 +381,8 @@ public class SQLiteDataBase extends AbstractDataBase
                 }
             });
         });
-        _modelRegistry.findModelProxy(tableName, id).ifPresent( proxy -> {
-            _modelRegistry.removeModelProxy(tableName, id);
+        _entityRegistry.findModelProxy(tableName, id).ifPresent(proxy -> {
+            _entityRegistry.removeModelProxy(tableName, id);
         });
         String sql = "DELETE FROM " + tableName + " WHERE id = ?";
         boolean success = _update(sql, Collections.singletonList(id));
@@ -372,7 +392,7 @@ public class SQLiteDataBase extends AbstractDataBase
     public <M extends Model<M>> Where<M> select(Class<M> model) {
         StringBuilder sql = new StringBuilder();
         sql.append("SELECT * FROM ").append(_tableNameFromClass(model)).append(" WHERE ");
-        ModelTable table = _getTableFor(model);
+        EntityTable table = _getTableFor(model);
         List<Object> values = new ArrayList<>();
         Junction[] junc = {null};
         Compare<M, Object> valueCollector = new Compare<>() {
@@ -501,27 +521,27 @@ public class SQLiteDataBase extends AbstractDataBase
             @Override
             public <T> Compare<M, T> and(Function<M, Val<T>> selector) {
                 var field = _selectTableField(selector, model);
-                sql.append(" AND ").append(field.getName()).append(" ");
+                sql.append(" AND ").append(field.name()).append(" ");
                 return (Compare<M, T>) valueCollector;
             }
 
             @Override
             public <T> Compare<M, T> or( Function<M, Val<T>> selector ) {
                 var field = _selectTableField(selector, model);
-                sql.append(" OR ").append(field.getName()).append(" ");
+                sql.append(" OR ").append(field.name()).append(" ");
                 return (Compare<M, T>) valueCollector;
             }
 
             @Override
             public <T> Compare<M, T> and( Class<? extends Val<T>> field ) {
-                sql.append(" AND ").append(table.getField(field).getName());
+                sql.append(" AND ").append(table.getField(field).name());
                 return (Compare<M, T>) valueCollector;
             }
 
             @Override
             public <T> Compare<M, T> or( Class<? extends Val<T>> field ) {
                 sql.append(" OR ");
-                sql.append(table.getField(field).getName());
+                sql.append(table.getField(field).name());
                 return (Compare<M, T>) valueCollector;
             }
 
@@ -529,7 +549,7 @@ public class SQLiteDataBase extends AbstractDataBase
             public <N extends Number> Query<M> orderAscendingBy( Function<M, Val<N>> selector ) {
                 var field = _selectTableField(selector, model);
                 sql.append(" ORDER BY ");
-                sql.append(field.getName());
+                sql.append(field.name());
                 sql.append(" ASC");
                 return this;
             }
@@ -538,7 +558,7 @@ public class SQLiteDataBase extends AbstractDataBase
             public <N extends Number> Query<M> orderDescendingBy( Function<M, Val<N>> selector ) {
                 var field = _selectTableField(selector, model);
                 sql.append(" ORDER BY ");
-                sql.append(field.getName());
+                sql.append(field.name());
                 sql.append(" DESC");
                 return this;
             }
@@ -546,7 +566,7 @@ public class SQLiteDataBase extends AbstractDataBase
             @Override
             public Query<M> orderAscendingBy( Class<? extends Val<?>> field ) {
                 sql.append(" ORDER BY ");
-                sql.append(table.getField(field).getName());
+                sql.append(table.getField(field).name());
                 sql.append(" ASC");
                 return this;
             }
@@ -554,7 +574,7 @@ public class SQLiteDataBase extends AbstractDataBase
             @Override
             public Query<M> orderDescendingBy( Class<? extends Val<?>> field ) {
                 sql.append(" ORDER BY ");
-                sql.append(table.getField(field).getName());
+                sql.append(table.getField(field).name());
                 sql.append(" DESC");
                 return this;
             }
@@ -566,7 +586,7 @@ public class SQLiteDataBase extends AbstractDataBase
                     sqlString = sqlString.substring(0, sqlString.length()-7);
 
                 Map<String, List<Object>> result = _query(sqlString, values);
-                List<Integer> ids = result.getOrDefault("id", Collections.emptyList())
+                List<Integer> ids = result.getOrDefault(EntityTable.ID, Collections.emptyList())
                                             .stream()
                                             .map( o -> (int) o )
                                             .toList();
@@ -585,7 +605,7 @@ public class SQLiteDataBase extends AbstractDataBase
             @Override
             public <T> Compare<M, T> where( Class<? extends Val<T>> field ) {
                 // First sql:
-                sql.append(table.getField(field).getName()).append(" ");
+                sql.append(table.getField(field).name()).append(" ");
                 // Then values:
                 return (Compare<M, T>) valueCollector;
             }
@@ -595,24 +615,25 @@ public class SQLiteDataBase extends AbstractDataBase
             {
                 var field = _selectTableField(selector, model);
                 // First sql:
-                sql.append(field.getName()).append(" ");
+                sql.append(field.name()).append(" ");
                 // Then values:
                 return (Compare<M, T>) valueCollector;
             }
         };
     }
 
-    private <T, M extends Model<M>> TableField _selectTableField(
+    private <T, M extends Model<M>> EntityTableField _selectTableField(
         Function<M, Val<T>> selector,
         Class<M> model
     ) {
         var propSelector = new PropertySelectionProxy(_getTableFor(model));
-        selector.apply((M) Proxy.newProxyInstance(
+        var selection = selector.apply((M) Proxy.newProxyInstance(
                                 model.getClassLoader(),
                                 new Class<?>[]{model},
                                 propSelector
                             ));
-
+        if ( selection == null )
+            log.error("Selection is null!", new Throwable());
         return propSelector.getSelection().orElseThrow();
     }
 
@@ -625,6 +646,140 @@ public class SQLiteDataBase extends AbstractDataBase
                                 .map(Object::toString)
                                 .toList()
                     ));
+    }
+
+    int _storeValueAndIncreaseCounter(Value databaseValue) {
+        var valueTable = _entityRegistry.getValueTable(databaseValue.getClass())
+                .orElseThrow(() -> new IllegalArgumentException(
+                        "The value table for " + databaseValue.getClass().getName() + " does not exist!")
+                );
+        int hashCode = databaseValue.hashCode();
+        var existingId = _findIdOfValue(valueTable, databaseValue, hashCode);
+        if ( existingId < 0 ) {
+            // We need to create a new entry in the value table
+            Tuple<Object> rowOfValues = _convertValueToRowOfValues(valueTable, databaseValue, hashCode);
+            existingId = _storeEntity(valueTable, databaseValue.getClass(),rowOfValues);
+        }
+        _modifyUsageCounter(valueTable, existingId, +1);
+        return existingId;
+    }
+
+    int _removeValueAndDecrementCounter(Value databaseValue) {
+        var valueTable = _entityRegistry.getValueTable(databaseValue.getClass())
+                                            .orElseThrow(() -> new IllegalArgumentException(
+                                                "The value table for " + databaseValue.getClass().getName() + " " +
+                                                "does not exist!"
+                                            ));
+        int hashCode = databaseValue.hashCode();
+        var existingId = _findIdOfValue(valueTable, databaseValue, hashCode);
+        if ( existingId >= 0 ) {
+            String sql = "SELECT "+ValueTable.USAGE_FIELD_COUNTER+" FROM " + valueTable.getTableName() +
+                         " WHERE "+ModelTable.ID+" = ?";
+            Map<String, List<Object>> result = _query(sql, Collections.singletonList(existingId));
+            if ( result.isEmpty() )
+                return -1; // Not found
+            if ( result.values().stream().anyMatch( v -> v.size() != 1 ) )
+                throw new IllegalStateException();
+            var usages = (Integer) result.get(ValueTable.USAGE_FIELD_COUNTER).get(0);
+            if ( usages == 1 ) {
+                // Delete
+                _delete(valueTable.getTableName(), Collections.singletonList(existingId));
+            } else {
+                // Reduce usage counter
+                _modifyUsageCounter(valueTable, existingId, -1);
+            }
+        }
+        return existingId;
+    }
+
+    private void _delete(String tableName, List<Integer> ids) {
+        String sql = "DELETE * FROM " + tableName + " WHERE "+ModelTable.ID+" = ?";
+        boolean success = _update(sql, Collections.singletonList(ids));
+        if (!success ) {
+            throw new RuntimeException("Could not delete from " + tableName);
+        }
+    }
+
+    int _findIdOfValue(
+        ValueTable valueTable,
+        Value value,
+        int hashCode
+    ) {
+        String sql = "SELECT * FROM " + valueTable.getTableName() + " WHERE "+ValueTable.HASH_FIELD_NAME+" = ?";
+        Map<String, List<Object>> result = _query(sql, Collections.singletonList(hashCode));
+        if ( result.isEmpty() )
+            return -1; // Not found
+        if ( result.values().stream().anyMatch( v -> v.size() != 1 ) )
+            throw new IllegalStateException();
+
+        // Let's check if the value is equal to the value in the database
+        Tuple<Object> rowOfValues = _convertValueToRowOfValues(valueTable, value, hashCode);
+        List<Object> dbValues = new ArrayList<>();
+        for ( var entry : result.entrySet() ) {
+            if ( !entry.getKey().equals(EntityTable.ID) && !entry.getKey().equals(ValueTable.USAGE_FIELD_COUNTER) ) {
+                dbValues.addAll(entry.getValue());
+            }
+        }
+        if ( !dbValues.equals(rowOfValues.toList()) )
+            return -1; // Not found, but the hash code matches
+
+        return (Integer) result.get(EntityTable.ID).get(0);
+    }
+
+    private Tuple<Object> _convertValueToRowOfValues(
+        ValueTable valueTable,
+        Value value,
+        int hashCode
+    ) {
+        List<Object> values = new ArrayList<>();
+        values.add(-1); // Dummy id
+        values.add(hashCode);
+        values.add(0); // Default usages
+        for ( EntityTableField field : valueTable.getFields() ) {
+            if (field.name().equals(ValueTable.HASH_FIELD_NAME) || field.name().equals(ValueTable.USAGE_FIELD_COUNTER))
+                continue;
+            if ( field.name().equals(EntityTable.ID) )
+                continue;
+            try {
+                Method method = value.getClass().getMethod(field.baseName());
+                Object fieldValue = method.invoke(value);
+                if (fieldValue == null) {
+                    values.add(null);
+                } else if (_isBasicDataType(fieldValue.getClass())) {
+                    values.add(fieldValue);
+                } else if (fieldValue instanceof Value) {
+                    // If the field value is a Value, we need to store it in the database
+                    int id = _storeValueAndIncreaseCounter((Value) fieldValue);
+                    values.add(id);
+                } else {
+                    throw new IllegalArgumentException(
+                            "The value '" + value + "' has a field '" + field.name() + "' of type '" +
+                            fieldValue.getClass().getName() + "' which is not supported!"
+                    );
+                }
+            } catch (NoSuchMethodException | IllegalAccessException | InvocationTargetException e) {
+                throw new IllegalArgumentException(
+                        "The value '" + value + "' does not have a method '" + field.name() + "'!",
+                        e
+                );
+            }
+        }
+        return Tuple.of(Object.class, values);
+    }
+
+    private void _modifyUsageCounter(
+        ValueTable valueTable,
+        int id,
+        int delta
+    ) {
+        String sql = "UPDATE " + valueTable.getTableName() + " SET " + ValueTable.USAGE_FIELD_COUNTER + " = " +
+                ValueTable.USAGE_FIELD_COUNTER + " + ? WHERE " + EntityTable.ID + " = ?";
+        boolean success = _update(sql, List.of(delta, id));
+        if ( !success )
+            throw new IllegalArgumentException(
+                    "Failed to update the usage counter for value with id '" + id + "' in table '" +
+                    valueTable.getTableName() + "'!"
+            );
     }
 
 }

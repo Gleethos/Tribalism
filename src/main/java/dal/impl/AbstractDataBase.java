@@ -2,6 +2,8 @@ package dal.impl;
 
 import dal.api.DataBase;
 import dal.api.DataBaseProcessor;
+import org.jspecify.annotations.NullMarked;
+import org.jspecify.annotations.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -11,6 +13,7 @@ import java.sql.*;
 import java.util.*;
 import java.util.function.Consumer;
 
+@NullMarked
 abstract class AbstractDataBase implements DataBase {
 
     private final static Logger _LOG = LoggerFactory.getLogger(AbstractDataBase.class);
@@ -24,11 +27,12 @@ abstract class AbstractDataBase implements DataBase {
     private final Map<Thread, Connection> _connections = new HashMap<>();
     private final DataBaseProcessor _processor;
 
+
     AbstractDataBase(
-            String url,
-            String name,
-            String password,
-            DataBaseProcessor processor
+        String url,
+        String name,
+        String password,
+        DataBaseProcessor processor
     ) {
         var currentThread = Thread.currentThread();
         _processor = processor;
@@ -53,7 +57,7 @@ abstract class AbstractDataBase implements DataBase {
         try {
             _createAndOrConnectToDatabase();
         } catch (Exception e) {
-            e.printStackTrace();
+            _LOG.error("Failed to create a connection to the database!", e);
         }
     }
 
@@ -62,7 +66,7 @@ abstract class AbstractDataBase implements DataBase {
     /**
      * Connect to a simple database
      */
-    protected void _createAndOrConnectToDatabase() throws SQLException
+    private void _createAndOrConnectToDatabase() throws SQLException
     {
         _LOG.info("Establishing connection to database url '"+_url+"' now.");
         try {
@@ -73,7 +77,7 @@ abstract class AbstractDataBase implements DataBase {
         }
         Connection connection = null;
         _LOG.info("Connecting to database at '{}' now!", _url);
-        if (_user.equals("") || _pwd.equals(""))
+        if (_user.isEmpty() || _pwd.isEmpty())
             connection = DriverManager.getConnection(_url);
         else
             connection = DriverManager.getConnection(_url, _user, _pwd);
@@ -88,7 +92,7 @@ abstract class AbstractDataBase implements DataBase {
                 _createAndOrConnectToDatabase();
                 con = _connections.get(Thread.currentThread());
             } catch (Exception e) {
-                e.printStackTrace();
+                _LOG.error("Failed to create a connection to the database!", e);
             }
         }
         if ( con == null ) {
@@ -108,7 +112,7 @@ abstract class AbstractDataBase implements DataBase {
     /**
      * Closing Connection!
      */
-    protected void _close(){
+    private void _close(){
         try {
             _getConnection().close();
             _connections.put(Thread.currentThread(), null);
@@ -118,7 +122,9 @@ abstract class AbstractDataBase implements DataBase {
     }
 
     @Override
-    public void close(){ _close(); }
+    public void close(){
+        _processor.process(this::_close);
+    }
 
     /**
      * Returns a list of all table names of a connection!
@@ -189,15 +195,15 @@ abstract class AbstractDataBase implements DataBase {
         return pstmt;
     }
 
-    protected void _for(String sql, Consumer<ResultSet> start, Consumer<ResultSet> each)
+    protected void _for(String sql, @Nullable Consumer<ResultSet> start, Consumer<ResultSet> each)
     {
         _for(sql, null, start, each);
     }
 
     protected void _for(
             String sql,
-            List<Object> values,
-            Consumer<ResultSet> start,
+            @Nullable List<Object> values,
+            @Nullable Consumer<ResultSet> start,
             Consumer<ResultSet> each
     ){
         if (values!=null && !values.isEmpty()){
@@ -216,11 +222,11 @@ abstract class AbstractDataBase implements DataBase {
                     rs.close();
                     pstmt.close();
                 } catch (SQLException e) {
-                    e.printStackTrace();
+                    _LOG.error("Failed to execute the SQL statement '{}'.", sql, e);
                     pstmt.close();
                 }
             } catch (SQLException e) {
-                e.printStackTrace();
+                _LOG.error("Failed to execute the SQL statement '{}'.", sql, e);
             }
         } else {
             try {
@@ -251,7 +257,7 @@ abstract class AbstractDataBase implements DataBase {
         return _query(sql, null);
     }
 
-    protected Map<String, List<Object>> _query(String sql, List<Object> values){
+    protected Map<String, List<Object>> _query(String sql, @Nullable List<Object> values){
         Map<String, List<Object>> result = new LinkedHashMap<>();
         _processor.processNow(()->{
             _for(
@@ -263,63 +269,64 @@ abstract class AbstractDataBase implements DataBase {
                         for (int i = 1; i <= columnsNumber; i++) {
                             result.put(rsmd.getColumnName(i), new ArrayList<>());
                         }
-                    } catch (Exception e){e.printStackTrace();}
+                    } catch (Exception e){
+                        _LOG.error("Failed to get the column names from the result set!", e);
+                    }
                 },
                 rs -> {
                     try {// loop through the result set
                         while (rs.next()) {
                             for (int i = 1; i <= rs.getMetaData().getColumnCount(); i++) {
-                                String columnValue = rs.getString(i);
                                 ResultSetMetaData rsmd = rs.getMetaData();
                                 String column_name = rsmd.getColumnName(i);
                                 if(rsmd.getColumnType(i)==java.sql.Types.ARRAY) {
-                                    result.get(column_name).add(rs.getArray(column_name));
+                                    Objects.requireNonNull(result.get(column_name)).add(rs.getArray(column_name));
                                 }
                                 else if(rsmd.getColumnType(i)==java.sql.Types.BIGINT) {
-                                    result.get(column_name).add(rs.getInt(column_name));
+                                    Objects.requireNonNull(result.get(column_name)).add(rs.getInt(column_name));
                                 }
                                 else if(rsmd.getColumnType(i)==java.sql.Types.BOOLEAN) {
-                                    result.get(column_name).add(rs.getBoolean(column_name));
+                                    Objects.requireNonNull(result.get(column_name)).add(rs.getBoolean(column_name));
                                 }
                                 else if(rsmd.getColumnType(i)==java.sql.Types.BLOB) {
-                                    result.get(column_name).add(rs.getBlob(column_name));
+                                    Objects.requireNonNull(result.get(column_name)).add(rs.getBlob(column_name));
                                 }
                                 else if(rsmd.getColumnType(i)==java.sql.Types.DOUBLE) {
-                                    result.get(column_name).add(rs.getDouble(column_name));
+                                    Objects.requireNonNull(result.get(column_name)).add(rs.getDouble(column_name));
                                 }
                                 else if(rsmd.getColumnType(i)==java.sql.Types.FLOAT) {
-                                    result.get(column_name).add(rs.getFloat(column_name));
+                                    Objects.requireNonNull(result.get(column_name)).add(rs.getFloat(column_name));
                                 }
                                 else if(rsmd.getColumnType(i)==java.sql.Types.INTEGER) {
-                                    result.get(column_name).add(rs.getInt(column_name));
+                                    Objects.requireNonNull(result.get(column_name)).add(rs.getInt(column_name));
                                 }
                                 else if(rsmd.getColumnType(i)==java.sql.Types.NVARCHAR) {
-                                    result.get(column_name).add(rs.getNString(column_name));
+                                    Objects.requireNonNull(result.get(column_name)).add(rs.getNString(column_name));
                                 }
                                 else if(rsmd.getColumnType(i)==java.sql.Types.VARCHAR) {
-                                    result.get(column_name).add(rs.getString(column_name));
+                                    Objects.requireNonNull(result.get(column_name)).add(rs.getString(column_name));
                                 }
                                 else if(rsmd.getColumnType(i)==java.sql.Types.TINYINT) {
-                                    result.get(column_name).add(rs.getInt(column_name));
+                                    Objects.requireNonNull(result.get(column_name)).add(rs.getInt(column_name));
                                 }
                                 else if(rsmd.getColumnType(i)==java.sql.Types.SMALLINT) {
-                                    result.get(column_name).add(rs.getInt(column_name));
+                                    Objects.requireNonNull(result.get(column_name)).add(rs.getInt(column_name));
                                 }
                                 else if(rsmd.getColumnType(i)==java.sql.Types.DATE) {
                                     String date = rs.getString(column_name);
-                                    result.get(column_name).add((date==null)?null:Date.valueOf(date));
+                                    Objects.requireNonNull(result.get(column_name)).add((date==null)?null:Date.valueOf(date));
                                     //result.get(column_name).add(rs.getDate(column_name));
                                     //rs.getTimestamp(column_name);
                                 }
                                 else if(rsmd.getColumnType(i)==java.sql.Types.TIMESTAMP){
-                                    result.get(column_name).add(rs.getTimestamp(column_name));
+                                    Objects.requireNonNull(result.get(column_name)).add(rs.getTimestamp(column_name));
                                 } else {
-                                    result.get(column_name).add(rs.getObject(column_name));
+                                    Objects.requireNonNull(result.get(column_name)).add(rs.getObject(column_name));
                                 }
                             }
                         }
                     } catch (SQLException e) {
-                        e.printStackTrace();
+                        _LOG.error("Failed to get the column values from the result set!", e);
                     }
                 });
         });
@@ -328,7 +335,7 @@ abstract class AbstractDataBase implements DataBase {
 
     /**
      * SQL execution on connection!
-     * @param sql
+     * @param sql - SQL statement to execute
      */
     protected void _execute(String sql) {
         if(sql.isBlank()) return;
@@ -341,10 +348,10 @@ abstract class AbstractDataBase implements DataBase {
                     stmt.close();
                 } catch (SQLException e) {
                     stmt.close();
-                    e.printStackTrace();
+                    _LOG.error("Failed to execute the SQL statement '{}'.", sql, e);
                 }
             } catch (SQLException e) {
-                e.printStackTrace();
+                _LOG.error("Failed to execute the SQL statement '{}'.", sql, e);
             }
         });
     }
@@ -364,9 +371,11 @@ abstract class AbstractDataBase implements DataBase {
                         pstmt.close();
                     } catch (SQLException e) {
                         pstmt.close();
+                        _LOG.error("Failed to execute the SQL statement '{}'.", sql, e);
                         return false;
                     }
                 } catch (SQLException e) {
+                    _LOG.error("Failed to execute the SQL statement '{}'.", sql, e);
                     return false;
                 }
                 return true;
@@ -379,15 +388,17 @@ abstract class AbstractDataBase implements DataBase {
                     return true;
                 } catch (SQLException e) {
                     stmt.close();
+                    _LOG.error("Failed to execute the SQL statement '{}'.", sql, e);
                     return false;
                 }
             } catch (SQLException e) {
+                _LOG.error("Failed to execute the SQL statement '{}'.", sql, e);
                 return false;
             }
         });
     }
 
-    protected boolean doesTableExist(String tableName) {
+    protected final boolean doesTableExist(String tableName) {
         String command = "SELECT name FROM sqlite_master WHERE type='table' AND name=?";
         Map<String, List<Object>> result = _query(command, List.of(tableName));
         return !result.isEmpty();
@@ -410,6 +421,10 @@ abstract class AbstractDataBase implements DataBase {
             return "SMALLINT";
         else if ( type == Byte.class || type == byte.class )
             return "TINYINT";
+        else if ( type == Character.class || type == char.class )
+            return "CHAR";
+        else if ( Enum.class.isAssignableFrom(type) )
+            return "TEXT";
         else
             throw new IllegalArgumentException("The type " + type.getName() + " is not supported");
     }
@@ -447,7 +462,8 @@ abstract class AbstractDataBase implements DataBase {
                         type.equals(Byte.class) ||
                         type.equals(byte.class) ||
                         type.equals(Character.class) ||
-                        type.equals(char.class);
+                        type.equals(char.class) ||
+                        Enum.class.isAssignableFrom(type);
     }
 
     protected static String _tableNameFromClass(Class<?> clazz) {

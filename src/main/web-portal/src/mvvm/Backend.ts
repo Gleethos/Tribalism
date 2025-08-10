@@ -22,14 +22,15 @@ export class Backend
         if (!INSTANCES[serverAddress.toString()])
             INSTANCES[serverAddress.toString()] = new Backend(serverAddress);
         return INSTANCES[serverAddress.toString()];
-    }
+  }
+
+  private logError   = (error:   any) => console.error(error);
+  private logWarning = (warning: any) => console.warn(warning);
+  private log        = (message: any) => console.log(message);
 
   /*
-      The last part of the API for doing MVVM binding is the entry point
-      to a web socket server connection.
-      ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+      For doing MVVM binding we use a web socket server connection.
   */
-
   private readonly ws : JSONWebSocket;
   private readonly session : Session;
   private readonly cache : Cache;
@@ -42,9 +43,30 @@ export class Backend
    * @param serverAddress the address of the web-socket server to connect to
    */
   private constructor(serverAddress: string | URL) {
-    this.cache = Cache.of(serverAddress.toString());
-    this.ws = new JSONWebSocket(serverAddress);
+    this.cache   = Cache.of(serverAddress.toString());
+    this.ws      = new JSONWebSocket(serverAddress);
     this.session = new Session(this.ws, this.cache);
+  }
+
+  onError(newErrorHandler: (error: any) => void) {
+    this.logError = (error: any) => {
+                        newErrorHandler(error);
+                        console.error(error);
+                    };
+  }
+
+  onWarning(newWarningHandler: (warning: any) => void) {
+    this.logWarning = (warning: any) => {
+                        console.warn(warning);
+                        newWarningHandler(warning);
+                      }
+  }
+
+  onLog(newLogHandler: (message: any) => void) {
+    this.log = (message: any) => {
+              newLogHandler(message);
+              console.log(message);
+            };
   }
 
   /**
@@ -83,7 +105,7 @@ export class Backend
     },
     frontend: (session: Session, contentVM: ViewModel | any) => void
   ) {
-    console.log("Received data: " + JSON.stringify(data));
+    this.log("Received data: " + JSON.stringify(data));
     // Now let's check the EventType: either a view model or a property change...
     if (data[Constants.EVENT_TYPE] === Constants.RETURN_GET_VM) {
       // We have a view model, so we can set it as the current view model:
@@ -104,7 +126,7 @@ export class Backend
       // If we have a binding, we call it with the new value:
       if (action) action(data[Constants.EVENT_PAYLOAD]);
       else
-        console.warn(
+        this.logWarning(
             'Backend wants to update property "' + data[Constants.EVENT_PAYLOAD][Constants.PROP_NAME] + '", ' +
             'but no action for property observation event "' + JSON.stringify(data) + '" was found\n' +
             'using key "' + key + '" \n' +
@@ -118,7 +140,7 @@ export class Backend
       if (actions) {
         // There should at least be one action, if not we log this as an error:
         if (actions.length === 0) {
-          console.error(
+          this.logError(
               'No actions for method: ' + data[Constants.EVENT_PAYLOAD][Constants.METHOD_NAME],
           );
           return;
@@ -130,15 +152,15 @@ export class Backend
         if (action) // We call the action with the return value:
           action(data[Constants.EVENT_PAYLOAD][Constants.METHOD_RETURNS]);
         else
-          console.error(
+          this.logError(
               'No action for method: ' + data[Constants.EVENT_PAYLOAD][Constants.METHOD_NAME],
           );
       }
     }
     else if (data[Constants.EVENT_TYPE] === Constants.ERROR)
-      console.error('Server error: ' + JSON.stringify(data[Constants.EVENT_PAYLOAD]));
+      this.logError('Server error: ' + JSON.stringify(data[Constants.EVENT_PAYLOAD]));
     else
-      console.error(
+      this.logError(
           'Unknown event type: ' +
           data[Constants.EVENT_TYPE] +
           '! \nData:\n' +

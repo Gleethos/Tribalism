@@ -1,18 +1,21 @@
 package net;
 
+import app.ViewModel;
 import org.json.JSONObject;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import sprouts.Action;
+import sprouts.Maybe;
 import sprouts.Val;
-import swingtree.EventProcessor;
-import swingtree.api.mvvm.Viewable;
+import sprouts.ValDelegate;
+import swingtree.threading.EventProcessor;
 
 import java.awt.*;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Objects;
 import java.util.function.Supplier;
 
 /**
@@ -101,6 +104,9 @@ public class WebUserSession
         String vmId = json.getString(Constants.VM_ID);
         JSONObject vmJson = new JSONObject();
         var vm = webUserContext.get(vmId);
+        if ( vm == null )
+            throw new RuntimeException("No view model with ID '" + vmId + "' found in web user session with ID '" + socket.creationTime() + "'!");
+
         vmJson.put(Constants.EVENT_TYPE, Constants.RETURN_GET_VM);
         vmJson.put(Constants.EVENT_PAYLOAD, toJson(vm));
         bindTo(vm, vmId);
@@ -109,15 +115,15 @@ public class WebUserSession
     }
 
     private void bindTo(Object vm, String vmId) {
-        long httpSessionCreationTime = socket.creationTime();
-        ReflectionUtil.bind( vm, new Action<>() {
+        var observer = new Action<ValDelegate<Object>>() {
             @Override
-            public void accept(Val<Object> val) {
+            public void accept(ValDelegate<Object> delegate) {
                 try {
+                    Maybe<?> property = delegate.currentValue();
                     JSONObject update = new JSONObject();
                     update.put(Constants.EVENT_TYPE, Constants.RETURN_PROP);
                     update.put(Constants.EVENT_PAYLOAD,
-                            jsonFromProperty(val)
+                            jsonFromProperty(property, delegate.id())
                                     .put(Constants.VM_ID, vmId)
                     );
                     socket.send(update);
@@ -125,13 +131,14 @@ public class WebUserSession
                     e.printStackTrace();
                 }
             }
-            @Override public boolean canBeRemoved() {
-                boolean observerInvalid = httpSessionCreationTime != socket.creationTime();
-                if ( observerInvalid )
-                    log.info("Observer is invalid, removing it!");
-                return observerInvalid;
-            }
-        });
+        };
+        ReflectionUtil.bind( vm, observer );
+        //// When the http session is destroyed, we need to remove the observer!
+        //long httpSessionCreationTime = socket.creationTime();
+        //socket.onClose( () -> {
+        //    if ( httpSessionCreationTime != socket.creationTime() )
+        //        ReflectionUtil.unbind(vm, observer);
+        //});
     }
 
     private void applyMutationToVM(JSONObject json) {
@@ -231,7 +238,11 @@ public class WebUserSession
         // -> We want this to be executed on the application thread, but how?
         boolean returnsNothing = method.getReturnType().equals(Void.TYPE);
         if ( returnsNothing )
-            EventProcessor.DECOUPLED.registerAppEvent(invoker::get); // Just send it to the app thread
+            EventProcessor.DECOUPLED.registerAppEvent(()->{
+                var o = invoker.get();
+                if ( o != null )
+                    log.error("Method {} returned void", method);
+            }); // Just send it to the app thread
         else {
             Object[] resultHolder = new Object[1];
             EventProcessor.DECOUPLED.registerAndRunAppEventNow(() -> resultHolder[0] = invoker.get()); // We need to wait for the result!
@@ -239,7 +250,7 @@ public class WebUserSession
         }
 
         if ( result instanceof Val<?> property )
-            result = jsonFromProperty(property);
+            result = jsonFromProperty(property, property.id());
 
         return new JSONObject()
                 .put(Constants.METHOD_NAME, methodName)
@@ -248,9 +259,10 @@ public class WebUserSession
 
 
     public JSONObject toJson(Object vm) {
+        Objects.requireNonNull(vm);
         JSONObject json = new JSONObject();
         for ( var property : ReflectionUtil.findPropertiesInViewModel(vm) )
-            json.put(property.id(), jsonFromProperty(property));
+            json.put(property.id(), jsonFromProperty(property, property.id()));
 
         JSONObject result = new JSONObject();
         result.put(Constants.PROPS, json);
@@ -261,7 +273,7 @@ public class WebUserSession
     }
 
     public JSONObject jsonFromProperty(
-            Val<?> property
+            Maybe<?> property, String id
     ) {
         Class<?> type = property.type();
         List<String> knownStates = new ArrayList<>();
@@ -270,50 +282,50 @@ public class WebUserSession
                 knownStates.add(((Enum)state).name());
         }
         JSONObject json = new JSONObject();
-        json.put(Constants.PROP_NAME, property.id());
+        json.put(Constants.PROP_NAME, id);
         json.put(Constants.PROP_VALUE, toJsonCompatibleValueFromProperty(property));
         json.put(Constants.PROP_TYPE,
                 new JSONObject()
                         .put(Constants.PROP_TYPE_NAME, type.getName())
                         .put(Constants.PROP_TYPE_STATES, knownStates)
-                        .put(Constants.TYPE_IS_VM, Viewable.class.isAssignableFrom(type))
+                        .put(Constants.TYPE_IS_VM, ViewModel.class.isAssignableFrom(type))
         );
 
         return json;
     }
 
 
-    Object toJsonCompatibleValueFromProperty(Val<?> prop) {
+    Object toJsonCompatibleValueFromProperty(Maybe<?> prop) {
 
         if ( prop.isEmpty() ) // We return a json null if the property is empty
             return JSONObject.NULL;
 
 
         if ( prop.type() == Boolean.class )
-            return prop.get();
+            return prop.orElseThrowUnchecked();
         else if ( prop.type() == Integer.class )
-            return prop.get();
+            return prop.orElseThrowUnchecked();
         else if ( prop.type() == Double.class )
-            return prop.get();
+            return prop.orElseThrowUnchecked();
         else if ( prop.type() == Enum.class )
-            return ((Enum)prop.get()).name();
-        else if (Viewable.class.isAssignableFrom(prop.type())) {
-            Viewable viewable = (Viewable) prop.get();
-            if ( !webUserContext.hasVM(viewable) ) {
-                webUserContext.put(viewable);
-                bindTo(viewable, webUserContext.vmIdOf(viewable).toString());
+            return ((Enum)prop.orElseThrowUnchecked()).name();
+        else if (ViewModel.class.isAssignableFrom(prop.type())) {
+            ViewModel viewModel = (ViewModel) prop.orElseThrowUnchecked();
+            if ( !webUserContext.hasVM(viewModel) ) {
+                webUserContext.put(viewModel);
+                bindTo(viewModel, webUserContext.vmIdOf(viewModel).toString());
             }
 
             // We do not send the entire viewable object, but only the id
-            return webUserContext.vmIdOf(viewable).toString();
+            return webUserContext.vmIdOf(viewModel).toString();
         }
         else if ( prop.type() == Color.class ) {
             // In the frontend colors are usually hex strings
-            Color color = (Color) prop.get();
+            Color color = (Color) prop.orElseThrowUnchecked();
             return String.format("#%02x%02x%02x", color.getRed(), color.getGreen(), color.getBlue());
         }
 
-        Object value = prop.get();
+        Object value = prop.orElseThrowUnchecked();
         String asString = String.valueOf(value);
         asString = asString.replace("\"", "\\\"");
         asString = asString.replace("\r", "\\r");

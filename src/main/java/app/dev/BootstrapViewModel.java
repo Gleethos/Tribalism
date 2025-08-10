@@ -54,7 +54,6 @@ public class BootstrapViewModel
         context.modelTypes().saveToWorkingDirectory(context.db());
     }
 
-    public JComponent createView() { return new BootstrapView(this); }
 
     public SkillTypesViewModel skillTypesViewModel() {
         return skillTypesViewModel;

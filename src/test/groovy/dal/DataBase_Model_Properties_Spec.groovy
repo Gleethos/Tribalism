@@ -2,12 +2,17 @@ package dal
 
 import dal.api.DataBase
 import dal.models.Ingredient
+import dal.models.Region
 import groovy.transform.CompileDynamic
 import spock.lang.Narrative
 import spock.lang.Specification
 import spock.lang.Title
 import sprouts.Action
+import sprouts.From
 import sprouts.Val
+import sprouts.ValDelegate
+
+import java.time.Month
 
 @Title("Working with Model Properties")
 @Narrative('''
@@ -33,7 +38,7 @@ class DataBase_Model_Properties_Spec extends Specification
     def TEST_DB_FILE = TEST_DB_LOCATION + "my.db"
 
     def setup() {
-        def db = DataBase.at(TEST_DB_FILE)
+        var db = DataBase.at(TEST_DB_FILE)
         db.dropAllTables()
         db.close()
     }
@@ -56,7 +61,7 @@ class DataBase_Model_Properties_Spec extends Specification
             ```
         """
         given : 'We create a database instance for testing, the database will be opened in a test folder.'
-            def db = DataBase.at(TEST_DB_FILE)
+            var db = DataBase.at(TEST_DB_FILE)
             db.dropAllTables()
         and : 'We create the test table.'
             db.createTablesFor(Ingredient)
@@ -105,7 +110,7 @@ class DataBase_Model_Properties_Spec extends Specification
             ```
         """
         given : 'We create a database instance for testing, the database will be opened in a test folder.'
-            def db = DataBase.at(TEST_DB_FILE)
+            var db = DataBase.at(TEST_DB_FILE)
             db.dropAllTables()
         and : 'We create the test table.'
             db.createTablesFor(Ingredient)
@@ -113,10 +118,11 @@ class DataBase_Model_Properties_Spec extends Specification
             Ingredient ingredient = db.create(Ingredient)
         when : 'We register a listener on the name property.'
             var listenerTrace = []
-            ingredient.name().onSet(new Action<Val<String>>() {
+            var nameView = ingredient.name().view()
+            nameView.onChange(From.VIEW_MODEL, new Action<ValDelegate<String>>() {
                 @Override
-                void accept(Val<String> delegate) {
-                    listenerTrace << delegate.get()
+                void accept(ValDelegate<String> delegate) {
+                    listenerTrace << delegate.currentValue().orElseThrowUnchecked()
                 }
             })
         and : 'We set the name property.'
@@ -124,6 +130,74 @@ class DataBase_Model_Properties_Spec extends Specification
         then : 'The listener should have been triggered.'
             listenerTrace.size() == 1
             listenerTrace[0] == "Tomato"
+    }
+
+    def 'You can use enums as item types for properties.'()
+    {
+        reportInfo """
+            Although enums are not native to the underlying database,
+            you can still use them as item types for properties in
+            your model interfaces.
+            The enum will automatically be converted to a string
+            when it is written to the database and back to the enum
+            when it is read from the database.
+            
+            For this feature specification, we will use the "Region" model,
+            which uses the "Month" enum from the "java.time" package:
+            ```
+                public interface Region extends Model<Region>
+                {
+                    Var<Month> warmestMonth();
+                    Var<Month> coldestMonth();
+                    Var<String> name();
+                }
+            ```
+        """
+        given : 'We create a database instance for testing, the database will be opened in a test folder.'
+            var db = DataBase.at(TEST_DB_FILE)
+            db.dropAllTables()
+        and : 'We create the test table.'
+            db.createTablesFor(Region)
+        and : 'A simple region.'
+            Region region = db.create(Region)
+        when : 'We populate the region with some data.'
+            region.warmestMonth().set(Month.JANUARY)
+            region.coldestMonth().set(Month.JULY)
+            region.name().set("Antarctica")
+        then : 'The model should report back the correct data.'
+            region.warmestMonth().get() == Month.JANUARY
+            region.coldestMonth().get() == Month.JULY
+            region.name().get() == "Antarctica"
+        and : 'The database should report having 1 region.'
+            db.selectAll(Region).size() == 1
+
+        when : 'We recreate the region from the database.'
+            region = db.selectAll(Region).first()
+        then : 'The model should still have the correct data.'
+            region.warmestMonth().get() == Month.JANUARY
+            region.coldestMonth().get() == Month.JULY
+            region.name().get() == "Antarctica"
+    }
+
+    def 'The default item of an enum based database property is always the first enum constant'()
+    {
+        reportInfo """
+            Instead of using null as the default value for an enum based property,
+            the default value is always the first enum constant.
+            Null is not a valid value for an enum based property.
+            Instead of null, you should make the first enum constant a "null" object,
+            by calling it "UNKNOWN" or "UNDEFINED" or something similar.
+        """
+        given : 'We create a database instance for testing, the database will be opened in a test folder.'
+            var db = DataBase.at(TEST_DB_FILE)
+            db.dropAllTables()
+        and : 'We create the test table.'
+            db.createTablesFor(Region)
+        and : 'A simple region.'
+            Region region = db.create(Region)
+
+        expect : 'The default value of the warmest month should be JANUARY.'
+            region.warmestMonth().get() == Month.JANUARY
     }
 
 }

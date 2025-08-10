@@ -6,9 +6,14 @@ import sprouts.Var;
 
 import java.util.Optional;
 
+/**
+ *  This is used as a
+ */
 public final class CharacterViewModel
 {
     private final AppContext context;
+    private final Character character;
+
     private final Var<String> forename;
     private final Var<String> surname;
     private final Var<String> role;
@@ -19,16 +24,17 @@ public final class CharacterViewModel
     private final Var<String> image;
 
 
-    public CharacterViewModel(AppContext context) {
+    public CharacterViewModel(AppContext context, Character character) {
         this.context = context;
-        this.forename     = Var.of("").withId("forename");
-        this.surname      = Var.of("").withId("surname");
-        this.role         = Var.of("").withId("role");
-        this.age          = Var.of(0).withId("age");
-        this.height       = Var.of(0.0).withId("height");
-        this.weight       = Var.of(0.0).withId("weight");
-        this.description  = Var.of("").withId("description");
-        this.image        = Var.of("").withId("image");
+        this.character = character;
+        this.forename     = Var.of("");
+        this.surname      = Var.of("");
+        this.role         = Var.of("");
+        this.age          = Var.of(0);
+        this.height       = Var.of(0.0);
+        this.weight       = Var.of(0.0);
+        this.description  = Var.of("");
+        this.image        = Var.of("");
     }
 
     public Optional<Character> createCharacter() {

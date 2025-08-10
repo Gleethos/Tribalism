@@ -6,7 +6,7 @@ import dal.api.DataBase;
 import dal.api.DataBaseProcessor;
 import net.WebUserContext;
 import sprouts.Vars;
-import swingtree.EventProcessor;
+import swingtree.threading.EventProcessor;
 
 import java.util.List;
 import java.util.Optional;
