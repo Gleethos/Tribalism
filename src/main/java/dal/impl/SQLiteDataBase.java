@@ -707,7 +707,7 @@ public final class SQLiteDataBase extends AbstractDataBase
     ) {
         String sql = "SELECT * FROM " + valueTable.getTableName() + " WHERE "+ValueTable.HASH_FIELD_NAME+" = ?";
         Map<String, List<Object>> result = _query(sql, Collections.singletonList(hashCode));
-        if ( result.isEmpty() )
+        if ( result.isEmpty() || result.values().stream().allMatch(List::isEmpty) )
             return -1; // Not found
         if ( result.values().stream().anyMatch( v -> v.size() != 1 ) )
             throw new IllegalStateException();
