@@ -23,13 +23,11 @@ sealed interface FieldType {
         Class<?> vars();
         Class<?> item();
         default VarOf varOf() {
-            if (this instanceof VarsOf.Primitive)
-                return new VarOf.Primitive((Class)Var.class, item());
-            else if (this instanceof VarsOf.Value)
-                return new VarOf.Value((Class)Var.class, (Class)item());
-            else if (this instanceof VarsOf.Model)
-                return new VarOf.Model((Class)Var.class, (Class)item());
-            throw new RuntimeException("unknown kind of vars: " + this);
+            return switch (this) {
+                case Primitive ignored -> new VarOf.Primitive((Class) Var.class, item());
+                case Value ignored -> new VarOf.Value((Class) Var.class, (Class) item());
+                case Model ignored -> new VarOf.Model((Class) Var.class, (Class) item());
+            };
         }
     }
 
@@ -40,54 +38,34 @@ sealed interface FieldType {
     Class<?> item();
 
     default @Nullable Class<?> wrapperType() {
-        if (this instanceof Value)
-            return null;
-        if (this instanceof VarOf.Value)
-            return ((VarOf.Value) this).var();
-        if (this instanceof VarOf.Model)
-            return ((VarOf.Model) this).var();
-        if (this instanceof VarOf.Primitive)
-            return ((VarOf.Primitive) this).var();
-        if (this instanceof Primitive)
-            return null;
-        if (this instanceof VarsOf.Primitive)
-            return ((VarsOf.Primitive) this).vars();
-        if (this instanceof VarsOf.Value)
-            return ((VarsOf.Value) this).vars();
-        if (this instanceof VarsOf.Model)
-            return ((VarsOf.Model) this).vars();
-        if (this instanceof Tuple)
-            return null;
-        if (this instanceof VarOf.Tuple)
-            return ((VarOf.Tuple) this).var();
-        if ( this instanceof VarOf.Id)
-            return ((VarOf.Id) this).var();
-        throw new RuntimeException("unknown kind of field: " + this);
+        return switch (this) {
+            case Value ignored -> null;
+            case VarOf.Value value -> value.var();
+            case VarOf.Model model -> model.var();
+            case VarOf.Primitive primitive -> primitive.var();
+            case Primitive ignored -> null;
+            case VarsOf.Primitive primitive -> primitive.vars();
+            case VarsOf.Value value -> value.vars();
+            case VarsOf.Model model -> model.vars();
+            case Tuple ignored -> null;
+            case VarOf.Tuple tuple -> tuple.var();
+            case VarOf.Id id -> id.var();
+        };
     }
 
     default FieldKind kind() {
-        if (this instanceof VarOf.Id)
-            return FieldKind.ID;
-        if (this instanceof Value)
-            return FieldKind.FOREIGN_KEY;
-        if (this instanceof VarOf.Value)
-            return FieldKind.FOREIGN_KEY;
-        if (this instanceof VarOf.Model)
-            return FieldKind.FOREIGN_KEY;
-        if (this instanceof VarOf.Primitive)
-            return FieldKind.PRIMITIVE;
-        if (this instanceof Primitive)
-            return FieldKind.PRIMITIVE;
-        if (this instanceof VarsOf.Primitive)
-            return FieldKind.INTERMEDIATE_TABLE;
-        if (this instanceof VarsOf.Value)
-            return FieldKind.INTERMEDIATE_TABLE;
-        if (this instanceof VarsOf.Model)
-            return FieldKind.INTERMEDIATE_TABLE;
-        if (this instanceof Tuple)
-            return FieldKind.INTERMEDIATE_TABLE;
-        if (this instanceof VarOf.Tuple)
-            return FieldKind.INTERMEDIATE_TABLE;
-        throw new RuntimeException("unknown kind of field: " + this);
+        return switch (this) {
+            case VarOf.Id ignored -> FieldKind.ID;
+            case Value ignored -> FieldKind.FOREIGN_KEY;
+            case VarOf.Value ignored -> FieldKind.FOREIGN_KEY;
+            case VarOf.Model ignored -> FieldKind.FOREIGN_KEY;
+            case VarOf.Primitive ignored -> FieldKind.PRIMITIVE;
+            case Primitive ignored -> FieldKind.PRIMITIVE;
+            case VarsOf.Primitive ignored1 -> FieldKind.INTERMEDIATE_TABLE;
+            case VarsOf.Value ignored -> FieldKind.INTERMEDIATE_TABLE;
+            case VarsOf.Model ignored -> FieldKind.INTERMEDIATE_TABLE;
+            case Tuple ignored -> FieldKind.INTERMEDIATE_TABLE;
+            case VarOf.Tuple ignored -> FieldKind.INTERMEDIATE_TABLE;
+        };
     }
 }
