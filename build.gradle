@@ -36,24 +36,20 @@ dependencies {
     implementation group: 'org.xerial', name: 'sqlite-jdbc', version: '3.36.0.3'
     implementation group: 'io.github.globaltcad', name: 'swing-tree', version:'0.14.0'
 
-    //implementation 'org.apache.groovy:groovy:3.0.9'
-    testImplementation 'org.junit.jupiter:junit-jupiter-api:5.8.1'
-    testRuntimeOnly 'org.junit.jupiter:junit-jupiter-engine:5.8.1'
-
     // Testing with Spock :
     testImplementation 'org.junit.jupiter:junit-jupiter-api:5.8.2'
     testRuntimeOnly 'org.junit.jupiter:junit-jupiter-engine:5.8.2'    // mandatory dependencies for using Spock
 
-    testImplementation 'org.codehaus.groovy:groovy:3.0.9'
-    testImplementation platform('org.spockframework:spock-bom:2.1-groovy-3.0')
-    testImplementation 'org.spockframework:spock-core:2.1-groovy-3.0'
-    testImplementation 'com.athaydes:spock-reports:2.3.2-groovy-3.0'
+    testImplementation 'org.apache.groovy:groovy'
+    testImplementation platform('org.spockframework:spock-bom:2.3-groovy-4.0')
+    testImplementation 'org.spockframework:spock-core:2.3-groovy-4.0'
+    testImplementation 'com.athaydes:spock-reports:2.5.1-groovy-4.0'
 
-    implementation 'com.formdev:flatlaf-intellij-themes:2.2'
-    implementation 'com.formdev:flatlaf:2.2' // Looks better than regular swing :)
+    implementation 'com.formdev:flatlaf-intellij-themes:3.6.1'
+    implementation 'com.formdev:flatlaf:3.6.1' // Looks better than regular swing :)
     implementation group: 'com.metsci.ext.com.kitfox.svg', name: 'svg-salamander', version: '0.1.19'
 
-    implementation group: 'org.json', name: 'json', version: '20220924'
+    implementation group: 'org.json', name: 'json', version: '20250517'
 
     // Command line parsing :
     implementation "com.beust:jcommander:1.82"
@@ -67,8 +63,8 @@ dependencies {
     testCompileOnly 'org.slf4j:slf4j-simple:2.0.5'
 
     // Integration test with Geb and Spock :
-    testImplementation group: 'org.gebish', name: 'geb-spock', version: '5.1'
-    testImplementation group: 'org.seleniumhq.selenium', name: 'selenium-firefox-driver', version: '4.8.0'
+    testImplementation group: 'org.gebish', name: 'geb-spock', version: '7.0'
+    testImplementation group: 'org.seleniumhq.selenium', name: 'selenium-firefox-driver', version: '4.34.0'
 
 }
 
