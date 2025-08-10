@@ -8,12 +8,11 @@ plugins {
 
 group 'org.gleethos'
 version '0.0.0'
-sourceCompatibility = '17'
+sourceCompatibility = '21'
 
 var REACT_SKIN_LOCATION = 'src/main/web-portal'
 
 repositories {
-    jcenter()
     mavenCentral()
     maven { url 'https://jitpack.io' }
     google()
@@ -73,7 +72,7 @@ dependencies {
 
 }
 
-tasks.withType(JavaCompile) {
+tasks.withType(JavaCompile).configureEach {
     // remove the if condition if you want to run NullAway on test code
     if (!name.toLowerCase().contains("test")) {
         options.errorprone {
@@ -149,14 +148,14 @@ node {
 }
 
 // Build the project locally
-task appNpmBuild(type: NpmTask) {
+tasks.register('appNpmBuild', NpmTask) {
     description = "Builds production version of tribee-portal"
     workingDir = file("${project.projectDir}/$REACT_SKIN_LOCATION")
     args = ["run", "build"]
 }
 
 // Copies the project to the service folder
-task copyWebAppToWebRoot(type: Copy) {
+tasks.register('copyWebAppToWebRoot', Copy) {
     dependsOn appNpmBuild
     from "$REACT_SKIN_LOCATION/build"
     into 'src/main/resources/web/.'
@@ -167,7 +166,7 @@ task copyWebAppToWebRoot(type: Copy) {
     Use this for rebuilding the react frontend
     (rebuild the react app and copy the build folder to the resources folder)
 */
-task buildWebApp(type: NpmTask) {
+tasks.register('buildWebApp', NpmTask) {
     description = "Builds production version of tribee-portal"
     dependsOn appNpmBuild
     dependsOn copyWebAppToWebRoot
@@ -175,17 +174,18 @@ task buildWebApp(type: NpmTask) {
 
 appNpmBuild.dependsOn npmInstall
 compileJava.dependsOn copyWebAppToWebRoot
+processResources.dependsOn copyWebAppToWebRoot
 
 // A task which starts the 'Main' class of the project with a certain set of arguments
 // Note that this is done in a new thread, so the task will finish immediately and we can run other tasks in parallel
-task runServer(type: JavaExec) {
+tasks.register('runServer', JavaExec) {
     main = 'Main'
     classpath = sourceSets.main.runtimeClasspath
     args = ['--start-server', 'true', '--port', '8080', '--headless', 'true']
 }
 
 // A task for executing the react tests:
-task appNpmTest(type: NpmTask) { // TODO: Make this depend on the server task!
+tasks.register('appNpmTest', NpmTask) { // TODO: Make this depend on the server task!
     description = "Runs the react tests"
     workingDir = file("${project.projectDir}/$REACT_SKIN_LOCATION")
     args = ["run", "test"]
