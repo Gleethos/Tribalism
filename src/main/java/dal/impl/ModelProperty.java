@@ -94,6 +94,9 @@ final class ModelProperty implements Var<Object>, Viewable<Object>
                     }
                 }
             }
+            if ( _fieldType.item() == Integer.class ) {
+                return ((Number)itemToReturn).intValue(); // SQLite returns a Long, so we convert it to Integer
+            }
             return itemToReturn;
         } else {
             // A foreign key to another model! We already have the id, so we can just create the model
