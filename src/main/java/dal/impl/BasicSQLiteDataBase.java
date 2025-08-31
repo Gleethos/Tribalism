@@ -204,10 +204,8 @@ final class BasicSQLiteDataBase {
             Consumer<ResultSet> each
     ){
         if (values!=null && !values.isEmpty()){
-            try {
-                PreparedStatement pstmt = _newPreparedStatement(sql, values);
-                try {
-                    ResultSet rs = pstmt.executeQuery();// loop through the result set
+            try (PreparedStatement pstmt = _newPreparedStatement(sql, values)) {
+                try (ResultSet rs = pstmt.executeQuery()) { // loop through the result set
                     if ( start != null && !rs.isClosed() )
                         start.accept(rs);
                     if ( each != null && !rs.isClosed() ) {
@@ -226,10 +224,8 @@ final class BasicSQLiteDataBase {
                 _LOG.error("Failed to execute the SQL statement '{}'.", sql, e);
             }
         } else {
-            try {
-                Statement stmt = _getConnection().createStatement();
-                try {
-                    ResultSet rs = stmt.executeQuery(sql);// loop through the result set
+            try (Statement stmt = _getConnection().createStatement()) {
+                try (ResultSet rs = stmt.executeQuery(sql)) { // loop through the result set
                     if ( start != null && !rs.isClosed() )
                         start.accept(rs);
                     if ( each != null && !rs.isClosed() ) {
@@ -338,8 +334,7 @@ final class BasicSQLiteDataBase {
         if(sql.isBlank()) return;
         _processor.process(()->{
             Connection conn = _getConnection();
-            try {
-                Statement stmt = conn.createStatement();
+            try (Statement stmt = conn.createStatement()) {
                 try {
                     stmt.execute(sql);
                     stmt.close();
@@ -361,8 +356,7 @@ final class BasicSQLiteDataBase {
         return _processor.processNowAndGet(()->{
             Connection conn = _getConnection();
             if ( values!=null ){
-                try {
-                    PreparedStatement pstmt = _newPreparedStatement(sql, values);
+                try (PreparedStatement pstmt = _newPreparedStatement(sql, values)) {
                     try {
                         boolean state = pstmt.execute();
                         pstmt.close();
@@ -377,8 +371,7 @@ final class BasicSQLiteDataBase {
                 }
                 return true;
             }
-            try {
-                Statement stmt = conn.createStatement();
+            try (Statement stmt = conn.createStatement()) {
                 try {
                     stmt.execute(sql);
                     stmt.close();
