@@ -20,7 +20,7 @@ import static dal.impl.EntityTable.INTER_TABLE_POSTFIX;
  *  This class constitutes both a representation of a database
  *  and define an API which is in essence an interface based ORM.
  */
-public final class SQLiteDataBase extends AbstractDataBase
+public final class SQLiteDataBase extends AbstractDataBase implements DataBase
 {
     private final static Logger log = org.slf4j.LoggerFactory.getLogger(SQLiteDataBase.class);
 

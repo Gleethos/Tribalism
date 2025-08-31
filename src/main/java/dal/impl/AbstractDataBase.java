@@ -1,6 +1,5 @@
 package dal.impl;
 
-import dal.api.DataBase;
 import dal.api.DataBaseProcessor;
 import org.jspecify.annotations.NullMarked;
 import org.jspecify.annotations.Nullable;
@@ -14,14 +13,14 @@ import java.util.*;
 import java.util.function.Consumer;
 
 @NullMarked
-abstract class AbstractDataBase implements DataBase {
+class AbstractDataBase {
 
     private final static Logger _LOG = LoggerFactory.getLogger(AbstractDataBase.class);
 
     /**
      * Connection settings: URL, User, Password!
      */
-    protected boolean _AUTOCOMMIT = true;
+    private final static boolean _AUTOCOMMIT = true;
     private final String _url, _user, _pwd;
 
     private final Map<Thread, Connection> _connections = new HashMap<>();
@@ -121,7 +120,6 @@ abstract class AbstractDataBase implements DataBase {
         }
     }
 
-    @Override
     public void close(){
         _processor.process(this::_close);
     }
@@ -129,7 +127,6 @@ abstract class AbstractDataBase implements DataBase {
     /**
      * Returns a list of all table names of a connection!
      */
-    @Override
     public List<String> listOfAllTableNames(){
         String sql = "SELECT name FROM sqlite_master WHERE type ='table' AND name NOT LIKE 'sqlite_%';";
         List<String> names = new ArrayList<>();
