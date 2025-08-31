@@ -24,7 +24,7 @@ final class EntityRegistry
     {
         modelInterfaces = modelInterfaces
                               .stream()
-                              .filter(m -> !entityTables.containsKey(SQLiteDataBase._tableNameFromClass(m)) ) // Filter out already added interfaces
+                              .filter(m -> !entityTables.containsKey(BasicSQLiteDataBase._tableNameFromClass(m)) ) // Filter out already added interfaces
                               .collect(Collectors.toList());
 
         Set<Class<? extends DataBaseEntity>> distinct = new HashSet<>();
@@ -119,7 +119,7 @@ final class EntityRegistry
         }
 
         for (Class<?> model : sortedModels) {
-            EntityTable modelTable = newModelTables.get(AbstractDataBase._tableNameFromClass(model));
+            EntityTable modelTable = newModelTables.get(BasicSQLiteDataBase._tableNameFromClass(model));
             Objects.requireNonNull(modelTable, "No table found for model class '" + model + "'");
             entityTables = entityTables.put(modelTable.getTableName(), modelTable);
         }
@@ -144,7 +144,7 @@ final class EntityRegistry
             return true;
         currentPath.add(modelTable);
         for (Class<? extends DataBaseEntity> referencedModel : modelTable.getReferencedModels()) {
-            var tableName = AbstractDataBase._tableNameFromClass(referencedModel);
+            var tableName = BasicSQLiteDataBase._tableNameFromClass(referencedModel);
             var foundTable = newModelTables.get(tableName);
             if ( foundTable == null ) {
                 throw new IllegalStateException(
@@ -177,7 +177,7 @@ final class EntityRegistry
     }
 
     Optional<ModelTable> getTable(Class<? extends Model<?>> modelInterface ) {
-        String tableName = AbstractDataBase._tableNameFromClass(modelInterface);
+        String tableName = BasicSQLiteDataBase._tableNameFromClass(modelInterface);
         var found1 = entityTables.get(tableName).map(ModelTable.class::cast).orElse(null);
         var found2 = entityTables.values()
                                 .stream()
@@ -193,7 +193,7 @@ final class EntityRegistry
     }
 
     Optional<ValueTable> getValueTable(Class<? extends Value> valueClass ) {
-        String tableName = AbstractDataBase._tableNameFromClass(valueClass);
+        String tableName = BasicSQLiteDataBase._tableNameFromClass(valueClass);
         var found1 = entityTables.get(tableName).map(ValueTable.class::cast).orElse(null);
         var found2 = entityTables.values()
                 .stream()

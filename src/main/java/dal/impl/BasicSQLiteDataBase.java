@@ -13,9 +13,9 @@ import java.util.*;
 import java.util.function.Consumer;
 
 @NullMarked
-class AbstractDataBase {
+final class BasicSQLiteDataBase {
 
-    private final static Logger _LOG = LoggerFactory.getLogger(AbstractDataBase.class);
+    private final static Logger _LOG = LoggerFactory.getLogger(BasicSQLiteDataBase.class);
 
     /**
      * Connection settings: URL, User, Password!
@@ -27,7 +27,7 @@ class AbstractDataBase {
     private final DataBaseProcessor _processor;
 
 
-    AbstractDataBase(
+    BasicSQLiteDataBase(
         String url,
         String name,
         String password,
@@ -140,7 +140,7 @@ class AbstractDataBase {
         return names;
     }
 
-    protected Map<String, List<String>> _tablesSpace(){
+    Map<String, List<String>> _tablesSpace(){
         String sql = "SELECT * FROM sqlite_master WHERE type ='table' AND name NOT LIKE 'sqlite_%';";
         Map<String, List<String>> space = new LinkedHashMap<>();
         _for(sql, null, rs -> {
@@ -192,12 +192,12 @@ class AbstractDataBase {
         return pstmt;
     }
 
-    protected void _for(String sql, @Nullable Consumer<ResultSet> start, Consumer<ResultSet> each)
+    void _for(String sql, @Nullable Consumer<ResultSet> start, Consumer<ResultSet> each)
     {
         _for(sql, null, start, each);
     }
 
-    protected void _for(
+    void _for(
             String sql,
             @Nullable List<Object> values,
             @Nullable Consumer<ResultSet> start,
@@ -250,11 +250,11 @@ class AbstractDataBase {
 
     }
 
-    protected Map<String, List<Object>> _query(String sql) {
+    Map<String, List<Object>> _query(String sql) {
         return _query(sql, null);
     }
 
-    protected Map<String, List<Object>> _query(String sql, @Nullable List<Object> values){
+    Map<String, List<Object>> _query(String sql, @Nullable List<Object> values){
         Map<String, List<Object>> result = new LinkedHashMap<>();
         _processor.processNow(()->{
             _for(
@@ -334,7 +334,7 @@ class AbstractDataBase {
      * SQL execution on connection!
      * @param sql - SQL statement to execute
      */
-    protected void _execute(String sql) {
+    void _execute(String sql) {
         if(sql.isBlank()) return;
         _processor.process(()->{
             Connection conn = _getConnection();
@@ -357,7 +357,7 @@ class AbstractDataBase {
      * SQL execution on connection!
      * @param sql - SQL statement to execute
      */
-    protected boolean _update( String sql, List<? extends Object> values ){
+    boolean _update( String sql, List<? extends Object> values ){
         return _processor.processNowAndGet(()->{
             Connection conn = _getConnection();
             if ( values!=null ){
@@ -395,13 +395,13 @@ class AbstractDataBase {
         });
     }
 
-    protected final boolean doesTableExist(String tableName) {
+    final boolean doesTableExist(String tableName) {
         String command = "SELECT name FROM sqlite_master WHERE type='table' AND name=?";
         Map<String, List<Object>> result = _query(command, List.of(tableName));
         return !result.isEmpty();
     }
 
-    protected static String _fromJavaTypeToDBType(Class<?> type) {
+    static String _fromJavaTypeToDBType(Class<?> type) {
         if ( type == Integer.class || type == int.class )
             return "INT";
         else if ( type == String.class)
@@ -426,7 +426,7 @@ class AbstractDataBase {
             throw new IllegalArgumentException("The type " + type.getName() + " is not supported");
     }
 
-    protected static Class<?> _fromDBTypeToJavaType(String type) {
+    static Class<?> _fromDBTypeToJavaType(String type) {
         return switch (type) {
             case "INT"-> Integer.class;
             case "TEXT" -> String.class;
@@ -441,7 +441,7 @@ class AbstractDataBase {
     }
 
 
-    protected static boolean _isBasicDataType(Class<?> type) {
+    static boolean _isBasicDataType(Class<?> type) {
         return
                 type.equals(String.class) ||
                         type.equals(int.class) ||
@@ -463,11 +463,11 @@ class AbstractDataBase {
                         Enum.class.isAssignableFrom(type);
     }
 
-    protected static String _tableNameFromClass(Class<?> clazz) {
+    static String _tableNameFromClass(Class<?> clazz) {
         return _nameFromClass(clazz) + "_table";
     }
 
-    protected static String _nameFromClass(Class<?> clazz) {
+    static String _nameFromClass(Class<?> clazz) {
         String tableName = clazz.getName();
         // We replace the package dots with underscores:
         // This is the name of the interface but where the '.' are replaced with '_'

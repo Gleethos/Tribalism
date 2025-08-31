@@ -13,7 +13,7 @@ record IntermediateTable(
 
     @Override
     public String getTableName() {
-        return AbstractDataBase._nameFromClass(entityField.ownerModelClass()) + "__" + entityField.name() + INTER_TABLE_POSTFIX;
+        return BasicSQLiteDataBase._nameFromClass(entityField.ownerModelClass()) + "__" + entityField.name() + INTER_TABLE_POSTFIX;
     }
 
     @Override
@@ -40,8 +40,8 @@ record IntermediateTable(
              */
         Class<?> thisTableClass = entityField.ownerModelClass();
         Class<?> otherTableClass = entityField.type().item();
-        String thisTable = AbstractDataBase._tableNameFromClass(thisTableClass);
-        String otherTable = AbstractDataBase._tableNameFromClass(otherTableClass);
+        String thisTable = BasicSQLiteDataBase._tableNameFromClass(thisTableClass);
+        String otherTable = BasicSQLiteDataBase._tableNameFromClass(otherTableClass);
         return "CREATE TABLE " + getTableName() + " (\n" +
                 "    id INTEGER PRIMARY KEY AUTOINCREMENT,\n" +
                 "    " + EntityTable.INTER_LEFT_FK_PREFIX + thisTable + EntityTable.INTER_FK_POSTFIX + " INTEGER NOT NULL,\n" +

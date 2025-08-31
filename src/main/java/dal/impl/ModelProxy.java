@@ -272,7 +272,7 @@ final class ModelProxy<T extends Model<T>> implements InvocationHandler {
         sql.append(" WHERE id = " + _id);
 
         // Now we can execute the query
-        _dataBase._update(sql.toString(), values);
+        _dataBase._db._update(sql.toString(), values);
     }
 
 }

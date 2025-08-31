@@ -20,19 +20,20 @@ import static dal.impl.EntityTable.INTER_TABLE_POSTFIX;
  *  This class constitutes both a representation of a database
  *  and define an API which is in essence an interface based ORM.
  */
-public final class SQLiteDataBase extends AbstractDataBase implements DataBase
+public final class SQLiteDataBase implements DataBase
 {
     private final static Logger log = org.slf4j.LoggerFactory.getLogger(SQLiteDataBase.class);
 
+    final BasicSQLiteDataBase _db;
     private final EntityRegistry _entityRegistry = new EntityRegistry();
 
     public SQLiteDataBase(String location, DataBaseProcessor processor) {
-        super(location, "", "", processor);
+        _db = new BasicSQLiteDataBase(location, "", "", processor);
     }
 
     @Override
     public void execute(String sql) {
-        _execute(sql);
+        _db._execute(sql);
     }
 
 
@@ -45,26 +46,31 @@ public final class SQLiteDataBase extends AbstractDataBase implements DataBase
     }
 
     @Override
+    public List<String> listOfAllTableNames() {
+        return _db.listOfAllTableNames();
+    }
+
+    @Override
     public void dropAllTables() {
         _dropAllTables();
     }
 
     private void _dropTableIfExists(Class<? extends DataBaseEntity> model) {
-        if (doesTableExist(_tableNameFromClass(model)))
+        if (_db.doesTableExist(BasicSQLiteDataBase._tableNameFromClass(model)))
             dropTable(model);
     }
 
     @Override
     public void dropTable(Class<? extends DataBaseEntity> model) {
-        String tableName = _tableNameFromClass(model);
-        _execute("DROP TABLE IF EXISTS " + tableName);
+        String tableName = BasicSQLiteDataBase._tableNameFromClass(model);
+        _db._execute("DROP TABLE IF EXISTS " + tableName);
 
     }
 
     private void _dropAllTables() {
         List<String> tableNames = this.listOfAllTableNames();
         for ( String tableName : tableNames ) {
-            _execute("DROP TABLE IF EXISTS " + tableName);
+            _db._execute("DROP TABLE IF EXISTS " + tableName);
         }
     }
 
@@ -74,7 +80,7 @@ public final class SQLiteDataBase extends AbstractDataBase implements DataBase
     ) {
         _entityRegistry.addTables(Arrays.asList(models));
         for ( String statement : getCreateTableStatements() ) {
-            _execute(statement);
+            _db._execute(statement);
         }
     }
 
@@ -112,7 +118,7 @@ public final class SQLiteDataBase extends AbstractDataBase implements DataBase
                 // We check for equality
                 if ( !tableSQL.equals(statement) ) {
                     throw new IllegalStateException(
-                            "The database at '" + getURL() + "' is not compatible with the provided source code model" +
+                            "The database at '" + _db.getURL() + "' is not compatible with the provided source code model" +
                             modelTable.entityType().map(m -> " '" + m.getName() + "'" ).orElse("") + "! \n" +
                             "The sql code of table '" + collision + "' encountered inside the database, \n" +
                             "does not match the table statement generated from " +
@@ -139,9 +145,9 @@ public final class SQLiteDataBase extends AbstractDataBase implements DataBase
         // We query the database for the sql code of the table
         var sql = new StringBuilder();
         sql.append("SELECT sql FROM sqlite_master WHERE type='table' AND name='");
-        sql.append(_tableNameFromClass(model));
+        sql.append(BasicSQLiteDataBase._tableNameFromClass(model));
         sql.append("'");
-        Map<String, List<Object>> result = _query(sql.toString());
+        Map<String, List<Object>> result = _db._query(sql.toString());
         if ( result.isEmpty() )
             throw new IllegalArgumentException("The model '" + model.getName() + "' does not have a table in the database!");
         if ( result.size() > 1 )
@@ -155,7 +161,7 @@ public final class SQLiteDataBase extends AbstractDataBase implements DataBase
         sql.append("SELECT sql FROM sqlite_master WHERE type='table' AND name='");
         sql.append(tableName);
         sql.append("'");
-        Map<String, List<Object>> result = _query(sql.toString());
+        Map<String, List<Object>> result = _db._query(sql.toString());
         if ( result.isEmpty() )
             throw new IllegalArgumentException("The table '" + tableName + "' does not exist in the database!");
         if ( result.size() > 1 )
@@ -169,7 +175,7 @@ public final class SQLiteDataBase extends AbstractDataBase implements DataBase
             throw new IllegalArgumentException("The provided class is not a model!");
 
         // Now let's verify that the table exists
-        if ( !doesTableExist(_tableNameFromClass(model)) )
+        if ( !_db.doesTableExist(BasicSQLiteDataBase._tableNameFromClass(model)) )
             throw new IllegalArgumentException("The table for the model '" + model.getName() + "' does not exist!");
 
         return _entityRegistry.getTable(model)
@@ -201,7 +207,7 @@ public final class SQLiteDataBase extends AbstractDataBase implements DataBase
         var modelTable = _getTableFor(model);
 
         // Let's first see if the registry already contains a proxy
-        var proxy = _entityRegistry.findModelProxy(_tableNameFromClass(model), id).orElse(null);
+        var proxy = _entityRegistry.findModelProxy(BasicSQLiteDataBase._tableNameFromClass(model), id).orElse(null);
         if ( proxy == null ) {
             proxy = new ModelProxy<>(this, modelTable, id, true);
             _entityRegistry.addModelProxy(proxy);
@@ -216,9 +222,9 @@ public final class SQLiteDataBase extends AbstractDataBase implements DataBase
     @Override
     public <M extends Model<M>> List<M> selectAll(Class<M> models) {
         // First we need to query the database for all the ids of the models
-        String tableName = _tableNameFromClass(models);
+        String tableName = BasicSQLiteDataBase._tableNameFromClass(models);
         String sql = "SELECT id FROM " + tableName;
-        Map<String, List<Object>> result = _query(sql);
+        Map<String, List<Object>> result = _db._query(sql);
         if ( result.isEmpty() )
             throw new IllegalArgumentException("The model '" + models.getName() + "' does not have a table in the database!");
         if ( result.size() > 1 )
@@ -259,7 +265,7 @@ public final class SQLiteDataBase extends AbstractDataBase implements DataBase
             throw new IllegalArgumentException("The provided class is not a database entity!");
 
         // Now let's verify that the table exists
-        if ( !doesTableExist(_tableNameFromClass(model)) )
+        if ( !_db.doesTableExist(BasicSQLiteDataBase._tableNameFromClass(model)) )
             throw new IllegalArgumentException("The table for the model '" + model.getName() + "' does not exist!");
 
         Tuple<EntityTableField> fields  = modelTable.getFields();
@@ -293,12 +299,12 @@ public final class SQLiteDataBase extends AbstractDataBase implements DataBase
                     "This is most likely a bug in the TopSoil ORM!"
                 );
 
-        String tableName = _tableNameFromClass(model);
+        String tableName = BasicSQLiteDataBase._tableNameFromClass(model);
         String sql =
                 "INSERT INTO " + tableName +
                 " (" + String.join(", ", fieldNames) + ") " +
                 "VALUES (" + IntStream.range(0, fieldNames.size()).mapToObj(i -> " ? ").collect(Collectors.joining(",")) + ")";
-        boolean success = _update(sql, defaultValues.toList());
+        boolean success = _db._update(sql, defaultValues.toList());
         if ( !success )
             throw new IllegalArgumentException(
                     "Failed to create create a database entry for model '" + model.getName() + "' " +
@@ -316,7 +322,7 @@ public final class SQLiteDataBase extends AbstractDataBase implements DataBase
 
         // Now let's get the id of the model
         sql = "SELECT last_insert_rowid()";
-        Map<String, List<Object>> result = _query(sql);
+        Map<String, List<Object>> result = _db._query(sql);
         if ( result.isEmpty() )
             throw new IllegalArgumentException("The model '" + model.getName() + "' does not have a table in the database!");
         if ( result.size() > 1 )
@@ -338,7 +344,7 @@ public final class SQLiteDataBase extends AbstractDataBase implements DataBase
                         .orElseThrow();
 
         long id = modelToBeRemoved.id().get();
-        String tableName = _tableNameFromClass(modelInterfaceClass);
+        String tableName = BasicSQLiteDataBase._tableNameFromClass(modelInterfaceClass);
         // First we clean up usages of the model
         // Now we need to find all the intermediate tables that reference this model
         Tuple<IntermediateTable> intermediateTables = _entityRegistry.getIntermediateTableInvolving((Class<? extends Model<?>>) modelInterfaceClass);
@@ -346,12 +352,12 @@ public final class SQLiteDataBase extends AbstractDataBase implements DataBase
             String intermTableName = intermTable.getTableName();
             Class<?> left = intermTable.getReferencedModels().get(0);
             Class<?> right = intermTable.getReferencedModels().get(1);
-            String leftName = EntityTable.INTER_LEFT_FK_PREFIX + _tableNameFromClass(left) + EntityTable.INTER_FK_POSTFIX;
-            String rightName = EntityTable.INTER_RIGHT_FK_PREFIX + _tableNameFromClass(right) + EntityTable.INTER_FK_POSTFIX;
+            String leftName = EntityTable.INTER_LEFT_FK_PREFIX + BasicSQLiteDataBase._tableNameFromClass(left) + EntityTable.INTER_FK_POSTFIX;
+            String rightName = EntityTable.INTER_RIGHT_FK_PREFIX + BasicSQLiteDataBase._tableNameFromClass(right) + EntityTable.INTER_FK_POSTFIX;
             // We need to find all entries where 'fk_..._id' is this 'id'
             // Then we need to find all the referencing (containing "self") models and simply
             // call the right property using reflection and tell it to remove the model...
-            var result = _query(
+            var result = _db._query(
                         "SELECT " + leftName + " " +
                                 "FROM " + intermTableName + " " +
                                 "WHERE " + rightName + " = ?",
@@ -362,7 +368,7 @@ public final class SQLiteDataBase extends AbstractDataBase implements DataBase
             List<Long> refIds = result.get(leftName).stream().map( o -> (Long) o ).distinct().toList();
             refIds.forEach( refId -> {
                 var refModel = select((Class<Model>) left, refId);
-                String prefix = _nameFromClass(left) + "__";
+                String prefix = BasicSQLiteDataBase._nameFromClass(left) + "__";
                 String methodName = intermTableName.substring(0, intermTableName.length() - INTER_TABLE_POSTFIX.length());
                 methodName = methodName.substring(prefix.length());
                 Vars<Object> listOfModels = null;
@@ -384,13 +390,13 @@ public final class SQLiteDataBase extends AbstractDataBase implements DataBase
             _entityRegistry.removeModelProxy(tableName, id);
         });
         String sql = "DELETE FROM " + tableName + " WHERE id = ?";
-        boolean success = _update(sql, Collections.singletonList(id));
+        boolean success = _db._update(sql, Collections.singletonList(id));
     }
 
     @Override
     public <M extends Model<M>> Where<M> select(Class<M> model) {
         StringBuilder sql = new StringBuilder();
-        sql.append("SELECT * FROM ").append(_tableNameFromClass(model)).append(" WHERE ");
+        sql.append("SELECT * FROM ").append(BasicSQLiteDataBase._tableNameFromClass(model)).append(" WHERE ");
         EntityTable table = _getTableFor(model);
         List<Object> values = new ArrayList<>();
         Junction[] junc = {null};
@@ -584,7 +590,7 @@ public final class SQLiteDataBase extends AbstractDataBase implements DataBase
                 if ( sqlString.endsWith(" WHERE ") )
                     sqlString = sqlString.substring(0, sqlString.length()-7);
 
-                Map<String, List<Object>> result = _query(sqlString, values);
+                Map<String, List<Object>> result = _db._query(sqlString, values);
                 List<Long> ids = result.getOrDefault(EntityTable.ID, Collections.emptyList())
                                             .stream()
                                             .map( o -> (long) o )
@@ -621,6 +627,11 @@ public final class SQLiteDataBase extends AbstractDataBase implements DataBase
         };
     }
 
+    @Override
+    public void close() {
+        _db.close();
+    }
+
     private <T, M extends Model<M>> EntityTableField _selectTableField(
         Function<M, Val<T>> selector,
         Class<M> model
@@ -637,7 +648,7 @@ public final class SQLiteDataBase extends AbstractDataBase implements DataBase
     }
 
     public Map<String, List<String>> query(String sql) {
-        Map<String, List<Object>> result = _query(sql, Collections.emptyList());
+        Map<String, List<Object>> result = _db._query(sql, Collections.emptyList());
         return result.entrySet().stream()
                 .collect(Collectors.toMap(
                         Map.Entry::getKey,
@@ -692,7 +703,7 @@ public final class SQLiteDataBase extends AbstractDataBase implements DataBase
         if ( existingId >= 0 ) {
             String sql = "SELECT "+ValueTable.USAGE_FIELD_COUNTER+" FROM " + valueTable.getTableName() +
                          " WHERE "+ModelTable.ID+" = ?";
-            Map<String, List<Object>> result = _query(sql, Collections.singletonList(existingId));
+            Map<String, List<Object>> result = _db._query(sql, Collections.singletonList(existingId));
             if ( result.isEmpty() )
                 return -1; // Not found
             if ( result.values().stream().anyMatch( v -> v.size() != 1 ) )
@@ -711,7 +722,7 @@ public final class SQLiteDataBase extends AbstractDataBase implements DataBase
 
     private void _delete(String tableName, List<Long> ids) {
         String sql = "DELETE * FROM " + tableName + " WHERE "+ModelTable.ID+" = ?";
-        boolean success = _update(sql, Collections.singletonList(ids));
+        boolean success = _db._update(sql, Collections.singletonList(ids));
         if (!success ) {
             throw new RuntimeException("Could not delete from " + tableName);
         }
@@ -723,7 +734,7 @@ public final class SQLiteDataBase extends AbstractDataBase implements DataBase
         int hashCode
     ) {
         String sql = "SELECT * FROM " + valueTable.getTableName() + " WHERE "+ValueTable.HASH_FIELD_NAME+" = ?";
-        Map<String, List<Object>> result = _query(sql, Collections.singletonList(hashCode));
+        Map<String, List<Object>> result = _db._query(sql, Collections.singletonList(hashCode));
         if ( result.isEmpty() || result.values().stream().allMatch(List::isEmpty) )
             return -1; // Not found
         if ( result.values().stream().anyMatch( v -> v.size() != 1 ) )
@@ -762,7 +773,7 @@ public final class SQLiteDataBase extends AbstractDataBase implements DataBase
                 Object fieldValue = method.invoke(value);
                 if (fieldValue == null) {
                     values.add(null);
-                } else if (_isBasicDataType(fieldValue.getClass())) {
+                } else if (BasicSQLiteDataBase._isBasicDataType(fieldValue.getClass())) {
                     values.add(fieldValue);
                 } else if (fieldValue instanceof Value) {
                     // If the field value is a Value, we need to store it in the database
@@ -791,7 +802,7 @@ public final class SQLiteDataBase extends AbstractDataBase implements DataBase
     ) {
         String sql = "UPDATE " + valueTable.getTableName() + " SET " + ValueTable.USAGE_FIELD_COUNTER + " = " +
                 ValueTable.USAGE_FIELD_COUNTER + " + ? WHERE " + EntityTable.ID + " = ?";
-        boolean success = _update(sql, List.of(delta, id));
+        boolean success = _db._update(sql, List.of(delta, id));
         if ( !success )
             throw new IllegalArgumentException(
                     "Failed to update the usage counter for value with id '" + id + "' in table '" +

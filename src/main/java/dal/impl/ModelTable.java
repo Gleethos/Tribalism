@@ -133,7 +133,7 @@ record ModelTable(
 
     @Override
     public String getTableName() {
-        return AbstractDataBase._tableNameFromClass(modelInterface);
+        return BasicSQLiteDataBase._tableNameFromClass(modelInterface);
     }
 
     @Override

@@ -35,7 +35,7 @@ record EntityTableField(
         final Class<?> methodReturnType = method.getReturnType(); // The type of the property and return type of the method
         final Type declaredReturnTypeGenericParam = method.getGenericReturnType();
         boolean isTuple = Tuple.class.isAssignableFrom(methodReturnType);
-        boolean isPrimitive = AbstractDataBase._isBasicDataType(methodReturnType);
+        boolean isPrimitive = BasicSQLiteDataBase._isBasicDataType(methodReturnType);
         boolean isValue = Value.class.isAssignableFrom(methodReturnType);
         if ( Value.class.isAssignableFrom(ownerEntityClass) ) {
             if ( !isTuple && !isPrimitive && !isValue ) {
@@ -177,7 +177,7 @@ record EntityTableField(
                 if (otherEntities.contains((Class<? extends Value>) propertyParams.type())) {
                     kind = FieldKind.INTERMEDIATE_TABLE;
                 } else {
-                    if (AbstractDataBase._isBasicDataType(propertyParams.type()))
+                    if (BasicSQLiteDataBase._isBasicDataType(propertyParams.type()))
                         throw new IllegalArgumentException(
                                 "List of basic data types cannot be modelled as table fields."
                         );
@@ -213,7 +213,7 @@ record EntityTableField(
                         "by the database, please make sure that it is passed to the 'createTablesFor(..)' method alongside " +
                         "all other model types!"
                     );
-            } else if (AbstractDataBase._isBasicDataType(propertyParams.type())) {
+            } else if (BasicSQLiteDataBase._isBasicDataType(propertyParams.type())) {
                 kind = FieldKind.PRIMITIVE;
             } else {
                 boolean propertyValueIsModel = Model.class.isAssignableFrom(propertyParams.type());
@@ -242,7 +242,7 @@ record EntityTableField(
             if (otherEntities.contains((Class<? extends Model<?>>) propertyParams.type())) {
                 kind = FieldKind.INTERMEDIATE_TABLE;
             } else {
-                if (AbstractDataBase._isBasicDataType(propertyParams.type()))
+                if (BasicSQLiteDataBase._isBasicDataType(propertyParams.type()))
                     throw new IllegalArgumentException(
                             "List of basic data types cannot be modelled as table fields."
                     );
@@ -385,7 +385,7 @@ record EntityTableField(
     }
 
     public String toTableFieldStatement() {
-        return name() + " " + AbstractDataBase._fromJavaTypeToDBType(type().item());
+        return name() + " " + BasicSQLiteDataBase._fromJavaTypeToDBType(type().item());
     }
 
     public Optional<IntermediateTable> getIntermediateTable() {
@@ -405,7 +405,7 @@ record EntityTableField(
 
         var prop = new ModelProperty(
                         db, id, this.name(),
-                        AbstractDataBase._tableNameFromClass(ownerModelClass),
+                        BasicSQLiteDataBase._tableNameFromClass(ownerModelClass),
                         (FieldType.VarOf) this.type,
                         allowNull,
                         eager
@@ -491,9 +491,9 @@ record EntityTableField(
             String properties = allowNull ? "" : " NOT NULL";
             if (name.equals(EntityTable.ID))
                 properties += " PRIMARY KEY AUTOINCREMENT";
-            return Optional.of(name + " " + AbstractDataBase._fromJavaTypeToDBType(itemType) + properties);
+            return Optional.of(name + " " + BasicSQLiteDataBase._fromJavaTypeToDBType(itemType) + properties);
         } else if ( kind == FieldKind.FOREIGN_KEY) {
-            String otherTable = AbstractDataBase._tableNameFromClass(itemType);
+            String otherTable = BasicSQLiteDataBase._tableNameFromClass(itemType);
             return Optional.of(name + " INTEGER REFERENCES " + otherTable + "("+ EntityTable.ID+")");
         } else if ( kind == FieldKind.INTERMEDIATE_TABLE) {
             return Optional.empty(); // The field is not a column in the table, but a table itself

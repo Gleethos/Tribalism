@@ -65,7 +65,7 @@ final class ModelProperty implements Var<Object>, Viewable<Object>
                         " FROM " + _tableName +
                         " WHERE id = ?";
 
-        Map<String, List<Object>> result = _dataBase._query(select, Collections.singletonList(_id));
+        Map<String, List<Object>> result = _dataBase._db._query(select, Collections.singletonList(_id));
         if (result.isEmpty())
             return null;
         else {
@@ -182,7 +182,7 @@ final class ModelProperty implements Var<Object>, Viewable<Object>
                     }
                 }
             }
-            boolean success = _dataBase._update(update, Arrays.asList(valueToStore, _id));
+            boolean success = _dataBase._db._update(update, Arrays.asList(valueToStore, _id));
             if (!success)
                 throw new IllegalStateException("Failed to update table entry for id " + _id);
         } else if (newItem instanceof Model) {
@@ -211,7 +211,7 @@ final class ModelProperty implements Var<Object>, Viewable<Object>
         update.append(" SET ");
         update.append(_fieldName);
         update.append(" = ? WHERE id = ?");
-        return _dataBase._update(update.toString(), Arrays.asList(newItem, _id));
+        return _dataBase._db._update(update.toString(), Arrays.asList(newItem, _id));
     }
 
     @Override public Var<Object> withId(String id) {

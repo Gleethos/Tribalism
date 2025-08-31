@@ -108,7 +108,7 @@ record ValueTable(
 
     @Override
     public String getTableName() {
-        return AbstractDataBase._tableNameFromClass(valueType);
+        return BasicSQLiteDataBase._tableNameFromClass(valueType);
     }
 
     @Override

@@ -1,7 +1,6 @@
 package dal.impl;
 
 import dal.api.Model;
-import dal.api.Value;
 import org.jspecify.annotations.NullMarked;
 import sprouts.*;
 import sprouts.Observable;
@@ -38,13 +37,13 @@ final class ModelProperties implements Vars<Object>, Viewables<Object>
 
         // We need to find the name of the column that contains the ids of the models
         // that are referenced by the intermediate table:
-        this.otherTable = AbstractDataBase._tableNameFromClass(fieldType.item());
+        this.otherTable = BasicSQLiteDataBase._tableNameFromClass(fieldType.item());
         this.otherTableIdColumn = EntityTable.INTER_RIGHT_FK_PREFIX + otherTable + EntityTable.INTER_FK_POSTFIX;
-        this.thisTableIdColumn = EntityTable.INTER_LEFT_FK_PREFIX + AbstractDataBase._tableNameFromClass(ownerModelClass) + EntityTable.INTER_FK_POSTFIX;
+        this.thisTableIdColumn = EntityTable.INTER_LEFT_FK_PREFIX + BasicSQLiteDataBase._tableNameFromClass(ownerModelClass) + EntityTable.INTER_FK_POSTFIX;
         String query = "SELECT " + otherTableIdColumn + " FROM " + intermediateTable.getTableName() + " WHERE " + thisTableIdColumn + " = ?";
 
         List<Object> param = Collections.singletonList(id);
-        Map<String, List<Object>> result = db._query(query, param);
+        Map<String, List<Object>> result = db._db._query(query, param);
 
         if ( result.size() == 0 )
             result.put(otherTableIdColumn, new ArrayList<>());
@@ -155,7 +154,7 @@ final class ModelProperties implements Vars<Object>, Viewables<Object>
         String query = "DELETE FROM " + intermediateTable.getTableName() + " " +
                 "WHERE " + thisTableIdColumn + " = ? AND " + otherTableIdColumn + " = ?";
         List<Object> params = List.of(leftId, rightId);
-        db._update(query, params);
+        db._db._update(query, params);
         ids.remove(index);
     }
 
@@ -180,7 +179,7 @@ final class ModelProperties implements Vars<Object>, Viewables<Object>
                 "(" + thisTableIdColumn + ", " + otherTableIdColumn + ") " +
                 "VALUES (?, ?)";
         List<Object> params = List.of(leftId, rightId);
-        db._update(query, params);
+        db._db._update(query, params);
         ids.add(index, rightId);
         return this;
     }
@@ -207,7 +206,7 @@ final class ModelProperties implements Vars<Object>, Viewables<Object>
                 " = ? WHERE id = ?";
 
         List<Object> params = List.of(rightId, oldRightId);
-        db._update(update, params);
+        db._db._update(update, params);
         ids.set(index, rightId);
         return this;
     }
@@ -304,7 +303,7 @@ final class ModelProperties implements Vars<Object>, Viewables<Object>
         */
         String query = "DELETE FROM " + intermediateTable.getTableName() + " WHERE " + thisTableIdColumn + " = ?";
         List<Object> params = List.of(id);
-        db._update(query, params);
+        db._db._update(query, params);
         ids.clear();
         return this;
     }
