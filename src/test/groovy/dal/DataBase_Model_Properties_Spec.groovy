@@ -3,6 +3,7 @@ package dal
 import dal.api.DataBase
 import dal.models.Ingredient
 import dal.models.Region
+import dal.models.Train
 import groovy.transform.CompileDynamic
 import spock.lang.Narrative
 import spock.lang.Specification
@@ -198,6 +199,58 @@ class DataBase_Model_Properties_Spec extends Specification
 
         expect : 'The default value of the warmest month should be JANUARY.'
             region.warmestMonth().get() == Month.JANUARY
+    }
+
+    def 'You can set and get the items of the properties of a model.'() {
+        reportInfo """
+        A general base requirement for using the Topsoil ORM is the ability to set and get
+        the items of the properties of a model. And after modification, the changes should
+        be persisted to the database.
+        This feature specification demonstrates that this is indeed possible.
+
+        For this test case we are going to use the `Train` model:
+        ```java
+            public interface Train extends dal.api.Model<Train>
+            {
+                interface Name extends sprouts.Var<String> {}
+                interface Waggons extends sprouts.Var<Integer> {}
+                interface Speed extends sprouts.Var<Float> {}
+                interface IsElectric extends sprouts.Var<Boolean> {}
+                Name name();
+                Waggons waggons();
+                Speed speed();
+                IsElectric isElectric();
+            }
+        ```
+        """
+        given :
+            def db = DataBase.at(TEST_DB_FILE)
+            db.dropAllTables()
+            db.createTablesFor(Train)
+        and : 'A property based on a string.'
+            Train train = db.create(Train)
+            train.name().set("Express")
+            train.waggons().set(11)
+            train.speed().set(25f)
+            train.isElectric().set(false)
+        expect : 'The properties should have the correct values.'
+            train.name().get() == "Express"
+            train.waggons().get() == 11
+            train.waggons().get().getClass() == Integer.class
+            train.speed().get() == 25f
+            train.speed().get().getClass() == Float.class
+            train.isElectric().get() == false
+
+        when : 'We null the reference and recreate it from the database.'
+            train = null
+            train = db.selectAll(Train).first()
+        then : 'The properties should have the correct values.'
+            train.name().get() == "Express"
+            train.waggons().get() == 11
+            train.waggons().get().getClass() == Integer.class
+            train.speed().get() == 25f
+            train.speed().get().getClass() == Float.class
+            train.isElectric().get() == false
     }
 
 }
