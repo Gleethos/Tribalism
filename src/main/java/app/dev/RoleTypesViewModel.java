@@ -115,7 +115,7 @@ public class RoleTypesViewModel
                             .addAll(skillViewModels, svm -> UI.of(svm.createView(JComponent.class)))
                         )
                         .add(UI.GROW.and(UI.WRAP).and(UI.SPAN), UI.separator())
-                        .getComponent()
+                        .get(JPanel.class)
                     );
         }
     }
@@ -158,7 +158,7 @@ public class RoleTypesViewModel
                     .add(UI.SHRINK, UI.label("Description:"))
                     .add(UI.GROW.and(UI.WRAP).and(UI.SPAN), UI.textField(type.description()))
                     .add(UI.GROW.and(UI.WRAP).and(UI.SPAN), UI.separator())
-                    .getComponent();
+                    .get(JPanel.class);
 
             return viewType.cast(view);
         }
