@@ -200,6 +200,14 @@ final class ModelProperty implements Var<Object>, Viewable<Object>
                 throw new IllegalStateException("Failed to update table entry for id " + _id);
         } else if (newItem instanceof Value) {
             Value dataBaseValue = (Value) newItem;
+            // Before assigning the new value, decrement the old value reference so that
+            // the usage counter on the value table stays correct and orphaned rows
+            // are cleaned up. Reading the old value from the database reflects the
+            // currently-stored FK; it is null only if the property has not been set yet.
+            Object oldValue = orElseNull();
+            if (oldValue instanceof Value oldVal) {
+                _dataBase._removeValueAndDecrementCounter(oldVal);
+            }
             long id = _dataBase._storeValueAndIncreaseCounter(dataBaseValue);
             boolean success = _updateField(id);
             if ( !success )

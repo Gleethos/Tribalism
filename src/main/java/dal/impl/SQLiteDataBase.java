@@ -349,7 +349,11 @@ public final class SQLiteDataBase implements DataBase
 
         long id = modelToBeRemoved.id().get();
         String tableName = BasicSQLiteDataBase._tableNameFromClass(modelInterfaceClass);
-        // First we clean up usages of the model
+        // First we release every value reference held by this model so that the
+        // value tables' usage counters stay correct (and orphaned value rows are
+        // deleted). Without this step, deleting a model that holds value records
+        // would leak rows in the value tables and their nested intermediate tables.
+        _releaseValueReferencesOf((Class<? extends Model<?>>) modelInterfaceClass, tableName, id);
         // Now we need to find all the intermediate tables that reference this model
         Tuple<IntermediateTable> intermediateTables = _entityRegistry.getIntermediateTableInvolving((Class<? extends Model<?>>) modelInterfaceClass);
         intermediateTables.forEach( intermTable -> {
@@ -733,7 +737,8 @@ public final class SQLiteDataBase implements DataBase
                 throw new IllegalStateException();
             var usages = ((Number) result.get(ValueTable.USAGE_FIELD_COUNTER).get(0)).intValue();
             if ( usages == 1 ) {
-                // Delete
+                // Last reference: recursively decrement nested values, then delete this row.
+                _decrementNestedValuesOf(databaseValue, valueTable, existingId);
                 _delete(valueTable.getTableName(), Collections.singletonList(existingId));
             } else {
                 // Reduce usage counter
@@ -741,6 +746,93 @@ public final class SQLiteDataBase implements DataBase
             }
         }
         return existingId;
+    }
+
+    /**
+     *  When a value row is about to be deleted (its usage counter has reached zero),
+     *  any nested value references it owns must also be released. This walks the
+     *  record components of the value: for {@link Value} components it decrements
+     *  the referenced row, and for {@link Tuple} components it clears the
+     *  intermediate table and decrements every contained value.
+     */
+    private void _decrementNestedValuesOf(Value value, ValueTable valueTable, long valueId) {
+        String tableName = valueTable.getTableName();
+        for (EntityTableField field : valueTable.getFields()) {
+            String fieldName = field.name();
+            if (fieldName.equals(EntityTable.ID) ||
+                fieldName.equals(ValueTable.HASH_FIELD_NAME) ||
+                fieldName.equals(ValueTable.USAGE_FIELD_COUNTER))
+                continue;
+            FieldType ft = field.type();
+            try {
+                Method method = value.getClass().getMethod(field.baseName());
+                Object nested = method.invoke(value);
+                if (ft instanceof FieldType.Tuple) {
+                    if (nested instanceof Tuple<?> t) {
+                        for (Object item : t) {
+                            if (item != null) _removeValueAndDecrementCounter((Value) item);
+                        }
+                    }
+                    _clearIntermediateTable(tableName, field.baseName(), valueId);
+                } else if (ft instanceof FieldType.Value) {
+                    if (nested instanceof Value v) _removeValueAndDecrementCounter(v);
+                }
+            } catch (NoSuchMethodException | IllegalAccessException | InvocationTargetException e) {
+                throw new RuntimeException(
+                        "Failed to read component '" + field.baseName() + "' of value " + value, e
+                );
+            }
+        }
+    }
+
+    /**
+     *  Walks the fields of the given model and releases every value reference it
+     *  holds: each {@code Var<Value>} field decrements the linked value row, and
+     *  each {@code Var<Tuple<Value>>} or {@code Vars<Value>} field clears its
+     *  intermediate table while decrementing every contained value.
+     *  This is the symmetric counterpart of the value-storing logic invoked
+     *  during {@code set(...)}.
+     */
+    private void _releaseValueReferencesOf(Class<? extends Model<?>> modelClass, String tableName, long modelId) {
+        ModelTable modelTable = _getTableFor(modelClass);
+        for (EntityTableField field : modelTable.getFields()) {
+            FieldType ft = field.type();
+            if (ft instanceof FieldType.VarOf.Value valueFt) {
+                long fkId = _readFkIdFromColumn(tableName, field.name(), modelId);
+                if (fkId > 0) {
+                    Value v = _readValue(valueFt.item(), fkId);
+                    if (v != null) _removeValueAndDecrementCounter(v);
+                }
+            } else if (ft instanceof FieldType.VarOf.Tuple tupleFt) {
+                Class<? extends Value> itemType = tupleFt.item();
+                Tuple<?> tuple = _readTupleFromIntermediateTable(tableName, field.baseName(), modelId, itemType);
+                for (Object item : tuple) {
+                    if (item != null) _removeValueAndDecrementCounter((Value) item);
+                }
+                _clearIntermediateTable(tableName, field.baseName(), modelId);
+            } else if (ft instanceof FieldType.VarsOf.Value valuesFt) {
+                Class<? extends Value> itemType = valuesFt.item();
+                Tuple<?> values = _readTupleFromIntermediateTable(tableName, field.baseName(), modelId, itemType);
+                for (Object item : values) {
+                    if (item != null) _removeValueAndDecrementCounter((Value) item);
+                }
+                _clearIntermediateTable(tableName, field.baseName(), modelId);
+            }
+        }
+    }
+
+    /**
+     *  Reads the foreign-key id stored in {@code columnName} for the row {@code modelId}
+     *  on table {@code tableName}. Returns 0 when the column is null or absent.
+     */
+    private long _readFkIdFromColumn(String tableName, String columnName, long modelId) {
+        String sql = "SELECT " + columnName + " FROM " + tableName + " WHERE id = ?";
+        Map<String, List<Object>> result = _db._query(sql, Collections.singletonList(modelId));
+        List<Object> col = result.get(columnName);
+        if (col == null || col.isEmpty()) return 0L;
+        Object o = col.get(0);
+        if (o == null) return 0L;
+        return ((Number) o).longValue();
     }
 
     private void _delete(String tableName, List<Long> ids) {

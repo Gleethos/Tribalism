@@ -523,4 +523,370 @@ class DataBase_Values_Spec extends Specification
             reloaded.students().get().get(0).name() == sharedName
     }
 
+
+    def 'Replacing a unique value on a model field deletes the old value row from the value table.'()
+    {
+        reportInfo """
+            Structural sharing means we cannot just blindly delete the old value
+            when overwriting a property. We have to decrement its usage counter
+            first; only when no one else is referencing the old value can the
+            row safely be removed.
+
+            This test pins the simplest case: the old value was unique to this
+            field (usage = 1). After overwriting it, the row is gone — we have
+            no leak — and the nested `FullName` row is gone too, because
+            cleanup recurses through value components.
+        """
+        given : 'A school whose director is a unique person.'
+            def db = DataBase.at(TEST_DB_FILE)
+            db.dropAllTables()
+            db.createTablesFor(School, ClassRoom, FullName, Person)
+            var asSqlDb = db as SQLiteDataBase
+            var school = db.create(School)
+            school.director().set(new Person(new FullName("Solo", "Director"), 50))
+        expect : 'There is exactly one Person and one FullName row.'
+            asSqlDb.query("SELECT id FROM dal_values_Person_table").get("id").size() == 1
+            asSqlDb.query("SELECT id FROM dal_values_FullName_table").get("id").size() == 1
+
+        when : 'We assign a different director, with no shared inner FullName.'
+            school.director().set(new Person(new FullName("New", "Director"), 41))
+        then : 'The old Person row is gone, replaced by exactly one new row.'
+            asSqlDb.query("SELECT firstName FROM dal_values_FullName_table").get("firstName") == ["New"]
+            asSqlDb.query("SELECT id FROM dal_values_Person_table").get("id").size() == 1
+        and : 'The old FullName row is gone too — recursive cleanup released it.'
+            asSqlDb.query("SELECT id FROM dal_values_FullName_table").get("id").size() == 1
+    }
+
+
+    def 'Replacing a value field decrements the old usage but keeps the row alive when others still reference it.'()
+    {
+        reportInfo """
+            When the old value is shared with someone else, the cleanup logic
+            must *not* delete the row. It must only decrement the counter, so
+            the remaining reference still resolves correctly.
+        """
+        given : 'Two schools whose director is the same person.'
+            def db = DataBase.at(TEST_DB_FILE)
+            db.dropAllTables()
+            db.createTablesFor(School, ClassRoom, FullName, Person)
+            var asSqlDb = db as SQLiteDataBase
+            var shared = new Person(new FullName("Shared", "Boss"), 60)
+            var schoolA = db.create(School)
+            var schoolB = db.create(School)
+            schoolA.director().set(shared)
+            schoolB.director().set(shared)
+        expect : 'The shared person has usage 2.'
+            asSqlDb.query("SELECT usages FROM dal_values_Person_table").get("usages") == ["2"]
+
+        when : 'School A swaps to a different director.'
+            schoolA.director().set(new Person(new FullName("Local", "Boss"), 30))
+        then : 'The shared row is still there, with usage 1 — held only by school B.'
+            asSqlDb.query("SELECT usages FROM dal_values_Person_table " +
+                          "WHERE id = (SELECT fk_director_id FROM dal_values_School_table WHERE id = " + schoolB.id().get() + ")")
+                  .get("usages") == ["1"]
+        and : 'School B can still read its director correctly.'
+            schoolB.director().get() == shared
+    }
+
+
+    def 'Deleting a model with a unique value field removes the value row and all of its nested rows.'()
+    {
+        reportInfo """
+            Deleting a model isn't just a `DELETE FROM models WHERE id = ?` —
+            it must release every value reference held by the model, otherwise
+            the value tables grow forever.
+
+            Here we verify the strongest case: a school that owns its director
+            uniquely. Once the school is deleted, the Person row *and* its
+            nested FullName row must be gone.
+        """
+        given : 'A database with one school holding a unique director.'
+            def db = DataBase.at(TEST_DB_FILE)
+            db.dropAllTables()
+            db.createTablesFor(School, ClassRoom, FullName, Person)
+            var asSqlDb = db as SQLiteDataBase
+            var school = db.create(School)
+            school.director().set(new Person(new FullName("Bye", "Bye"), 99))
+        expect : 'Both rows exist before the deletion.'
+            asSqlDb.query("SELECT id FROM dal_values_Person_table").get("id").size() == 1
+            asSqlDb.query("SELECT id FROM dal_values_FullName_table").get("id").size() == 1
+
+        when : 'We delete the school.'
+            db.delete(school)
+        then : 'Both the Person row and the FullName row are cleaned up.'
+            (asSqlDb.query("SELECT id FROM dal_values_Person_table").get("id") ?: []).size() == 0
+            (asSqlDb.query("SELECT id FROM dal_values_FullName_table").get("id") ?: []).size() == 0
+        and : 'And of course the School row is gone, too.'
+            (asSqlDb.query("SELECT id FROM dal_values_School_table").get("id") ?: []).size() == 0
+    }
+
+
+    def 'Deleting one of two schools that share a value keeps the value alive for the survivor.'()
+    {
+        reportInfo """
+            The dual of the previous test: when two schools share a director,
+            deleting one of them must not nuke the shared director row. We
+            decrement the usage counter and leave the row in place, ready to
+            serve the still-living reference.
+        """
+        given : 'Two schools that share their director.'
+            def db = DataBase.at(TEST_DB_FILE)
+            db.dropAllTables()
+            db.createTablesFor(School, ClassRoom, FullName, Person)
+            var asSqlDb = db as SQLiteDataBase
+            var shared = new Person(new FullName("Twin", "Director"), 55)
+            var schoolA = db.create(School)
+            var schoolB = db.create(School)
+            schoolA.director().set(shared)
+            schoolB.director().set(shared)
+        expect : 'Initially the shared person has usage 2.'
+            asSqlDb.query("SELECT usages FROM dal_values_Person_table").get("usages") == ["2"]
+
+        when : 'We delete school A.'
+            db.delete(schoolA)
+        then : 'The Person and FullName rows are still there, with usage 1.'
+            asSqlDb.query("SELECT usages FROM dal_values_Person_table").get("usages") == ["1"]
+            asSqlDb.query("SELECT id FROM dal_values_FullName_table").get("id").size() == 1
+        and : 'School B can still resolve its director.'
+            schoolB.director().get() == shared
+
+        when : 'We delete school B as well.'
+            db.delete(schoolB)
+        then : 'Now the Person and FullName rows are finally gone.'
+            (asSqlDb.query("SELECT id FROM dal_values_Person_table").get("id") ?: []).size() == 0
+            (asSqlDb.query("SELECT id FROM dal_values_FullName_table").get("id") ?: []).size() == 0
+    }
+
+
+    def 'A value that appears multiple times in the same tuple is reference-counted correctly.'()
+    {
+        reportInfo """
+            A value can appear more than once at the same position-list. The
+            ORM stores it as a single row with one usage increment per
+            occurrence, and on cleanup it must decrement exactly that many
+            times — not once, and not "until the row is gone".
+
+            This is the edge case that exposes off-by-one bugs in reference
+            counting most easily.
+        """
+        given : 'A school whose `students` tuple contains the same person three times.'
+            def db = DataBase.at(TEST_DB_FILE)
+            db.dropAllTables()
+            db.createTablesFor(School, ClassRoom, FullName, Person)
+            var asSqlDb = db as SQLiteDataBase
+            var clone = new Person(new FullName("Clone", "Trooper"), 22)
+            var school = db.create(School)
+            school.students().set(Tuple.of(clone, clone, clone))
+        expect : 'There is one Person row, with usage 3.'
+            asSqlDb.query("SELECT id FROM dal_values_Person_table").get("id").size() == 1
+            asSqlDb.query("SELECT usages FROM dal_values_Person_table").get("usages") == ["3"]
+        and : 'And three rows in the intermediate table, all pointing to the same Person.'
+            asSqlDb.query("SELECT * FROM dal_values_School__students_list_table")
+                  .get("fk_dal_values_Person_table_id").size() == 3
+
+        when : 'We delete the school.'
+            db.delete(school)
+        then : 'The intermediate table is empty for this school.'
+            (asSqlDb.query("SELECT * FROM dal_values_School__students_list_table")
+                   .get("fk_dal_values_Person_table_id") ?: []).size() == 0
+        and : 'The Person row is fully released — three references, three decrements, gone.'
+            (asSqlDb.query("SELECT id FROM dal_values_Person_table").get("id") ?: []).size() == 0
+        and : 'And the nested FullName row is also gone.'
+            (asSqlDb.query("SELECT id FROM dal_values_FullName_table").get("id") ?: []).size() == 0
+    }
+
+
+    def 'A tuple with mixed duplicates and unique items has independent counters per row.'()
+    {
+        reportInfo """
+            Different values within the same tuple are tracked independently.
+            Here we put `Tuple.of(a, a, b)` into a school and verify that `a`
+            ends up with usage 2 while `b` ends up with usage 1.
+
+            This is also the canonical setup for verifying that the cleanup
+            logic doesn't accidentally release everything in one go.
+        """
+        given : 'A school with a mixed tuple.'
+            def db = DataBase.at(TEST_DB_FILE)
+            db.dropAllTables()
+            db.createTablesFor(School, ClassRoom, FullName, Person)
+            var asSqlDb = db as SQLiteDataBase
+            var a = new Person(new FullName("A", "Twin"), 10)
+            var b = new Person(new FullName("B", "Solo"), 11)
+            var school = db.create(School)
+            school.students().set(Tuple.of(a, a, b))
+        expect : 'Two Person rows in the table.'
+            asSqlDb.query("SELECT id FROM dal_values_Person_table").get("id").size() == 2
+        and : 'Their usages match `a → 2` and `b → 1`, regardless of insertion order.'
+            (asSqlDb.query("SELECT usages FROM dal_values_Person_table").get("usages").collect { it as int }.sort()) == [1, 2]
+
+        when : 'We delete the school.'
+            db.delete(school)
+        then : 'Both Person rows and both FullName rows are cleaned up.'
+            (asSqlDb.query("SELECT id FROM dal_values_Person_table").get("id") ?: []).size() == 0
+            (asSqlDb.query("SELECT id FROM dal_values_FullName_table").get("id") ?: []).size() == 0
+        and : 'And the intermediate table is empty.'
+            (asSqlDb.query("SELECT id FROM dal_values_School__students_list_table").get("id") ?: []).size() == 0
+    }
+
+
+    def 'Replacing a tuple decrements old items independently of the new ones.'()
+    {
+        reportInfo """
+            Replacing a `Tuple<Person>` field is, semantically, "release every
+            old item, store every new item". The two operations have to be
+            independent: the old items get their counters decreased (and rows
+            possibly deleted), the new items get their counters increased.
+
+            This test threads the needle by using overlapping content between
+            the old and new tuple — `a` survives, `b` goes away, `c` arrives.
+        """
+        given : 'A school with `Tuple.of(a, b)` as its students.'
+            def db = DataBase.at(TEST_DB_FILE)
+            db.dropAllTables()
+            db.createTablesFor(School, ClassRoom, FullName, Person)
+            var asSqlDb = db as SQLiteDataBase
+            var a = new Person(new FullName("A", "Stays"), 10)
+            var b = new Person(new FullName("B", "Leaves"), 20)
+            var c = new Person(new FullName("C", "Arrives"), 30)
+            var school = db.create(School)
+            school.students().set(Tuple.of(a, b))
+
+        when : 'We replace the tuple with `Tuple.of(a, c)`.'
+            school.students().set(Tuple.of(a, c))
+        then : 'B is gone (its row was unique), but A and C are present.'
+            asSqlDb.query("SELECT firstName FROM dal_values_FullName_table ORDER BY firstName").get("firstName") == ["A", "C"]
+            asSqlDb.query("SELECT id FROM dal_values_Person_table").get("id").size() == 2
+        and : 'Both surviving Person rows have usage 1 — each is now referenced exactly once.'
+            asSqlDb.query("SELECT usages FROM dal_values_Person_table").get("usages") == ["1", "1"]
+        and : 'And the school reads back the new tuple.'
+            school.students().get() == Tuple.of(a, c)
+    }
+
+
+    def 'Deleting a school that holds a deeply nested ClassRoom recursively cleans up every contained value.'()
+    {
+        reportInfo """
+            The killer test for value cleanup. A `ClassRoom` is itself a value
+            that holds a `Person` teacher and a `Tuple<Person>` of students,
+            and each `Person` holds a `FullName`. When the school is deleted,
+            the cascade has to travel all the way down: ClassRoom → Person →
+            FullName, plus every entry in the students intermediate table on
+            the ClassRoom side.
+
+            If the cleanup misses any layer, the corresponding table will be
+            left with orphan rows — easy to detect, easy to forget without a
+            test like this one.
+        """
+        given : 'A school with a single fully-loaded class room.'
+            def db = DataBase.at(TEST_DB_FILE)
+            db.dropAllTables()
+            db.createTablesFor(School, ClassRoom, FullName, Person)
+            var asSqlDb = db as SQLiteDataBase
+            var teacher = new Person(new FullName("The", "Teacher"), 40)
+            var s1 = new Person(new FullName("First", "Pupil"), 12)
+            var s2 = new Person(new FullName("Second", "Pupil"), 13)
+            var school = db.create(School)
+            school.classRoom1().set(new ClassRoom("Topology", 11, teacher, Tuple.of(s1, s2)))
+        expect : 'Everything is in place: 1 ClassRoom, 3 Persons, 3 FullNames.'
+            asSqlDb.query("SELECT id FROM dal_values_ClassRoom_table").get("id").size() == 1
+            asSqlDb.query("SELECT id FROM dal_values_Person_table").get("id").size() == 3
+            asSqlDb.query("SELECT id FROM dal_values_FullName_table").get("id").size() == 3
+
+        when : 'We delete the school.'
+            db.delete(school)
+        then : 'Every value table is empty afterwards — no orphans anywhere.'
+            (asSqlDb.query("SELECT id FROM dal_values_ClassRoom_table").get("id") ?: []).size() == 0
+            (asSqlDb.query("SELECT id FROM dal_values_Person_table").get("id") ?: []).size() == 0
+            (asSqlDb.query("SELECT id FROM dal_values_FullName_table").get("id") ?: []).size() == 0
+        and : 'And the intermediate tables involved (ClassRoom students, School students) are empty too.'
+            (asSqlDb.query("SELECT id FROM dal_values_School__students_list_table").get("id") ?: []).size() == 0
+            (asSqlDb.query("SELECT id FROM dal_values_ClassRoom__students_list_table").get("id") ?: []).size() == 0
+    }
+
+
+    def 'When the same ClassRoom is shared across schools, deleting one school keeps it alive for the other.'()
+    {
+        reportInfo """
+            Even composite values like `ClassRoom` are deduplicated and shared.
+            If two schools assign the *same* class room to their `classRoom1`
+            field, the underlying row is held jointly. Deleting one school
+            must therefore not delete the class room — only its inner
+            usage counter should drop.
+
+            We then delete the second school and watch the entire cascade
+            finally tear everything down.
+        """
+        given : 'Two schools that share their first class room.'
+            def db = DataBase.at(TEST_DB_FILE)
+            db.dropAllTables()
+            db.createTablesFor(School, ClassRoom, FullName, Person)
+            var asSqlDb = db as SQLiteDataBase
+            var teacher = new Person(new FullName("Common", "Teacher"), 50)
+            var pupil   = new Person(new FullName("Common", "Pupil"), 14)
+            var room    = new ClassRoom("Shared", 9, teacher, Tuple.of(pupil))
+            var schoolA = db.create(School)
+            var schoolB = db.create(School)
+            schoolA.classRoom1().set(room)
+            schoolB.classRoom1().set(room)
+        expect : 'A single ClassRoom row exists, with usage 2.'
+            asSqlDb.query("SELECT usages FROM dal_values_ClassRoom_table").get("usages") == ["2"]
+        and : 'A single teacher and pupil — each used once by the ClassRoom.'
+            asSqlDb.query("SELECT id FROM dal_values_Person_table").get("id").size() == 2
+            asSqlDb.query("SELECT usages FROM dal_values_Person_table").get("usages") == ["1", "1"]
+
+        when : 'We delete only school A.'
+            db.delete(schoolA)
+        then : 'The ClassRoom row survives, with usage 1.'
+            asSqlDb.query("SELECT usages FROM dal_values_ClassRoom_table").get("usages") == ["1"]
+        and : 'School B still resolves it.'
+            schoolB.classRoom1().get() == room
+
+        when : 'We delete school B too.'
+            db.delete(schoolB)
+        then : 'The cascade reaches all the way down: every value row is gone.'
+            (asSqlDb.query("SELECT id FROM dal_values_ClassRoom_table").get("id") ?: []).size() == 0
+            (asSqlDb.query("SELECT id FROM dal_values_Person_table").get("id") ?: []).size() == 0
+            (asSqlDb.query("SELECT id FROM dal_values_FullName_table").get("id") ?: []).size() == 0
+    }
+
+
+    def 'Many create-and-delete cycles do not leak a single value row.'()
+    {
+        reportInfo """
+            The strongest possible smoke test against memory leaks: in a tight
+            loop, create a school, populate it with a fresh value tree, and
+            then delete it. After enough iterations a leak would have made
+            the value tables grow unboundedly.
+
+            We assert at the end that *every* value table is empty — there is
+            no row left behind by any cycle.
+        """
+        given : 'A fresh database.'
+            def db = DataBase.at(TEST_DB_FILE)
+            db.dropAllTables()
+            db.createTablesFor(School, ClassRoom, FullName, Person)
+            var asSqlDb = db as SQLiteDataBase
+
+        when : 'We run 25 create-populate-delete cycles, each with unique values.'
+            (1..25).each { i ->
+                var t = new Person(new FullName("T${i}", "T"), 30 + i)
+                var s = new Person(new FullName("S${i}", "S"), 10 + i)
+                var school = db.create(School)
+                school.director().set(t)
+                school.students().set(Tuple.of(s, s))
+                school.classRoom1().set(new ClassRoom("Room${i}", i, t, Tuple.of(s)))
+                db.delete(school)
+            }
+        then : 'No School row remains.'
+            (asSqlDb.query("SELECT id FROM dal_values_School_table").get("id") ?: []).size() == 0
+        and : 'And no value-table row remains, anywhere.'
+            (asSqlDb.query("SELECT id FROM dal_values_ClassRoom_table").get("id") ?: []).size() == 0
+            (asSqlDb.query("SELECT id FROM dal_values_Person_table").get("id") ?: []).size() == 0
+            (asSqlDb.query("SELECT id FROM dal_values_FullName_table").get("id") ?: []).size() == 0
+        and : 'And no intermediate-table row either.'
+            (asSqlDb.query("SELECT id FROM dal_values_School__students_list_table").get("id") ?: []).size() == 0
+            (asSqlDb.query("SELECT id FROM dal_values_ClassRoom__students_list_table").get("id") ?: []).size() == 0
+    }
+
 }
