@@ -731,7 +731,7 @@ public final class SQLiteDataBase implements DataBase
                 return -1; // Not found
             if ( result.values().stream().anyMatch( v -> v.size() != 1 ) )
                 throw new IllegalStateException();
-            var usages = (Integer) result.get(ValueTable.USAGE_FIELD_COUNTER).get(0);
+            var usages = ((Number) result.get(ValueTable.USAGE_FIELD_COUNTER).get(0)).intValue();
             if ( usages == 1 ) {
                 // Delete
                 _delete(valueTable.getTableName(), Collections.singletonList(existingId));
@@ -744,10 +744,12 @@ public final class SQLiteDataBase implements DataBase
     }
 
     private void _delete(String tableName, List<Long> ids) {
-        String sql = "DELETE * FROM " + tableName + " WHERE "+ModelTable.ID+" = ?";
-        boolean success = _db._update(sql, Collections.singletonList(ids));
-        if (!success ) {
-            throw new RuntimeException("Could not delete from " + tableName);
+        String sql = "DELETE FROM " + tableName + " WHERE "+ModelTable.ID+" = ?";
+        for ( Long id : ids ) {
+            boolean success = _db._update(sql, Collections.singletonList(id));
+            if (!success ) {
+                throw new RuntimeException("Could not delete from " + tableName);
+            }
         }
     }
 
