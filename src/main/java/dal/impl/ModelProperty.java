@@ -112,6 +112,18 @@ final class ModelProperty implements Var<Object>, Viewable<Object>
             if ( _fieldType.item() == Integer.class ) {
                 return ((Number)itemToReturn).intValue(); // SQLite returns a Long, so we convert it to Integer
             }
+            if ( Value.class.isAssignableFrom(_fieldType.item()) ) {
+                // A foreign key to a value table! Resolve the id back to the actual value record.
+                if ( itemToReturn == null )
+                    return null;
+                if ( !Number.class.isAssignableFrom(itemToReturn.getClass()) )
+                    throw new IllegalStateException("The foreign key value is not a number");
+                long foreignKeyId = ((Number) itemToReturn).longValue();
+                if ( foreignKeyId == 0L )
+                    return null;
+                Class<? extends Value> foreignKeyValueClass = (Class<? extends Value>) _fieldType.item();
+                return _dataBase._readValue(foreignKeyValueClass, foreignKeyId);
+            }
             return itemToReturn;
         } else {
             // A foreign key to another model! We already have the id, so we can just create the model

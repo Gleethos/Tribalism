@@ -167,10 +167,30 @@ class DataBase_Values_Spec extends Specification
             school.toString() == "School[" +
                     "id=1, " +
                     "name=\"\", " +
-                    "classRoom1=1, " +
-                    "classRoom2=2, " +
-                    "classRoom3=3, " +
-                    "director=1, " +
+                    "classRoom1=ClassRoom[" +
+                        "name=Math, grade=10, " +
+                        "teacher=Person[name=FullName[firstName=Mellanie, lastName=Fuchs], age=28], " +
+                        "students=Tuple<Person>[" +
+                            "Person[name=FullName[firstName=Mellanie, lastName=Fuchs], age=28], " +
+                            "Person[name=FullName[firstName=Gerhard, lastName=Schmidt], age=45]" +
+                        "]" +
+                    "], " +
+                    "classRoom2=ClassRoom[" +
+                        "name=Science, grade=11, " +
+                        "teacher=Person[name=FullName[firstName=Mellanie, lastName=Fuchs], age=28], " +
+                        "students=Tuple<Person>[" +
+                            "Person[name=FullName[firstName=Thomas, lastName=Eicher], age=30], " +
+                            "Person[name=FullName[firstName=Gerhard, lastName=Schmidt], age=45]" +
+                        "]" +
+                    "], " +
+                    "classRoom3=ClassRoom[" +
+                        "name=History, grade=12, " +
+                        "teacher=Person[name=FullName[firstName=Gerhard, lastName=Schmidt], age=45], " +
+                        "students=Tuple<Person>[" +
+                            "Person[name=FullName[firstName=Mellanie, lastName=Fuchs], age=28]" +
+                        "]" +
+                    "], " +
+                    "director=Person[name=FullName[firstName=Karina, lastName=Müller], age=53], " +
                     "students=Tuple<Person>[" +
                         "Person[name=FullName[firstName=Thomas, lastName=Eicher], age=30], " +
                         "Person[name=FullName[firstName=Mellanie, lastName=Fuchs], age=28], " +
