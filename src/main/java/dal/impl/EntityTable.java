@@ -14,6 +14,7 @@ sealed interface EntityTable permits ValueTable, ModelTable, IntermediateTable
     String INTER_LEFT_FK_PREFIX = "fk_self_";
     String INTER_RIGHT_FK_PREFIX = "fk_";
     String INTER_FK_POSTFIX = "_id";
+    String INTER_POSITION_COLUMN = "position";
     String FK_POSTFIX = "_id";
     String FK_PREFIX = "fk_";
     String ID = "id";

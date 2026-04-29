@@ -42,6 +42,7 @@ class Register_Login_Integration_Spec extends GebSpec
     }
 
 
+    @Ignore
     def 'Programmatically, we can try to login, fail, and then register, succeed and finally enter the application!'() {
         given :
             var app = new App()

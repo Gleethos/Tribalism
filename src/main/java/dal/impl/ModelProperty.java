@@ -64,11 +64,13 @@ final class ModelProperty implements Var<Object>, Viewable<Object>
             case FieldType.VarOf.Model ignored2 -> internalOrElseNullForInlineProperties();
             case FieldType.VarOf.Value ignored3 -> internalOrElseNullForInlineProperties();
             case FieldType.VarOf.Id ignored4 -> internalOrElseNullForInlineProperties();
-            case FieldType.VarOf.Tuple varOfTuple -> {
-                //varOfTuple.kind()
-                throw new IllegalStateException();//TODO Implement support!
-            }
+            case FieldType.VarOf.Tuple varOfTuple -> _readTupleFromIntermediateTable(varOfTuple);
         };
+    }
+
+    private Tuple<?> _readTupleFromIntermediateTable(FieldType.VarOf.Tuple varOfTuple) {
+        Class<? extends Value> itemType = varOfTuple.item();
+        return _dataBase._readTupleFromIntermediateTable(_tableName, _fieldName, _id, itemType);
     }
 
     private @Nullable Object internalOrElseNullForInlineProperties()
@@ -159,6 +161,10 @@ final class ModelProperty implements Var<Object>, Viewable<Object>
     }
 
     private void _set( Object newItem ) {
+        if ( _fieldType instanceof FieldType.VarOf.Tuple varOfTuple ) {
+            _setTuple(varOfTuple, (Tuple<?>) newItem);
+            return;
+        }
         if (!(newItem instanceof DataBaseEntity)) {
             String update = "UPDATE " + _tableName + " " +
                             "SET " + _fieldName + " = ? " +
@@ -170,42 +176,6 @@ final class ModelProperty implements Var<Object>, Viewable<Object>
                     valueToStore = null;
                 else
                     valueToStore = newItem.toString();
-            }
-            if ( _fieldType instanceof FieldType.VarOf.Tuple ) {
-                var oldTuple = (Tuple<Value>) Objects.requireNonNull(_value);
-                var newTuple = (Tuple<Value>) Objects.requireNonNull(newItem);
-                Set<Value> oldSet = oldTuple.toSet();
-                Set<Value> newSet = newTuple.toSet();
-                Set<Value> all = new HashSet<>();
-                all.addAll(oldSet);
-                all.addAll(newSet);
-                for ( Value o : all ) {
-                    var isInOldSet  = oldSet.contains(o);
-                    var isInNewSet  = newSet.contains(o);
-                    if ( isInOldSet && isInNewSet )
-                        continue;
-                    if (!isInOldSet && isInNewSet ) {
-                        long id = _dataBase._storeValueAndIncreaseCounter(o);
-                        if ( id < 0 )
-                            throw new IllegalArgumentException("Invalid id " + id + ", expected >= 0");
-                        // Add entry to intermediate table
-                        // TODO
-                    } else if (isInOldSet && !isInNewSet ) {
-                        long id = _dataBase._removeValueAndDecrementCounter(o);
-                        if ( id < 0 )
-                            throw new IllegalArgumentException("Invalid id " + id + ", expected >= 0");
-                        // Remove entry from intermediate table
-                        long leftId = _id;
-                        long rightId = id;
-                        //var intermediateTable = _fieldType.
-                        //String query = "DELETE FROM " + intermediateTable.getTableName() + " " +
-                        //               "WHERE " + thisTableIdColumn + " = ? AND " + otherTableIdColumn + " = ?";
-                        //List<Object> params = List.of(leftId, rightId);
-                        //_dataBase._update(query, params);
-                    } else {
-                        throw new IllegalArgumentException("Invalid state");
-                    }
-                }
             }
             boolean success = _dataBase._db._update(update, Arrays.asList(valueToStore, _id));
             if (!success)
@@ -229,6 +199,28 @@ final class ModelProperty implements Var<Object>, Viewable<Object>
         }
     }
 
+    private void _setTuple(FieldType.VarOf.Tuple varOfTuple, Tuple<?> newTuple) {
+        Objects.requireNonNull(newTuple, "Cannot set a null tuple");
+        Class<? extends Value> itemType = varOfTuple.item();
+        // Read the current tuple to know which value usages to decrement:
+        Tuple<?> oldTuple = _dataBase._readTupleFromIntermediateTable(_tableName, _fieldName, _id, itemType);
+        for (Object o : oldTuple) {
+            if (o != null) _dataBase._removeValueAndDecrementCounter((Value) o);
+        }
+        // Wipe existing rows for this owner in the intermediate table:
+        _dataBase._clearIntermediateTable(_tableName, _fieldName, _id);
+        // Insert the new tuple items in order:
+        int pos = 0;
+        for (Object o : newTuple) {
+            if (o != null) {
+                Value v = (Value) o;
+                long valueId = _dataBase._storeValueAndIncreaseCounter(v);
+                _dataBase._insertIntermediateTableRow(_tableName, _fieldName, _id, itemType, valueId, pos);
+            }
+            pos++;
+        }
+    }
+
     private boolean _updateField( Object newItem ) {
         StringBuilder update = new StringBuilder();
         update.append("UPDATE ");
@@ -237,19 +229,6 @@ final class ModelProperty implements Var<Object>, Viewable<Object>
         update.append(_fieldName);
         update.append(" = ? WHERE id = ?");
         return _dataBase._db._update(update.toString(), Arrays.asList(newItem, _id));
-    }
-
-    private Tuple<Long> _valuesToIds( Iterable<Value> values ) {
-        List<Long> ids = new ArrayList<>();
-        for ( Value value : values ) {
-            if ( value == null ) {
-                ids.add(0L); // 0 is the id for a null value
-            } else {
-                long id = _dataBase._findIdOfValue(value);
-                ids.add(id);
-            }
-        }
-        return Tuple.of(Long.class, ids);
     }
 
     @Override public Var<Object> withId(String id) {

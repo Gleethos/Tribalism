@@ -164,7 +164,19 @@ class DataBase_Values_Spec extends Specification
             school.classRoom2().set(classRoom2)
             school.classRoom3().set(classRoom3)
         then :
-            school.toString() == ""
+            school.toString() == "School[" +
+                    "id=1, " +
+                    "name=\"\", " +
+                    "classRoom1=1, " +
+                    "classRoom2=2, " +
+                    "classRoom3=3, " +
+                    "director=1, " +
+                    "students=Tuple<Person>[" +
+                        "Person[name=FullName[firstName=Thomas, lastName=Eicher], age=30], " +
+                        "Person[name=FullName[firstName=Mellanie, lastName=Fuchs], age=28], " +
+                        "Person[name=FullName[firstName=Gerhard, lastName=Schmidt], age=45]" +
+                    "]" +
+                "]"
     }
 
 }

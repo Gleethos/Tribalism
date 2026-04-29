@@ -6,9 +6,13 @@ import sprouts.Tuple;
 import sprouts.Val;
 import sprouts.Vars;
 
+import java.lang.reflect.Constructor;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
+import java.lang.reflect.ParameterizedType;
 import java.lang.reflect.Proxy;
+import java.lang.reflect.RecordComponent;
+import java.lang.reflect.Type;
 import java.util.*;
 import java.util.function.Function;
 import java.util.stream.Collectors;
@@ -669,27 +673,46 @@ public final class SQLiteDataBase implements DataBase
             // We need to create a new entry in the value table
             Tuple<Object> rowOfValues = _convertValueToRowOfValues(valueTable, databaseValue, hashCode);
             existingId = _storeEntity(valueTable, databaseValue.getClass(),rowOfValues);
+            // Populate intermediate tables for any tuple-typed components of the record:
+            _populateIntermediateTablesForValue(valueTable, databaseValue, existingId);
         }
         _modifyUsageCounter(valueTable, existingId, +1);
         return existingId;
     }
 
-    long _findIdOfValue(
-        Value value
+    private void _populateIntermediateTablesForValue(
+        ValueTable valueTable,
+        Value value,
+        long valueId
     ) {
-        var valueTable = _entityRegistry.getValueTable(value.getClass())
-                                        .orElseThrow(() -> new IllegalArgumentException(
-                                                "The value table for " + value.getClass().getName() + " does not exist!"
-                                        ));
-        int hashCode = value.hashCode();
-        long id = _findIdOfValue(valueTable, value, hashCode);
-        if ( id < 0 ) {
-            throw new IllegalStateException(
-                    "The value '" + value + "' does not exist in the database! " +
-                    "This is most likely an internal bug in the TopSoil ORM implementation."
-                );
+        for (EntityTableField field : valueTable.getFields()) {
+            if (!field.requiresIntermediateTable()) continue;
+            try {
+                Method method = value.getClass().getMethod(field.baseName());
+                Object fieldValue = method.invoke(value);
+                if (fieldValue == null) continue;
+                if (!(fieldValue instanceof Tuple))
+                    throw new IllegalStateException(
+                            "Expected a Tuple for intermediate-table field '" + field.baseName() +
+                            "' on value '" + value.getClass().getName() + "', but got " + fieldValue.getClass().getName()
+                    );
+                @SuppressWarnings("unchecked")
+                Class<? extends Value> itemType = (Class<? extends Value>) field.type().item();
+                Tuple<?> tuple = (Tuple<?>) fieldValue;
+                int pos = 0;
+                for (Object item : tuple) {
+                    if (item != null) {
+                        long childId = _storeValueAndIncreaseCounter((Value) item);
+                        _insertIntermediateTableRow(
+                                valueTable.getTableName(), field.baseName(), valueId, itemType, childId, pos
+                        );
+                    }
+                    pos++;
+                }
+            } catch (NoSuchMethodException | IllegalAccessException | InvocationTargetException e) {
+                throw new RuntimeException(e);
+            }
         }
-        return id;
     }
 
     long _removeValueAndDecrementCounter(Value databaseValue) {
@@ -733,25 +756,21 @@ public final class SQLiteDataBase implements DataBase
         Value value,
         int hashCode
     ) {
-        String sql = "SELECT * FROM " + valueTable.getTableName() + " WHERE "+ValueTable.HASH_FIELD_NAME+" = ?";
+        String sql = "SELECT " + EntityTable.ID + " FROM " + valueTable.getTableName() +
+                     " WHERE " + ValueTable.HASH_FIELD_NAME + " = ?";
         Map<String, List<Object>> result = _db._query(sql, Collections.singletonList(hashCode));
         if ( result.isEmpty() || result.values().stream().allMatch(List::isEmpty) )
             return -1; // Not found
-        if ( result.values().stream().anyMatch( v -> v.size() != 1 ) )
-            throw new IllegalStateException();
-
-        // Let's check if the value is equal to the value in the database
-        Tuple<Object> rowOfValues = _convertValueToRowOfValues(valueTable, value, hashCode);
-        List<Object> dbValues = new ArrayList<>();
-        for ( var entry : result.entrySet() ) {
-            if ( !entry.getKey().equals(EntityTable.ID) && !entry.getKey().equals(ValueTable.USAGE_FIELD_COUNTER) ) {
-                dbValues.addAll(entry.getValue());
-            }
+        List<Object> idList = result.getOrDefault(EntityTable.ID, Collections.emptyList());
+        // Iterate all candidates and compare via .equals() — handles hash collisions and
+        // also captures fields stored in intermediate tables (e.g., Tuple fields):
+        for (Object idObj : idList) {
+            long candidateId = ((Number) idObj).longValue();
+            Value dbValue = _readValue(valueTable.valueType(), candidateId);
+            if (dbValue != null && dbValue.equals(value))
+                return candidateId;
         }
-        if ( !dbValues.equals(rowOfValues.toList()) )
-            return -1; // Not found, but the hash code matches
-
-        return (Integer) result.get(EntityTable.ID).get(0);
+        return -1;
     }
 
     private Tuple<Object> _convertValueToRowOfValues(
@@ -768,6 +787,13 @@ public final class SQLiteDataBase implements DataBase
                 continue;
             if ( field.name().equals(EntityTable.ID) )
                 continue;
+            // Tuple-typed fields are stored in an intermediate table, not as a column on this row.
+            // Add a placeholder so positions stay aligned with valueTable.getFields(),
+            // because _storeEntity removes intermediate-table entries by index.
+            if ( field.requiresIntermediateTable() ) {
+                values.add(null);
+                continue;
+            }
             try {
                 Method method = value.getClass().getMethod(field.baseName());
                 Object fieldValue = method.invoke(value);
@@ -792,7 +818,7 @@ public final class SQLiteDataBase implements DataBase
                 );
             }
         }
-        return Tuple.of(Object.class, values);
+        return Tuple.ofNullable(Object.class, values);
     }
 
     private void _modifyUsageCounter(
@@ -808,6 +834,197 @@ public final class SQLiteDataBase implements DataBase
                     "Failed to update the usage counter for value with id '" + id + "' in table '" +
                     valueTable.getTableName() + "'!"
             );
+    }
+
+    /**
+     *  Derives the intermediate table name and column names for the
+     *  given owner table and field name.
+     */
+    private static String _intermediateTableName(String ownerTableName, String fieldName) {
+        // ownerTableName ends with "_table", strip it to get the base name:
+        String base = ownerTableName.substring(0, ownerTableName.length() - "_table".length());
+        return base + "__" + fieldName + EntityTable.INTER_TABLE_POSTFIX;
+    }
+
+    private static String _intermediateLeftColumn(String ownerTableName) {
+        return EntityTable.INTER_LEFT_FK_PREFIX + ownerTableName + EntityTable.INTER_FK_POSTFIX;
+    }
+
+    private static String _intermediateRightColumn(Class<?> itemType) {
+        return EntityTable.INTER_RIGHT_FK_PREFIX + BasicSQLiteDataBase._tableNameFromClass(itemType) + EntityTable.INTER_FK_POSTFIX;
+    }
+
+    /**
+     *  Loads a tuple of {@link Value}s from an intermediate table preserving
+     *  the position-based order of the items.
+     */
+    Tuple<?> _readTupleFromIntermediateTable(
+        String ownerTableName,
+        String fieldName,
+        long ownerId,
+        Class<? extends Value> itemType
+    ) {
+        String intermTable = _intermediateTableName(ownerTableName, fieldName);
+        String leftCol = _intermediateLeftColumn(ownerTableName);
+        String rightCol = _intermediateRightColumn(itemType);
+        String query = "SELECT " + rightCol + " FROM " + intermTable +
+                       " WHERE " + leftCol + " = ?" +
+                       " ORDER BY " + EntityTable.INTER_POSITION_COLUMN + " ASC";
+        Map<String, List<Object>> result = _db._query(query, Collections.singletonList(ownerId));
+        List<Object> ids = result.getOrDefault(rightCol, Collections.emptyList());
+        List<Value> values = new ArrayList<>();
+        for (Object idObj : ids) {
+            long valueId = ((Number) idObj).longValue();
+            Value v = _readValue(itemType, valueId);
+            if (v != null) values.add(v);
+        }
+        return Tuple.of((Class<Value>)(Class) itemType, values);
+    }
+
+    /**
+     *  Removes all rows from the intermediate table for the given owner.
+     */
+    void _clearIntermediateTable(String ownerTableName, String fieldName, long ownerId) {
+        String intermTable = _intermediateTableName(ownerTableName, fieldName);
+        String leftCol = _intermediateLeftColumn(ownerTableName);
+        String sql = "DELETE FROM " + intermTable + " WHERE " + leftCol + " = ?";
+        _db._update(sql, Collections.singletonList(ownerId));
+    }
+
+    /**
+     *  Inserts a single row in the intermediate table linking the owner
+     *  to a child entity at a specific position.
+     */
+    void _insertIntermediateTableRow(
+        String ownerTableName,
+        String fieldName,
+        long ownerId,
+        Class<?> itemType,
+        long childId,
+        int position
+    ) {
+        String intermTable = _intermediateTableName(ownerTableName, fieldName);
+        String leftCol = _intermediateLeftColumn(ownerTableName);
+        String rightCol = _intermediateRightColumn(itemType);
+        String sql = "INSERT INTO " + intermTable +
+                     " (" + leftCol + ", " + rightCol + ", " + EntityTable.INTER_POSITION_COLUMN + ")" +
+                     " VALUES (?, ?, ?)";
+        boolean success = _db._update(sql, List.of(ownerId, childId, position));
+        if ( !success )
+            throw new IllegalStateException(
+                    "Failed to insert row into intermediate table '" + intermTable + "'!"
+            );
+    }
+
+    /**
+     *  Reads a {@link Value} record from its value table by id.
+     *  Recursively resolves foreign-key Value fields and tuple fields
+     *  stored in intermediate tables. Returns null if no row exists.
+     */
+    @org.jspecify.annotations.Nullable
+    Value _readValue(Class<? extends Value> valueClass, long id) {
+        var valueTable = _entityRegistry.getValueTable(valueClass)
+                .orElseThrow(() -> new IllegalArgumentException(
+                        "The value table for " + valueClass.getName() + " does not exist!"
+                ));
+        String tableName = valueTable.getTableName();
+        String sql = "SELECT * FROM " + tableName + " WHERE " + EntityTable.ID + " = ?";
+        Map<String, List<Object>> result = _db._query(sql, Collections.singletonList(id));
+        if ( result.isEmpty() || result.values().stream().allMatch(List::isEmpty) )
+            return null;
+
+        RecordComponent[] components = valueClass.getRecordComponents();
+        if ( components == null )
+            throw new IllegalStateException(
+                    "Value class " + valueClass.getName() + " is not a record!"
+            );
+
+        Class<?>[] paramTypes = new Class<?>[components.length];
+        Object[] args = new Object[components.length];
+
+        for (int i = 0; i < components.length; i++) {
+            RecordComponent component = components[i];
+            String name = component.getName();
+            Class<?> compType = component.getType();
+            paramTypes[i] = compType;
+
+            if ( BasicSQLiteDataBase._isBasicDataType(compType) ) {
+                List<Object> col = result.get(name);
+                Object raw = (col == null || col.isEmpty()) ? null : col.get(0);
+                args[i] = _coerceToType(raw, compType);
+            } else if ( Value.class.isAssignableFrom(compType) ) {
+                String fkColumn = EntityTable.FK_PREFIX + name + EntityTable.FK_POSTFIX;
+                List<Object> col = result.get(fkColumn);
+                Object raw = (col == null || col.isEmpty()) ? null : col.get(0);
+                if ( raw == null ) {
+                    args[i] = null;
+                } else {
+                    long fkId = ((Number) raw).longValue();
+                    @SuppressWarnings("unchecked")
+                    Class<? extends Value> fkType = (Class<? extends Value>) compType;
+                    args[i] = _readValue(fkType, fkId);
+                }
+            } else if ( Tuple.class.isAssignableFrom(compType) ) {
+                Type genericType = component.getGenericType();
+                if ( !(genericType instanceof ParameterizedType pt) )
+                    throw new IllegalStateException(
+                            "Tuple field '" + name + "' on " + valueClass.getName() + " must declare a type argument!"
+                    );
+                Type itemTypeArg = pt.getActualTypeArguments()[0];
+                if ( !(itemTypeArg instanceof Class<?>) )
+                    throw new IllegalStateException(
+                            "Tuple field '" + name + "' on " + valueClass.getName() + " has a non-class type argument!"
+                    );
+                @SuppressWarnings("unchecked")
+                Class<? extends Value> itemType = (Class<? extends Value>) itemTypeArg;
+                args[i] = _readTupleFromIntermediateTable(tableName, name, id, itemType);
+            } else {
+                throw new IllegalStateException(
+                        "Unsupported component type " + compType.getName() +
+                        " on record " + valueClass.getName()
+                );
+            }
+        }
+
+        try {
+            Constructor<? extends Value> ctor = valueClass.getDeclaredConstructor(paramTypes);
+            ctor.setAccessible(true);
+            return ctor.newInstance(args);
+        } catch (NoSuchMethodException | InstantiationException | IllegalAccessException | InvocationTargetException e) {
+            throw new RuntimeException(
+                    "Failed to reconstruct value of type " + valueClass.getName() + " with id " + id, e
+            );
+        }
+    }
+
+    private static @org.jspecify.annotations.Nullable Object _coerceToType(@org.jspecify.annotations.Nullable Object raw, Class<?> targetType) {
+        if ( raw == null )
+            return null;
+        if ( targetType.isInstance(raw) )
+            return raw;
+        if ( targetType == int.class || targetType == Integer.class )
+            return ((Number) raw).intValue();
+        if ( targetType == long.class || targetType == Long.class )
+            return ((Number) raw).longValue();
+        if ( targetType == short.class || targetType == Short.class )
+            return ((Number) raw).shortValue();
+        if ( targetType == byte.class || targetType == Byte.class )
+            return ((Number) raw).byteValue();
+        if ( targetType == float.class || targetType == Float.class )
+            return ((Number) raw).floatValue();
+        if ( targetType == double.class || targetType == Double.class )
+            return ((Number) raw).doubleValue();
+        if ( targetType == boolean.class || targetType == Boolean.class ) {
+            if ( raw instanceof Boolean ) return raw;
+            if ( raw instanceof Number ) return ((Number) raw).intValue() != 0;
+            return Boolean.parseBoolean(raw.toString());
+        }
+        if ( Enum.class.isAssignableFrom(targetType) ) {
+            @SuppressWarnings({"unchecked", "rawtypes"})
+            Object enumVal = Enum.valueOf((Class<Enum>) targetType, raw.toString());
+            return enumVal;
+        }
+        return raw;
     }
 
 }

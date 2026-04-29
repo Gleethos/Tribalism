@@ -46,6 +46,7 @@ record IntermediateTable(
                 "    id INTEGER PRIMARY KEY AUTOINCREMENT,\n" +
                 "    " + EntityTable.INTER_LEFT_FK_PREFIX + thisTable + EntityTable.INTER_FK_POSTFIX + " INTEGER NOT NULL,\n" +
                 "    " + EntityTable.INTER_RIGHT_FK_PREFIX + otherTable + EntityTable.INTER_FK_POSTFIX + " INTEGER NOT NULL,\n" +
+                "    " + EntityTable.INTER_POSITION_COLUMN + " INTEGER NOT NULL,\n" +
                 "    FOREIGN KEY (" + EntityTable.INTER_LEFT_FK_PREFIX + thisTable + EntityTable.INTER_FK_POSTFIX + ") REFERENCES " + thisTable + "(id),\n" +
                 "    FOREIGN KEY (" + EntityTable.INTER_RIGHT_FK_PREFIX + otherTable + EntityTable.INTER_FK_POSTFIX + ") REFERENCES " + otherTable + "(id)\n" +
                 ");";

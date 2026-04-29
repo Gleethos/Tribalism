@@ -40,7 +40,9 @@ final class ModelProperties implements Vars<Object>, Viewables<Object>
         this.otherTable = BasicSQLiteDataBase._tableNameFromClass(fieldType.item());
         this.otherTableIdColumn = EntityTable.INTER_RIGHT_FK_PREFIX + otherTable + EntityTable.INTER_FK_POSTFIX;
         this.thisTableIdColumn = EntityTable.INTER_LEFT_FK_PREFIX + BasicSQLiteDataBase._tableNameFromClass(ownerModelClass) + EntityTable.INTER_FK_POSTFIX;
-        String query = "SELECT " + otherTableIdColumn + " FROM " + intermediateTable.getTableName() + " WHERE " + thisTableIdColumn + " = ?";
+        String query = "SELECT " + otherTableIdColumn + " FROM " + intermediateTable.getTableName() +
+                " WHERE " + thisTableIdColumn + " = ?" +
+                " ORDER BY " + EntityTable.INTER_POSITION_COLUMN + " ASC";
 
         List<Object> param = Collections.singletonList(id);
         Map<String, List<Object>> result = db._db._query(query, param);
@@ -152,9 +154,15 @@ final class ModelProperties implements Vars<Object>, Viewables<Object>
         long leftId = id;
         long rightId = ids.get(index);
         String query = "DELETE FROM " + intermediateTable.getTableName() + " " +
-                "WHERE " + thisTableIdColumn + " = ? AND " + otherTableIdColumn + " = ?";
-        List<Object> params = List.of(leftId, rightId);
+                "WHERE " + thisTableIdColumn + " = ? AND " + EntityTable.INTER_POSITION_COLUMN + " = ?";
+        List<Object> params = List.of(leftId, index);
         db._db._update(query, params);
+        // Shift positions of subsequent entries down to keep dense numbering:
+        String shift = "UPDATE " + intermediateTable.getTableName() +
+                " SET " + EntityTable.INTER_POSITION_COLUMN + " = " + EntityTable.INTER_POSITION_COLUMN + " - 1" +
+                " WHERE " + thisTableIdColumn + " = ?" +
+                " AND " + EntityTable.INTER_POSITION_COLUMN + " > ?";
+        db._db._update(shift, List.of(leftId, index));
         ids.remove(index);
     }
 
@@ -175,10 +183,16 @@ final class ModelProperties implements Vars<Object>, Viewables<Object>
         Object o = var.get();
         long leftId = id;
         long rightId = ((Model) o).id().get();
+        // Shift positions of any existing entries at or after the insertion index:
+        String shift = "UPDATE " + intermediateTable.getTableName() +
+                " SET " + EntityTable.INTER_POSITION_COLUMN + " = " + EntityTable.INTER_POSITION_COLUMN + " + 1" +
+                " WHERE " + thisTableIdColumn + " = ?" +
+                " AND " + EntityTable.INTER_POSITION_COLUMN + " >= ?";
+        db._db._update(shift, List.of(leftId, index));
         String query = "INSERT INTO " + intermediateTable.getTableName() + " " +
-                "(" + thisTableIdColumn + ", " + otherTableIdColumn + ") " +
-                "VALUES (?, ?)";
-        List<Object> params = List.of(leftId, rightId);
+                "(" + thisTableIdColumn + ", " + otherTableIdColumn + ", " + EntityTable.INTER_POSITION_COLUMN + ") " +
+                "VALUES (?, ?, ?)";
+        List<Object> params = List.of(leftId, rightId, index);
         db._db._update(query, params);
         ids.add(index, rightId);
         return this;
