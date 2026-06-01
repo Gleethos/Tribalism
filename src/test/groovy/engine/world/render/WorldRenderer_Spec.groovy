@@ -1,11 +1,15 @@
 package engine.world.render
-
+import app.engine.primitives.BoundsF64
 import app.engine.primitives.CameraF64
 import app.engine.primitives.VecF64
+import app.engine.world.World
+import app.engine.world.gen.WorldGenerator
 import app.engine.world.render.WorldRenderer
 import spock.lang.Narrative
 import spock.lang.Specification
 import spock.lang.Title
+
+import java.awt.image.BufferedImage
 
 @Title("WorldRenderer - the level-of-detail decision")
 @Narrative('''
@@ -41,5 +45,27 @@ class WorldRenderer_Spec extends Specification
         expect:
             WorldRenderer.projectedEdgePixels(10, 0, 50) == Double.POSITIVE_INFINITY
             WorldRenderer.projectedEdgePixels(10, -5, 50) == Double.POSITIVE_INFINITY
+    }
+
+    def "Rendering a generated world actually draws terrain, not just sky."()
+    {
+        given: 'A small generated world viewed by a camera looking down at the surface.'
+            int w = 240, h = 160
+            var skyColor = new java.awt.Color(135, 180, 235)
+            var world = World.of(WorldGenerator.withSeed(1337L).generate(BoundsF64.cube(VecF64.zero(), 128), 2))
+            var camera = new CameraF64(VecF64.of(96, 40, 96), VecF64.zero(), VecF64.of(0, 1, 0),
+                                       Math.toRadians(60), (double) w / h, 0.5, 2000)
+            var image = new BufferedImage(w, h, BufferedImage.TYPE_INT_RGB)
+            var g = image.createGraphics()
+        when:
+            new WorldRenderer(28.0, VecF64.of(-0.4, -1.0, -0.3), skyColor).render(g, world, camera, w, h)
+            g.dispose()
+        then: 'A meaningful fraction of pixels differ from the sky colour (terrain was drawn).'
+            int nonSky = 0
+            for ( int y = 0; y < h; y++ )
+                for ( int x = 0; x < w; x++ )
+                    if ( (image.getRGB(x, y) & 0xFFFFFF) != (skyColor.getRGB() & 0xFFFFFF) )
+                        nonSky++
+            nonSky > (w * h) * 0.05
     }
 }
