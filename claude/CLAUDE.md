@@ -102,6 +102,43 @@ Rendering comes in a second step, as well as the update loop and entity state ma
 For now all we need is a data structure, math primitives and well documented and thought through code.
 If you have questions. Please ask.
 
+---
+
+# The Next Steps:
+
+## Entities
+
+An entity is essentially a sum type of different things.
+But it always has a `long` based id and a bounding box by referencing its `WorldTreeEntityId`.
+For now, we only need two types of entities (But it will become more probably).
+
+1. `CameraEnty` - has the tree id (by contract) and a camera
+2. `VoxelEntity`- of course, also the tree id, and then it also has a `WorldSection`
+
+Now this is where it gets trippy:
+
+A voxel entity is itself a small world which can have all the properties of a regular world section.
+The idea behind is that the sections in and subsections in this voxel entity are used to create a shape
+which can move flexibly relative to the world it is part of if that makes sense.
+
+Later down the road, a voxel entity may also have entities recursively (think a knight holding a sword),
+but for now let's keep it simple.
+
+## World
+
+Now the most important value: `World`
+The "world" is itself a value object.
+It stores the following fields:
+
+- `WorldSection` the current root of the tree 
+- `Association<Long, Entity>` the entity lookup
+
+The world is the think which is updated in an update loop.
+
+---
+
+
+
 
 
 
