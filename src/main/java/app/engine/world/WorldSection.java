@@ -131,6 +131,31 @@ public record WorldSection(
     }
 
     /**
+     *  Removes an entity from the tree, mirroring {@link #insert(WorldTreeEntityId, int)}.
+     *  <p>
+     *  The search follows the same fall-down path the entity would have taken: it
+     *  is removed from this section if present, otherwise we descend into the sole
+     *  child that could contain it. If the entity is not found the tree is returned
+     *  unchanged. This is what lets an entity be re-placed when its bounds change:
+     *  remove it along its old path, then {@link #insert insert} it along the new one.
+     *
+     *  @param entity         The entity to remove.
+     *  @param remainingDepth How many further levels of subdivision to search.
+     *  @return A new section without the entity, or this section if it was absent.
+     */
+    public WorldSection remove( WorldTreeEntityId entity, int remainingDepth ) {
+        if ( entities.contains(entity) )
+            return withoutEntity(entity);
+        if ( children == null || remainingDepth <= 0 )
+            return this;
+        int cell = soleContainingCell(entity.bounds());
+        if ( cell < 0 )
+            return this;
+        WorldSection child = children.section(cell).remove(entity, remainingDepth - 1);
+        return withChildren(children.withSection(cell, child));
+    }
+
+    /**
      *  Recomputes the level-of-detail ether of this section from the bottom up.
      *  <p>
      *  Leaves keep their own ether. A branching section first aggregates each of

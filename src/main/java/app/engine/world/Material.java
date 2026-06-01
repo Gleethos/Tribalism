@@ -14,6 +14,7 @@ public enum Material
     AIR,
     WATER,
     SOIL,
+    GRASS,
     SAND,
     ROCK,
     WOOD,
