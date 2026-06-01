@@ -135,6 +135,23 @@ It stores the following fields:
 
 The world is the think which is updated in an update loop.
 
+## Basic First Draft Rendering
+
+To get a basic thing up and running we need two important things first:
+
+1. Procedural world generation.
+2. Basic rendering using Graphics2D
+
+The procedural world generation should be based on noise functions in 3D space for now.
+Think voronoi noise and similar mechanism as a basis to create a landscape which is
+rock, soil, grass and then air. We can make it more fancy later on. 
+The world is generated around camera entities using a certain radius.
+
+With respect to the rendering: Like I mentioned earlier, what the user sees is a function
+of the world state. I want you to render against Graphics2D for the first draft. Use the distance
+to the camera and the size to the camera to determine at what level in the tree should be rendered.
+So we only render "super voxels" instead of the tips of the tree the more things are away.
+
 ---
 
 
