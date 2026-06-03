@@ -28,31 +28,32 @@ I suggest focusing on creating math primitives first.
 This core of the world engine consists of a tree data structure heavily inspired by Hash Array Mapped Tries. 
 A similar thing as an Oc-Tree, but much more optimized for modern hardware.
 
-Each node called `WorldTreeNode` consists of CPU cache friendly `Tuple` of exactly `256` instances of `WorldSection` records.
+Each node called `WorldTreeNode` consists of CPU cache friendly `Tuple` of exactly `256` instances of `WorldSector` records.
 These 256 sections form a perfect 3D cube consisting of these little world sections which are themselves cubes.
 So a "world section" has a bounding box (`BoundsF64`).
 
 
-# World Sections
+# World Sectors
 
 ## Meta Info
 
-Sections carry certain material properties by referencing a record called `WorldSectionEtherData`
-which consists of a set of numbers which are percentages of what this world section is made of.
+Sectors carry certain material properties by referencing a record called `WorldSectorEtherData`
+which consists of a set of numbers which are percentages of what this world sector is made of.
 For example 90% air, 5% soil, 5% rock etc...
-This information is later on used to render a section in a certain color and shape,
+This information is later on used to render a sector in a certain color and shape,
 as well as reflective properties and other things.
 It is also used as a basis for level of detail computation.
 
-> Note that the goal is for the `WorldSectionEtherData` to store 6 different 
+> Note that the goal is for the `WorldSectorEtherData` to store 6 different 
 > sets of distributions, one for each side.
-> This is important for the LoDs system because the side the super section
+> This is important for the LoDs system because the side of the super sector
 > cube only ever computes the percentile averages from the corresponding side
-> of all subsectors.
+> of all subsectors. Since materials are primarily important for visuals (their color)
+> It makes sense to only ever consider the sides of a sector...
 
 ## Entities
 
-Then a `WorldSection` also references a `ValueSet` of `WorldTreeEntityId`s.
+Then a `WorldSector` also references a `ValueSet` of `WorldTreeEntityId`s.
 These entities are not the actual entities in the world engine. The actual entities,
 live in a separate fast lookup based data structure. Instead, these "tree entity ids"
 are simply the unique id (long) of an entity, and its bounding box.
@@ -77,25 +78,25 @@ Besides actual lights with their own identity, there are also "light traces".
 The final design goal is simple: A light trace consists of a vector, an intensity
 and the id of the actual light source. When the world engine is actually running,
 the update cycle of the engine will place these traces in the tree so that they slowly
-radiate away from the light source into multiple sections (with a certain threshold
+radiate away from the light source into multiple sectors (with a certain threshold
 depending on the intensity).
 
 ## Branching
 
-Ok and finally, a world section, is a recursive thing, it can itself reference either `null` or a `WorldTreeNode`.
+Ok and finally, a world sector, is a recursive thing, it can itself reference either `null` or a `WorldTreeNode`.
 And so this is where the data structure gets interesting. It essentially has infinite resolution.
-A world section can be split into another 256 subsections and if entities are small enough, they can fall
+A world sector can be split into another 256 subsectors and if entities are small enough, they can fall
 down and be distributed among them... 
 
 ## The Big Picture
 
 This data structure is specifically designed to have almost infinite
-scale into the large and infinite resolution into the small. A "world section"
+scale into the large and infinite resolution into the small. A "world sector"
 can serve both as a simple voxel (`WorldTreeNode` is null and ether data says 100% rock), or
-it can serve as a high level section in the world containing a mix of all kinds of things.
-The great thing about this is that we can easily generate LoDs from these sections.
-So a section computes its "ether data" from its sub-sections whenever they change,
-and this ether data can be used to compute a voxel which essentially averages the world section
+it can serve as a high level sector in the world containing a mix of all kinds of things.
+The great thing about this is that we can easily generate LoDs from these sectors.
+So a sector computes its "ether data" from its sub-sectors whenever they change,
+and this ether data can be used to compute a voxel which essentially averages the world sector
 visually as well...
 
 Now, of course. This will end up looking kind of Mine-crafty-
@@ -119,12 +120,12 @@ But it always has a `long` based id and a bounding box by referencing its `World
 For now, we only need two types of entities (But it will become more probably).
 
 1. `CameraEnty` - has the tree id (by contract) and a camera
-2. `VoxelEntity`- of course, also the tree id, and then it also has a `WorldSection`
+2. `VoxelEntity`- of course, also the tree id, and then it also has a `WorldSector`
 
 Now this is where it gets trippy:
 
-A voxel entity is itself a small world which can have all the properties of a regular world section.
-The idea behind is that the sections in and subsections in this voxel entity are used to create a shape
+A voxel entity is itself a small world which can have all the properties of a regular world sector.
+The idea behind is that the sectors in and subsectors in this voxel entity are used to create a shape
 which can move flexibly relative to the world it is part of if that makes sense.
 
 Later down the road, a voxel entity may also have entities recursively (think a knight holding a sword),
@@ -136,7 +137,7 @@ Now the most important value: `World`
 The "world" is itself a value object.
 It stores the following fields:
 
-- `WorldSection` the current root of the tree 
+- `WorldSector` the current root of the tree 
 - `Association<Long, Entity>` the entity lookup
 
 The world is the think which is updated in an update loop.
