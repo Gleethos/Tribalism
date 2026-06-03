@@ -111,17 +111,31 @@ public final class WorldRenderer
                 collect(node.sector(i), camera, frustum, focal, out);
         } else {
             WorldSectorEtherData ether = sector.ether();
-            if ( isVisible(ether) )
+            if ( isMajoritySolid(ether) )
                 out.add(new Renderable(sector.bounds(), ether, distance));
         }
     }
 
-    /** @return {@code true} if any face of the sector shows a non-transparent material. */
-    private static boolean isVisible( WorldSectorEtherData ether ) {
-        for ( Side side : Side.values() )
-            if ( !MaterialPalette.isTransparent(ether.sideOf(side).dominantMaterial()) )
-                return true;
-        return false;
+    /**
+     *  @return {@code true} if the sector is <i>majority solid</i> &mdash; its
+     *          combined per-side mixture is at least half non-transparent material.
+     *  <p>
+     *  This is the "draw it as a voxel?" decision. Gating on a solid majority (rather
+     *  than merely "any solid face") keeps coarse LoD cubes from bulging out past the
+     *  true surface: a super-voxel that is mostly air, with only a sliver of solid on
+     *  one side, is left undrawn instead of being inflated into a full block.
+     */
+    private static boolean isMajoritySolid( WorldSectorEtherData ether ) {
+        MaterialDistribution combined = ether.combined();
+        double solid = 0, transparent = 0;
+        for ( Material material : Material.values() ) {
+            double fraction = combined.fractionOf(material);
+            if ( MaterialPalette.isTransparent(material) )
+                transparent += fraction;
+            else
+                solid += fraction;
+        }
+        return solid > 0 && solid >= transparent;
     }
 
     /**
