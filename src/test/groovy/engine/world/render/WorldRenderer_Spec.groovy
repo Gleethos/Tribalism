@@ -2,7 +2,11 @@ package engine.world.render
 import app.engine.primitives.BoundsF64
 import app.engine.primitives.CameraF64
 import app.engine.primitives.VecF64
+import app.engine.world.Material
+import app.engine.world.MaterialDistribution
+import app.engine.world.Side
 import app.engine.world.World
+import app.engine.world.WorldSectorEtherData
 import app.engine.world.gen.WorldGenerator
 import app.engine.world.render.WorldRenderer
 import spock.lang.Narrative
@@ -79,6 +83,29 @@ class WorldRenderer_Spec extends Specification
             g.dispose()
         then: 'The whole world is behind the camera, so every sector is culled and nothing is drawn.'
             countNonSky(image, skyColor) == 0
+    }
+
+    def "An air-dominant face of an otherwise-solid LoD cube falls back to a solid material (no holes)."()
+    {
+        given: 'An LoD ether whose top is air-dominant but whose other sides are solid rock.'
+            var ether = WorldSectorEtherData.of(Material.ROCK)
+                                .withSide(Side.POS_Y, MaterialDistribution.empty()
+                                                            .with(Material.AIR, 0.7)
+                                                            .with(Material.ROCK, 0.3))
+        expect: 'A solid side paints with its own material...'
+            WorldRenderer.faceMaterial(ether, Side.NEG_Y) == Material.ROCK
+        and: '...while the air-dominant top is filled with the dominant solid material instead of being skipped.'
+            ether.sideOf(Side.POS_Y).dominantMaterial() == Material.AIR
+            WorldRenderer.faceMaterial(ether, Side.POS_Y) == Material.ROCK
+    }
+
+    def "A fully transparent sector stays transparent on every face (still drawn as nothing)."()
+    {
+        given:
+            var allAir = WorldSectorEtherData.of(Material.AIR)
+        expect:
+            Side.values().every { WorldRenderer.faceMaterial(allAir, it) == Material.AIR }
+            WorldRenderer.dominantSolidMaterial(allAir) == Material.AIR
     }
 
     private static int countNonSky( BufferedImage image, java.awt.Color skyColor ) {

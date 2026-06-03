@@ -6,6 +6,7 @@ import app.engine.primitives.Frustum;
 import app.engine.primitives.Mat4F64;
 import app.engine.primitives.VecF64;
 import app.engine.world.Material;
+import app.engine.world.MaterialDistribution;
 import app.engine.world.Side;
 import app.engine.world.World;
 import app.engine.world.WorldSector;
@@ -123,6 +124,48 @@ public final class WorldRenderer
         return false;
     }
 
+    /**
+     *  The material a given face should be painted with.
+     *  <p>
+     *  Normally this is the dominant material of that very {@link Side}. But an LoD
+     *  super-voxel's ether is aggregated <i>per side</i>, so an individual face near
+     *  the surface can come out air-dominant even when the cube is solid overall.
+     *  Skipping such a face would leave a see-through hole in an otherwise solid
+     *  cube (whereas a uniform leaf voxel never has this problem). To keep a drawn
+     *  cube closed, an air-dominant face falls back to the sector's
+     *  {@link #dominantSolidMaterial dominant solid material}. A transparent result
+     *  therefore means the <i>whole</i> sector is transparent, and the face is
+     *  genuinely not drawn.
+     */
+    public static Material faceMaterial( WorldSectorEtherData ether, Side side ) {
+        Material material = ether.sideOf(side).dominantMaterial();
+        if ( !MaterialPalette.isTransparent(material) )
+            return material;
+        return dominantSolidMaterial(ether);
+    }
+
+    /**
+     *  @return The most prevalent non-transparent material across all six sides of
+     *          {@code ether} (using the {@link WorldSectorEtherData#combined()
+     *          combined} mixture), or {@link Material#AIR} if the sector is entirely
+     *          transparent.
+     */
+    public static Material dominantSolidMaterial( WorldSectorEtherData ether ) {
+        MaterialDistribution combined = ether.combined();
+        Material best = Material.AIR;
+        double bestFraction = 0;
+        for ( Material material : Material.values() ) {
+            if ( MaterialPalette.isTransparent(material) )
+                continue;
+            double fraction = combined.fractionOf(material);
+            if ( fraction > bestFraction ) {
+                bestFraction = fraction;
+                best = material;
+            }
+        }
+        return best;
+    }
+
     private void drawVoxel( Graphics2D g, BoundsF64 bounds, WorldSectorEtherData ether, Mat4F64 vp, CameraF64 camera, int w, int h ) {
         VecF64[] corners = corners(bounds);
         double[][] screen = new double[8][];
@@ -135,9 +178,9 @@ public final class WorldRenderer
         for ( int f = 0; f < FACES.length; f++ ) {
             Side side = FACE_SIDES[f];
             // Each face is coloured by the material on that very side of the sector.
-            Material material = ether.sideOf(side).dominantMaterial();
+            Material material = faceMaterial(ether, side);
             if ( MaterialPalette.isTransparent(material) )
-                continue;
+                continue; // only when the whole sector is transparent (e.g. all air).
 
             int[] face = FACES[f];
             VecF64 normal = side.normal();
