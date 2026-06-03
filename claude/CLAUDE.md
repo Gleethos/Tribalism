@@ -44,6 +44,12 @@ This information is later on used to render a section in a certain color and sha
 as well as reflective properties and other things.
 It is also used as a basis for level of detail computation.
 
+> Note that the goal is for the `WorldSectionEtherData` to store 6 different 
+> sets of distributions, one for each side.
+> This is important for the LoDs system because the side the super section
+> cube only ever computes the percentile averages from the corresponding side
+> of all subsectors.
+
 ## Entities
 
 Then a `WorldSection` also references a `ValueSet` of `WorldTreeEntityId`s.
