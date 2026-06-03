@@ -5,7 +5,7 @@ import app.engine.primitives.CameraF64;
 import app.engine.primitives.VecF64;
 import app.engine.world.Entity;
 import app.engine.world.World;
-import app.engine.world.WorldSection;
+import app.engine.world.WorldSector;
 import app.engine.world.gen.WorldGenerator;
 import app.engine.world.render.WorldRenderer;
 
@@ -38,7 +38,7 @@ public final class WorldEngineDemo
 
         BoundsF64 region = BoundsF64.cube(VecF64.zero(), REGION_EDGE);
         WorldGenerator generator = WorldGenerator.withSeed(1337L);
-        WorldSection root = generator.generate(region, GENERATION_DEPTH);
+        WorldSector root = generator.generate(region, GENERATION_DEPTH);
 
         CameraF64 initialCamera = orbitingCamera(0, 16.0 / 9.0);
         World world = World.of(root)

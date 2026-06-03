@@ -4,8 +4,8 @@ import app.engine.primitives.BoundsF64
 import app.engine.primitives.CameraF64
 import app.engine.primitives.VecF64
 import app.engine.world.Entity
-import app.engine.world.WorldSection
-import app.engine.world.WorldSectionEtherData
+import app.engine.world.WorldSector
+import app.engine.world.WorldSectorEtherData
 import app.engine.world.Material
 import spock.lang.Narrative
 import spock.lang.Specification
@@ -16,7 +16,7 @@ import spock.lang.Title
 
     Every entity carries a WorldTreeEntityId (a long id plus bounds) and adds its
     own payload. A camera entity wraps a viewpoint; a voxel entity is itself a
-    little world described by a nested WorldSection.
+    little world described by a nested WorldSector.
 
 ''')
 class Entity_Spec extends Specification
@@ -34,23 +34,23 @@ class Entity_Spec extends Specification
             entity.bounds().contains(camera.position())
     }
 
-    def "A voxel entity takes its bounds from its nested section."()
+    def "A voxel entity takes its bounds from its nested sector."()
     {
         given:
             var bounds = BoundsF64.of(VecF64.of(0, 0, 0), VecF64.of(2, 2, 2))
-            var section = WorldSection.leaf(bounds, WorldSectionEtherData.of(Material.ROCK))
+            var sector = WorldSector.leaf(bounds, WorldSectorEtherData.of(Material.ROCK))
         when:
-            var entity = Entity.VoxelEntity.of(9L, section)
+            var entity = Entity.VoxelEntity.of(9L, sector)
         then:
             entity.id() == 9L
             entity.bounds() == bounds
-            entity.section() == section
+            entity.sector() == sector
     }
 
     def "Entities can be matched exhaustively as a sum type."()
     {
         given:
-            Entity entity = Entity.VoxelEntity.of(3L, WorldSection.empty(BoundsF64.cube(VecF64.zero(), 2)))
+            Entity entity = Entity.VoxelEntity.of(3L, WorldSector.empty(BoundsF64.cube(VecF64.zero(), 2)))
         when:
             var kind = switch (entity) {
                 case Entity.CameraEntity -> "camera"

@@ -5,51 +5,51 @@ import sprouts.Tuple;
 
 /**
  *  A node in the world tree: a CPU-cache-friendly, immutable {@link Tuple} of
- *  exactly {@link #SECTION_COUNT} {@link WorldSection}s arranged as a perfect
+ *  exactly {@link #SECTOR_COUNT} {@link WorldSector}s arranged as a perfect
  *  {@link #RESOLUTION}&times;{@link #RESOLUTION}&times;{@link #RESOLUTION} cube.
  *  <p>
  *  The data structure is inspired by Hash Array Mapped Tries rather than a
  *  classic oct-tree: instead of branching by 2 on each axis, a node branches by
  *  {@code 8} on each axis at once, which keeps the tree shallow and the child
- *  array contiguous and cache-friendly. Sections are stored in
+ *  array contiguous and cache-friendly. Sectors are stored in
  *  {@code x + y*RESOLUTION + z*RESOLUTION^2} order.
  *  <p>
- *  Because the node is built on a persistent tuple, replacing a single section
- *  ({@link #withSection(int, WorldSection)}) shares all untouched structure with
+ *  Because the node is built on a persistent tuple, replacing a single sector
+ *  ({@link #withSector(int, WorldSector)}) shares all untouched structure with
  *  the original node.
  *
- *  @param sections The {@link #SECTION_COUNT} child sections, in linear order.
+ *  @param sectors The {@link #SECTOR_COUNT} child sectors, in linear order.
  */
 public record WorldTreeNode(
-    Tuple<WorldSection> sections
+    Tuple<WorldSector> sectors
 ) {
     /** The number of sub-divisions along each axis of a node. */
     public static final int RESOLUTION = 8;
 
-    /** The total number of sections in a node, i.e. {@code RESOLUTION^3 == 512}. */
-    public static final int SECTION_COUNT = RESOLUTION * RESOLUTION * RESOLUTION;
+    /** The total number of sectors in a node, i.e. {@code RESOLUTION^3 == 512}. */
+    public static final int SECTOR_COUNT = RESOLUTION * RESOLUTION * RESOLUTION;
 
     public WorldTreeNode {
-        if ( sections.size() != SECTION_COUNT )
+        if ( sectors.size() != SECTOR_COUNT )
             throw new IllegalArgumentException(
-                    "A world tree node must contain exactly " + SECTION_COUNT + " sections, but got " + sections.size() + "."
+                    "A world tree node must contain exactly " + SECTOR_COUNT + " sectors, but got " + sectors.size() + "."
                 );
     }
 
     /**
      *  Builds a node by subdividing {@code bounds} into a regular grid of
-     *  {@link #SECTION_COUNT} leaf sections, each filled with the same {@code ether}.
-     *  This is how a single section is "split" into finer detail.
+     *  {@link #SECTOR_COUNT} leaf sectors, each filled with the same {@code ether}.
+     *  This is how a single sector is "split" into finer detail.
      *
      *  @param bounds The region the whole node covers.
      *  @param ether  The material mixture every freshly created leaf inherits.
      */
-    public static WorldTreeNode uniform( BoundsF64 bounds, WorldSectionEtherData ether ) {
+    public static WorldTreeNode uniform( BoundsF64 bounds, WorldSectorEtherData ether ) {
         Tuple<BoundsF64> cells = bounds.subdivide(RESOLUTION);
-        WorldSection[] sections = new WorldSection[SECTION_COUNT];
-        for ( int i = 0; i < SECTION_COUNT; i++ )
-            sections[i] = WorldSection.leaf(cells.get(i), ether);
-        return new WorldTreeNode(Tuple.of(WorldSection.class, sections));
+        WorldSector[] sectors = new WorldSector[SECTOR_COUNT];
+        for ( int i = 0; i < SECTOR_COUNT; i++ )
+            sectors[i] = WorldSector.leaf(cells.get(i), ether);
+        return new WorldTreeNode(Tuple.of(WorldSector.class, sectors));
     }
 
     /** @return The linear index for grid coordinate {@code (x, y, z)}. */
@@ -59,20 +59,20 @@ public record WorldTreeNode(
         return x + y * RESOLUTION + z * RESOLUTION * RESOLUTION;
     }
 
-    public WorldSection section( int index ) {
-        return sections.get(index);
+    public WorldSector sector( int index ) {
+        return sectors.get(index);
     }
 
-    public WorldSection section( int x, int y, int z ) {
-        return sections.get(indexOf(x, y, z));
+    public WorldSector sector( int x, int y, int z ) {
+        return sectors.get(indexOf(x, y, z));
     }
 
-    /** @return A copy of this node with the section at {@code index} replaced. */
-    public WorldTreeNode withSection( int index, WorldSection section ) {
-        return new WorldTreeNode(sections.setAt(index, section));
+    /** @return A copy of this node with the sector at {@code index} replaced. */
+    public WorldTreeNode withSector( int index, WorldSector sector ) {
+        return new WorldTreeNode(sectors.setAt(index, sector));
     }
 
-    public WorldTreeNode withSection( int x, int y, int z, WorldSection section ) {
-        return withSection(indexOf(x, y, z), section);
+    public WorldTreeNode withSector( int x, int y, int z, WorldSector sector ) {
+        return withSector(indexOf(x, y, z), sector);
     }
 }

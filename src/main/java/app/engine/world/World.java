@@ -9,7 +9,7 @@ import java.util.Optional;
 /**
  *  The whole world as a single immutable value.
  *  <p>
- *  A world is just two things: the {@code root} of the spatial {@link WorldSection}
+ *  A world is just two things: the {@code root} of the spatial {@link WorldSector}
  *  tree, and an {@code entities} lookup from id to {@link Entity}. The tree is used
  *  purely for positional queries (it holds only {@link WorldTreeEntityId}s), while
  *  the association is the authoritative store of the actual entities. Keeping the
@@ -18,11 +18,11 @@ import java.util.Optional;
  *  This value is what an update loop transforms from one tick to the next; nothing
  *  is ever mutated in place.
  *
- *  @param root     The root section of the world tree.
+ *  @param root     The root sector of the world tree.
  *  @param entities The lookup from entity id to the actual entity.
  */
 public record World(
-    WorldSection root,
+    WorldSector root,
     Association<Long, Entity> entities
 ) {
     /** A sensible default cap on how deep an entity may fall into the tree. */
@@ -30,11 +30,11 @@ public record World(
 
     /** @return An empty world whose root covers {@code bounds}, made of nothing. */
     public static World of( BoundsF64 bounds ) {
-        return new World(WorldSection.empty(bounds), Association.between(Long.class, Entity.class));
+        return new World(WorldSector.empty(bounds), Association.between(Long.class, Entity.class));
     }
 
     /** @return A world over the given {@code root} with no entities yet. */
-    public static World of( WorldSection root ) {
+    public static World of( WorldSector root ) {
         return new World(root, Association.between(Long.class, Entity.class));
     }
 
@@ -46,7 +46,7 @@ public record World(
         return entities.values();
     }
 
-    public World withRoot( WorldSection newRoot ) {
+    public World withRoot( WorldSector newRoot ) {
         return new World(newRoot, entities);
     }
 
@@ -56,7 +56,7 @@ public record World(
      *  itself is stored in the lookup.
      */
     public World withEntity( Entity entity, int maxDepth ) {
-        WorldSection newRoot = root.insert(entity.treeId(), maxDepth);
+        WorldSector newRoot = root.insert(entity.treeId(), maxDepth);
         return new World(newRoot, entities.put(entity.id(), entity));
     }
 
@@ -66,7 +66,7 @@ public record World(
 
     /** Removes an entity from both the tree and the lookup. */
     public World withoutEntity( Entity entity, int maxDepth ) {
-        WorldSection newRoot = root.remove(entity.treeId(), maxDepth);
+        WorldSector newRoot = root.remove(entity.treeId(), maxDepth);
         return new World(newRoot, entities.remove(entity.id()));
     }
 
@@ -83,7 +83,7 @@ public record World(
      *  @param updated  The new state of the same entity (same id, possibly new bounds).
      */
     public World withMovedEntity( Entity previous, Entity updated, int maxDepth ) {
-        WorldSection newRoot = root.remove(previous.treeId(), maxDepth).insert(updated.treeId(), maxDepth);
+        WorldSector newRoot = root.remove(previous.treeId(), maxDepth).insert(updated.treeId(), maxDepth);
         return new World(newRoot, entities.put(updated.id(), updated));
     }
 }

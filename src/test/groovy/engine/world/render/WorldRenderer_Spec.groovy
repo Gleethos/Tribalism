@@ -14,7 +14,7 @@ import java.awt.image.BufferedImage
 @Title("WorldRenderer - the level-of-detail decision")
 @Narrative('''
 
-    The renderer chooses how deep to descend the tree based on how big a section
+    The renderer chooses how deep to descend the tree based on how big a sector
     would appear on screen. That decision is a pure function of edge length,
     distance and focal length, so we can test it directly without any drawing.
 
@@ -40,7 +40,7 @@ class WorldRenderer_Spec extends Specification
             WorldRenderer.projectedEdgePixels(20, 100, 50) == 10
     }
 
-    def "A section at or behind the camera is treated as infinitely large (always refine)."()
+    def "A sector at or behind the camera is treated as infinitely large (always refine)."()
     {
         expect:
             WorldRenderer.projectedEdgePixels(10, 0, 50) == Double.POSITIVE_INFINITY

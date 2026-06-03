@@ -7,7 +7,7 @@ import app.engine.primitives.VecF64;
  *  identity of its own.
  *  <p>
  *  When the engine's update cycle runs, it places these traces into the world
- *  tree so that light slowly radiates from its source into neighbouring sections.
+ *  tree so that light slowly radiates from its source into neighbouring sectors.
  *  How far a trace spreads depends on its {@code intensity}, which falls off with
  *  a threshold as the light propagates. Each trace remembers which actual light
  *  it came from via {@code sourceId}.

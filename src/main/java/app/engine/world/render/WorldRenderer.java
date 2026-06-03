@@ -6,7 +6,7 @@ import app.engine.primitives.Mat4F64;
 import app.engine.primitives.VecF64;
 import app.engine.world.Material;
 import app.engine.world.World;
-import app.engine.world.WorldSection;
+import app.engine.world.WorldSector;
 import app.engine.world.WorldTreeNode;
 
 import java.awt.Color;
@@ -22,15 +22,15 @@ import java.util.List;
  *  surface as shaded voxel cubes.
  *  <p>
  *  What the user sees is purely a function of world state. The renderer walks the
- *  world tree and, for each section, decides via {@link #projectedEdgePixels} how
- *  big it would appear on screen: distant sections are drawn as a single coarse
- *  "super-voxel", while nearby sections are recursed into for finer detail. This
+ *  world tree and, for each sector, decides via {@link #projectedEdgePixels} how
+ *  big it would appear on screen: distant sectors are drawn as a single coarse
+ *  "super-voxel", while nearby sectors are recursed into for finer detail. This
  *  is the level-of-detail story made visible &mdash; the further away something is,
  *  the higher up the tree we stop.
  */
 public final class WorldRenderer
 {
-    /** The on-screen edge size, in pixels, above which a section is refined into its children. */
+    /** The on-screen edge size, in pixels, above which a sector is refined into its children. */
     private final double _refineThresholdPx;
     private final VecF64 _lightDirection;
     private final Color _skyColor;
@@ -82,22 +82,22 @@ public final class WorldRenderer
             drawVoxel(g, r.bounds, MaterialPalette.colorOf(r.material), viewProjection, camera, width, height);
     }
 
-    /** Walks the tree, choosing the level of detail to draw at for each section. */
-    private void collect( WorldSection section, CameraF64 camera, double focal, List<Renderable> out ) {
-        double distance = camera.position().distance(section.bounds().center());
-        double edge = maxEdge(section.bounds());
+    /** Walks the tree, choosing the level of detail to draw at for each sector. */
+    private void collect( WorldSector sector, CameraF64 camera, double focal, List<Renderable> out ) {
+        double distance = camera.position().distance(sector.bounds().center());
+        double edge = maxEdge(sector.bounds());
 
-        boolean canRefine = section.children() != null;
+        boolean canRefine = sector.children() != null;
         boolean wantsRefine = projectedEdgePixels(edge, distance, focal) > _refineThresholdPx;
 
         if ( canRefine && wantsRefine ) {
-            WorldTreeNode node = section.children();
-            for ( int i = 0; i < WorldTreeNode.SECTION_COUNT; i++ )
-                collect(node.section(i), camera, focal, out);
+            WorldTreeNode node = sector.children();
+            for ( int i = 0; i < WorldTreeNode.SECTOR_COUNT; i++ )
+                collect(node.sector(i), camera, focal, out);
         } else {
-            Material material = section.ether().dominantMaterial();
+            Material material = sector.ether().dominantMaterial();
             if ( !MaterialPalette.isTransparent(material) )
-                out.add(new Renderable(section.bounds(), material, distance));
+                out.add(new Renderable(sector.bounds(), material, distance));
         }
     }
 

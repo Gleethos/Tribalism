@@ -9,7 +9,7 @@ import spock.lang.Title
 @Title("BoundsF64 - the spatial backbone")
 @Narrative('''
 
-    Every world section occupies a cubic `BoundsF64`. The recursive subdivision
+    Every world sector occupies a cubic `BoundsF64`. The recursive subdivision
     of the world tree is expressed entirely through this type, so its
     `subdivide` and containment operations have to be exactly right.
 

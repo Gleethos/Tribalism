@@ -12,7 +12,7 @@ import spock.lang.Title
 @Title("WorldGenerator - adaptive procedural landscapes")
 @Narrative('''
 
-    The generator turns noise into a section tree. Material is a height-field
+    The generator turns noise into a sector tree. Material is a height-field
     function of position, and - crucially - homogeneous regions collapse into a
     single leaf voxel so detail only appears around surfaces.
 
@@ -51,10 +51,10 @@ class WorldGenerator_Spec extends Specification
         given:
             var gen = solidGenerator()
         when:
-            var section = gen.generate(cubeAround(VecF64.of(0, 200, 0), 16), 2)
+            var sector = gen.generate(cubeAround(VecF64.of(0, 200, 0), 16), 2)
         then:
-            section.isLeaf()
-            section.ether().dominantMaterial() == Material.AIR
+            sector.isLeaf()
+            sector.ether().dominantMaterial() == Material.AIR
     }
 
     def "A region entirely underground generates a single rock leaf."()
@@ -62,10 +62,10 @@ class WorldGenerator_Spec extends Specification
         given:
             var gen = solidGenerator()
         when:
-            var section = gen.generate(cubeAround(VecF64.of(0, -200, 0), 16), 2)
+            var sector = gen.generate(cubeAround(VecF64.of(0, -200, 0), 16), 2)
         then:
-            section.isLeaf()
-            section.ether().dominantMaterial() == Material.ROCK
+            sector.isLeaf()
+            sector.ether().dominantMaterial() == Material.ROCK
     }
 
     def "A region straddling the surface is subdivided for detail."()
@@ -73,10 +73,10 @@ class WorldGenerator_Spec extends Specification
         given:
             var gen = solidGenerator()
         when: 'This cube spans from well below to well above the surface.'
-            var section = gen.generate(cubeAround(VecF64.of(0, 0, 0), 64), 1)
+            var sector = gen.generate(cubeAround(VecF64.of(0, 0, 0), 64), 1)
         then:
-            !section.isLeaf()
-            section.children().sections().size() == 512
+            !sector.isLeaf()
+            sector.children().sectors().size() == 512
     }
 
     def "Generation is reproducible for a given seed."()

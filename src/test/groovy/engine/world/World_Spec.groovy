@@ -5,8 +5,8 @@ import app.engine.primitives.VecF64
 import app.engine.world.Entity
 import app.engine.world.Material
 import app.engine.world.World
-import app.engine.world.WorldSection
-import app.engine.world.WorldSectionEtherData
+import app.engine.world.WorldSector
+import app.engine.world.WorldSectorEtherData
 import spock.lang.Narrative
 import spock.lang.Specification
 import spock.lang.Title
@@ -14,7 +14,7 @@ import spock.lang.Title
 @Title("World - the whole world as one value")
 @Narrative('''
 
-    A world is the root of the section tree plus an id-to-entity lookup. Adding or
+    A world is the root of the sector tree plus an id-to-entity lookup. Adding or
     removing an entity must keep the two in sync: the tree holds the positional
     handle, the lookup holds the actual entity.
 
@@ -27,7 +27,7 @@ class World_Spec extends Specification
 
     private static Entity.VoxelEntity smallVoxel( long id, double at ) {
         var bounds = BoundsF64.of(VecF64.of(at, at, at), VecF64.of(at + 0.5, at + 0.5, at + 0.5))
-        return Entity.VoxelEntity.of(id, WorldSection.leaf(bounds, WorldSectionEtherData.of(Material.ROCK)))
+        return Entity.VoxelEntity.of(id, WorldSector.leaf(bounds, WorldSectorEtherData.of(Material.ROCK)))
     }
 
     def "A fresh world is empty."()
@@ -83,10 +83,10 @@ class World_Spec extends Specification
             countTreeEntities(updated.root()) == 1
     }
 
-    private static int countTreeEntities( WorldSection section ) {
-        int count = section.entities().size()
-        if ( !section.isLeaf() )
-            for ( var child : section.children().sections() )
+    private static int countTreeEntities( WorldSector sector ) {
+        int count = sector.entities().size()
+        if ( !sector.isLeaf() )
+            for ( var child : sector.children().sectors() )
                 count += countTreeEntities(child)
         return count
     }

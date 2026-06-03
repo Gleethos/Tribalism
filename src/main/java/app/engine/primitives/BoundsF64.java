@@ -6,7 +6,7 @@ import sprouts.Tuple;
  *  An immutable, axis-aligned bounding box in 64-bit simulation space,
  *  defined by its {@code min} and {@code max} corners.
  *  <p>
- *  This is the spatial backbone of the world engine: every {@code WorldSection}
+ *  This is the spatial backbone of the world engine: every {@code WorldSector}
  *  occupies a cubic {@code BoundsF64}, and the recursive subdivision of the world
  *  tree is expressed purely in terms of {@link #subdivide(int)}.
  *  <p>
@@ -111,7 +111,7 @@ public record BoundsF64(
      *  <p>
      *  The returned tuple is laid out in {@code x + y*divisions + z*divisions^2}
      *  order, which is exactly the linear ordering the world tree uses to store
-     *  its {@code WorldSection} children. For the engine's {@code 8 x 8 x 8} nodes
+     *  its {@code WorldSector} children. For the engine's {@code 8 x 8 x 8} nodes
      *  this yields {@code 512} sub-boxes.
      *
      *  @param divisions The number of cells along each axis (must be positive).

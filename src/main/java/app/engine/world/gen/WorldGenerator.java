@@ -3,20 +3,20 @@ package app.engine.world.gen;
 import app.engine.primitives.BoundsF64;
 import app.engine.primitives.VecF64;
 import app.engine.world.Material;
-import app.engine.world.WorldSection;
-import app.engine.world.WorldSectionEtherData;
+import app.engine.world.WorldSector;
+import app.engine.world.WorldSectorEtherData;
 import app.engine.world.WorldTreeNode;
 import sprouts.Tuple;
 
 /**
- *  Procedurally generates a {@link WorldSection} tree from 3D noise.
+ *  Procedurally generates a {@link WorldSector} tree from 3D noise.
  *  <p>
  *  The landscape is a height field driven by fractal {@link PerlinNoise}: rock
  *  deep down, soil above it, a thin band of grass at the surface, then air, with
  *  3D noise carving caves below ground and water filling low air pockets.
  *  <p>
  *  Crucially, generation is <i>adaptive</i>: a region is only subdivided into
- *  {@value WorldTreeNode#SECTION_COUNT} children if it is not homogeneous (its
+ *  {@value WorldTreeNode#SECTOR_COUNT} children if it is not homogeneous (its
  *  sample points disagree on material). Large stretches of pure rock or pure air
  *  collapse into a single leaf voxel, so detail naturally concentrates around
  *  surfaces &mdash; which is the whole point of the tree.
@@ -79,28 +79,28 @@ public record WorldGenerator(
     }
 
     /**
-     *  Generates the section covering {@code bounds}, subdividing adaptively up to
-     *  {@code maxDepth} levels. The returned section has its level-of-detail ether
-     *  already {@link WorldSection#aggregated() aggregated} from the bottom up.
+     *  Generates the sector covering {@code bounds}, subdividing adaptively up to
+     *  {@code maxDepth} levels. The returned sector has its level-of-detail ether
+     *  already {@link WorldSector#aggregated() aggregated} from the bottom up.
      */
-    public WorldSection generate( BoundsF64 bounds, int maxDepth ) {
+    public WorldSector generate( BoundsF64 bounds, int maxDepth ) {
         return build(bounds, maxDepth).aggregated();
     }
 
-    private WorldSection build( BoundsF64 bounds, int depth ) {
+    private WorldSector build( BoundsF64 bounds, int depth ) {
         Material homogeneous = homogeneousMaterial(bounds);
         if ( homogeneous != null )
-            return WorldSection.leaf(bounds, WorldSectionEtherData.of(homogeneous));
+            return WorldSector.leaf(bounds, WorldSectorEtherData.of(homogeneous));
 
         if ( depth <= 0 )
-            return WorldSection.leaf(bounds, sampledEther(bounds));
+            return WorldSector.leaf(bounds, sampledEther(bounds));
 
         Tuple<BoundsF64> cells = bounds.subdivide(WorldTreeNode.RESOLUTION);
-        WorldSection[] children = new WorldSection[WorldTreeNode.SECTION_COUNT];
-        for ( int i = 0; i < WorldTreeNode.SECTION_COUNT; i++ )
+        WorldSector[] children = new WorldSector[WorldTreeNode.SECTOR_COUNT];
+        for ( int i = 0; i < WorldTreeNode.SECTOR_COUNT; i++ )
             children[i] = build(cells.get(i), depth - 1);
-        return WorldSection.empty(bounds)
-                           .withChildren(new WorldTreeNode(Tuple.of(WorldSection.class, children)));
+        return WorldSector.empty(bounds)
+                           .withChildren(new WorldTreeNode(Tuple.of(WorldSector.class, children)));
     }
 
     /**
@@ -120,9 +120,9 @@ public record WorldGenerator(
     }
 
     /** A material mixture sampled across {@code bounds}, used when detail bottoms out. */
-    private WorldSectionEtherData sampledEther( BoundsF64 bounds ) {
+    private WorldSectorEtherData sampledEther( BoundsF64 bounds ) {
         VecF64[] points = samplePoints(bounds);
-        WorldSectionEtherData ether = WorldSectionEtherData.empty();
+        WorldSectorEtherData ether = WorldSectorEtherData.empty();
         double share = 1.0 / points.length;
         for ( VecF64 p : points ) {
             Material m = materialAt(p);

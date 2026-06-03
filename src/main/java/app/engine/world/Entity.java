@@ -14,8 +14,8 @@ import app.engine.primitives.CameraF64;
  *  <ul>
  *      <li>{@link CameraEntity} &mdash; a viewpoint into the world.</li>
  *      <li>{@link VoxelEntity} &mdash; a movable mini-world of its own, described
- *          by a nested {@link WorldSection}. This lets an entity have the full
- *          recursive shape machinery of a world section while moving freely
+ *          by a nested {@link WorldSector}. This lets an entity have the full
+ *          recursive shape machinery of a world sector while moving freely
  *          relative to the world it belongs to.</li>
  *  </ul>
  */
@@ -42,15 +42,15 @@ public sealed interface Entity permits Entity.CameraEntity, Entity.VoxelEntity
 
     /**
      *  A movable entity that is itself a small world: its shape and material are
-     *  described by a nested {@link WorldSection} (which may recurse into finer
-     *  sub-sections just like the main world tree).
+     *  described by a nested {@link WorldSector} (which may recurse into finer
+     *  sub-sectors just like the main world tree).
      */
     record VoxelEntity(
         WorldTreeEntityId treeId,
-        WorldSection section
+        WorldSector sector
     ) implements Entity {
-        public static VoxelEntity of( long id, WorldSection section ) {
-            return new VoxelEntity(WorldTreeEntityId.of(id, section.bounds()), section);
+        public static VoxelEntity of( long id, WorldSector sector ) {
+            return new VoxelEntity(WorldTreeEntityId.of(id, sector.bounds()), sector);
         }
     }
 }
