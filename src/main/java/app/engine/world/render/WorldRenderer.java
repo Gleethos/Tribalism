@@ -2,6 +2,7 @@ package app.engine.world.render;
 
 import app.engine.primitives.BoundsF64;
 import app.engine.primitives.CameraF64;
+import app.engine.primitives.Frustum;
 import app.engine.primitives.Mat4F64;
 import app.engine.primitives.VecF64;
 import app.engine.world.Material;
@@ -73,10 +74,11 @@ public final class WorldRenderer
         g.fillRect(0, 0, width, height);
 
         Mat4F64 viewProjection = camera.viewProjectionMatrix();
+        Frustum frustum = camera.frustum();
         double focal = focalLengthPx(camera, height);
 
         List<Renderable> renderables = new ArrayList<>();
-        collect(world.root(), camera, focal, renderables);
+        collect(world.root(), camera, frustum, focal, renderables);
 
         // Painter's algorithm: draw far voxels first so near ones cover them.
         renderables.sort(Comparator.comparingDouble((Renderable r) -> r.distance).reversed());
@@ -84,8 +86,18 @@ public final class WorldRenderer
             drawVoxel(g, r.bounds, r.ether, viewProjection, camera, width, height);
     }
 
-    /** Walks the tree, choosing the level of detail to draw at for each sector. */
-    private void collect( WorldSector sector, CameraF64 camera, double focal, List<Renderable> out ) {
+    /**
+     *  Walks the tree, choosing the level of detail to draw at for each sector.
+     *  <p>
+     *  Frustum culling comes first: a sector whose bounds fall entirely outside the
+     *  view volume is skipped wholesale, and with it the entire sub-tree beneath it.
+     *  This is what keeps the walk cheap &mdash; we only ever descend into the
+     *  fraction of the world the camera can actually see.
+     */
+    private void collect( WorldSector sector, CameraF64 camera, Frustum frustum, double focal, List<Renderable> out ) {
+        if ( !frustum.intersects(sector.bounds()) )
+            return; // outside the view: prune this sector and its whole sub-tree.
+
         double distance = camera.position().distance(sector.bounds().center());
         double edge = maxEdge(sector.bounds());
 
@@ -95,7 +107,7 @@ public final class WorldRenderer
         if ( canRefine && wantsRefine ) {
             WorldTreeNode node = sector.children();
             for ( int i = 0; i < WorldTreeNode.SECTOR_COUNT; i++ )
-                collect(node.sector(i), camera, focal, out);
+                collect(node.sector(i), camera, frustum, focal, out);
         } else {
             WorldSectorEtherData ether = sector.ether();
             if ( isVisible(ether) )

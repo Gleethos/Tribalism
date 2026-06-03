@@ -61,11 +61,32 @@ class WorldRenderer_Spec extends Specification
             new WorldRenderer(28.0, VecF64.of(-0.4, -1.0, -0.3), skyColor).render(g, world, camera, w, h)
             g.dispose()
         then: 'A meaningful fraction of pixels differ from the sky colour (terrain was drawn).'
-            int nonSky = 0
-            for ( int y = 0; y < h; y++ )
-                for ( int x = 0; x < w; x++ )
-                    if ( (image.getRGB(x, y) & 0xFFFFFF) != (skyColor.getRGB() & 0xFFFFFF) )
-                        nonSky++
-            nonSky > (w * h) * 0.05
+            countNonSky(image, skyColor) > (w * h) * 0.05
+    }
+
+    def "A camera looking away from the world draws only sky (frustum culling)."()
+    {
+        given: 'The same world, but the camera faces away from it so nothing is in view.'
+            int w = 240, h = 160
+            var skyColor = new java.awt.Color(135, 180, 235)
+            var world = World.of(WorldGenerator.withSeed(1337L).generate(BoundsF64.cube(VecF64.zero(), 128), 2))
+            var lookingAway = new CameraF64(VecF64.of(96, 40, 96), VecF64.of(300, 40, 300), VecF64.of(0, 1, 0),
+                                            Math.toRadians(60), (double) w / h, 0.5, 2000)
+            var image = new BufferedImage(w, h, BufferedImage.TYPE_INT_RGB)
+            var g = image.createGraphics()
+        when:
+            new WorldRenderer(28.0, VecF64.of(-0.4, -1.0, -0.3), skyColor).render(g, world, lookingAway, w, h)
+            g.dispose()
+        then: 'The whole world is behind the camera, so every sector is culled and nothing is drawn.'
+            countNonSky(image, skyColor) == 0
+    }
+
+    private static int countNonSky( BufferedImage image, java.awt.Color skyColor ) {
+        int nonSky = 0
+        for ( int y = 0; y < image.height; y++ )
+            for ( int x = 0; x < image.width; x++ )
+                if ( (image.getRGB(x, y) & 0xFFFFFF) != (skyColor.getRGB() & 0xFFFFFF) )
+                    nonSky++
+        return nonSky
     }
 }

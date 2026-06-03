@@ -39,11 +39,15 @@ to 32-bit floats is a concern of the rendering step only.
 
 ```
 app.engine
+├── util                Small cross-cutting helpers
+│   └── Lazy            Thread-safe, write-once memoized value
+│
 ├── primitives          Math primitives (pure 64-bit value types)
 │   ├── VecF64          3D vector
 │   ├── BoundsF64       Axis-aligned bounding box
 │   ├── Mat4F64         4×4 matrix (transforms, projection)
-│   └── CameraF64       A viewpoint + frustum, derives view/projection matrices
+│   ├── CameraF64       A viewpoint that lazily caches its matrices + frustum
+│   └── Frustum         Six culling planes of a view volume (box visibility tests)
 │
 └── world               The world data model and its tooling
     ├── Material                Enum of materials (AIR, WATER, SOIL, GRASS, …)
@@ -106,10 +110,37 @@ A row-major 4×4 matrix (`get(row, col) == data[row*4 + col]`). Fully immutable:
 `inverse()` (cofactor/adjugate), and `transformPoint` / `transformDirection`.
 
 ### `CameraF64`
-A viewpoint as pure data: `position`, `target`, `up`, plus the frustum
+A viewpoint defined by `position`, `target`, `up`, plus the frustum shape
 (`fovYRadians`, `aspect`, `near`, `far`). It derives `viewMatrix()` (look-at),
-`projectionMatrix()` (perspective) and `viewProjectionMatrix()`. Rendering stays
-a separate function of this state.
+`projectionMatrix()` (perspective), `viewProjectionMatrix()` and a cullable
+`frustum()`. Rendering stays a separate function of this state.
+
+Unlike the other primitives, `CameraF64` is a **`final class`, not a `record`** —
+deliberately, so it can *encapsulate* a private cache. The four derived values
+(view, projection, view-projection matrices and the frustum) are expensive and
+queried repeatedly per frame, so each is wrapped in a [`Lazy`](#lazy) and computed
+at most once. The camera still behaves as a **value**: it is immutable and its
+`equals`/`hashCode` are defined purely by the seven fields, never the caches.
+This is the engine's recurring pattern for "lazy values + memoization" applied to
+a value object that a `record` cannot express (records may not hold extra fields).
+
+### `Frustum`
+The six clipping planes of a camera's view volume, extracted from a world-to-clip
+`viewProjectionMatrix()` via the Gribb–Hartmann method (each plane is `row3 ± rowₖ`
+of the matrix, normalized, with the normal pointing inward). The workhorse is
+**`intersects(BoundsF64)`**: a conservative box test that returns `false` only when
+the box lies *entirely* outside the volume (it tests the box's "positive vertex"
+against each plane). It never rejects a visible box, which is exactly what makes it
+safe to drive **frustum culling** (§7). `contains(point)` is the point analogue.
+
+### `Lazy`
+A tiny helper in `app.engine.util`: a **thread-safe, write-once memoized value**.
+`Lazy.of(supplier)` defers a computation until the first `get()`, then caches it
+for every later read (double-checked locking guarded by a `volatile`). It lets an
+immutable value object carry derived, expensive state that is only paid for if and
+when it is actually read — the mechanism behind `CameraF64`'s cached matrices and
+frustum. Because the cached value is a pure function of the inputs, it is always
+excluded from the holder's `equals`/`hashCode`.
 
 ---
 
@@ -310,10 +341,20 @@ summarizes each face from the children on it. The result is returned already
 The renderer is a **pure function of world state**; it does not own any
 simulation state.
 
-### Level-of-detail selection
+### Frustum culling (deciding *whether* to descend)
 
-`WorldRenderer` walks the tree from the root and, for each sector, estimates how
-big it would appear on screen:
+Before anything else, the tree walk is gated by the camera's `frustum()`. As it
+recurses, each sector is first tested with `frustum.intersects(sector.bounds())`;
+if the sector's bounds fall entirely outside the view volume it is skipped — and
+with it its **entire sub-tree**. So the renderer only ever descends into the
+fraction of the world the camera can actually see, instead of traversing the whole
+tree every frame. The frustum is built once per frame (cached on the camera) and
+threaded down the recursion.
+
+### Level-of-detail selection (deciding *how deep* to descend)
+
+For sectors that survive culling, `WorldRenderer` estimates how big each would
+appear on screen:
 
 ```java
 projectedEdgePixels(edgeLength, distance, focalLengthPx) = edgeLength · focal / distance
@@ -377,7 +418,9 @@ structure:
 | `primitives/VecF64_Spec`    | vector algebra, value semantics, lerp/distance |
 | `primitives/BoundsF64_Spec` | containment, `subdivide` grid ordering, union |
 | `primitives/Mat4F64_Spec`   | immutability, transforms, `M·M⁻¹ = I`, singular detection |
-| `primitives/CameraF64_Spec` | forward/view matrix, frustum validation |
+| `primitives/CameraF64_Spec` | forward/view matrix, frustum validation, value equality, matrix memoization |
+| `primitives/Frustum_Spec`   | plane extraction, conservative box culling, point containment |
+| `util/Lazy_Spec`            | compute-once memoization, concurrent first-access safety |
 | `world/MaterialDistribution_Spec` | fractions, dominant material, normalize, averaging |
 | `world/WorldSectorEtherData_Spec` | per-side distributions, uniform/combined, value semantics |
 | `world/LightSource_Spec`    | sum-type variants, bounds, exhaustive matching |
@@ -386,7 +429,7 @@ structure:
 | `world/World_Spec`          | add/remove/move keeping tree + lookup in sync |
 | `world/gen/PerlinNoise_Spec`| determinism, range, lattice zeros |
 | `world/gen/WorldGenerator_Spec` | material classification, adaptive subdivision, reproducibility |
-| `world/render/WorldRenderer_Spec` | LoD maths + an offscreen render smoke test |
+| `world/render/WorldRenderer_Spec` | LoD maths, frustum culling, offscreen render smoke test |
 
 Run them with:
 
@@ -398,10 +441,11 @@ Run them with:
 
 ## 10. Status & next steps
 
-**Built:** math primitives; the full immutable world tree (sectors, nodes,
-ether, entities, lights, traces); entity fall-down and LoD aggregation; the
-`Entity` sum type and `World` value; procedural generation; first-draft
-Graphics2D rendering with distance LoD; a runnable demo.
+**Built:** math primitives (incl. a lazily-caching `CameraF64` and a `Frustum`);
+the full immutable world tree (sectors, nodes, ether, entities, lights, traces);
+entity fall-down and per-side LoD aggregation; the `Entity` sum type and `World`
+value; procedural generation; first-draft Graphics2D rendering with distance LoD
+**and frustum culling**; a runnable demo.
 
 **Not yet built (future steps):**
 

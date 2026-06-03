@@ -72,4 +72,39 @@ class CameraF64_Spec extends Specification
         and: 'Unrelated fields are preserved.'
             camera.withPosition(VecF64.of(1, 1, 1)).target() == camera.target()
     }
+
+    def "Value equality is defined by the seven fields, not the cached matrices."()
+    {
+        given:
+            var a = sampleCamera()
+            var b = sampleCamera()
+        when: 'We force one camera to populate its lazy caches.'
+            a.viewProjectionMatrix()
+            a.frustum()
+        then: 'Two cameras with the same state are still equal and hash alike.'
+            a == b
+            a.hashCode() == b.hashCode()
+        and: 'A camera with a different field is not equal.'
+            a != a.withAspect(2.0)
+    }
+
+    def "Derived matrices are memoized - the same cached instance is returned each call."()
+    {
+        given:
+            var camera = sampleCamera()
+        expect: 'Repeated queries hand back the very same object (identity), not a recomputation.'
+            camera.viewMatrix().is(camera.viewMatrix())
+            camera.projectionMatrix().is(camera.projectionMatrix())
+            camera.viewProjectionMatrix().is(camera.viewProjectionMatrix())
+            camera.frustum().is(camera.frustum())
+    }
+
+    def "A camera exposes a frustum that can cull boxes."()
+    {
+        given:
+            var camera = sampleCamera()
+        expect:
+            camera.frustum().contains(camera.target())          // looking at it
+            !camera.frustum().contains(VecF64.of(0, 0, 1000))   // behind the camera
+    }
 }
