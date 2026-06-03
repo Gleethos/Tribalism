@@ -378,9 +378,10 @@ structure:
 | `primitives/BoundsF64_Spec` | containment, `subdivide` grid ordering, union |
 | `primitives/Mat4F64_Spec`   | immutability, transforms, `M·M⁻¹ = I`, singular detection |
 | `primitives/CameraF64_Spec` | forward/view matrix, frustum validation |
-| `world/WorldSectorEtherData_Spec` | fractions, dominant material, averaging |
+| `world/MaterialDistribution_Spec` | fractions, dominant material, normalize, averaging |
+| `world/WorldSectorEtherData_Spec` | per-side distributions, uniform/combined, value semantics |
 | `world/LightSource_Spec`    | sum-type variants, bounds, exhaustive matching |
-| `world/WorldTree_Spec`      | 512-node layout, fall-down, LoD aggregation |
+| `world/WorldTree_Spec`      | 512-node layout, fall-down, per-side LoD aggregation |
 | `world/Entity_Spec`         | camera/voxel entities, sum-type matching |
 | `world/World_Spec`          | add/remove/move keeping tree + lookup in sync |
 | `world/gen/PerlinNoise_Spec`| determinism, range, lattice zeros |
