@@ -3,6 +3,7 @@ package engine.world
 import app.engine.primitives.BoundsF64
 import app.engine.primitives.VecF64
 import app.engine.world.Material
+import app.engine.world.Side
 import app.engine.world.WorldSector
 import app.engine.world.WorldSectorEtherData
 import app.engine.world.WorldTreeEntityId
@@ -89,31 +90,39 @@ class WorldTree_Spec extends Specification
             withEntity.isLeaf()
     }
 
-    def "Level-of-detail aggregation averages a sector's children into itself."()
+    def "Per-side aggregation summarizes only the faces a child actually lies on."()
     {
-        given: 'A subdivided sector where a single child is solid rock.'
+        given: 'A subdivided sector where the single corner child (0,0,0) is solid rock.'
             var sector = WorldSector.empty(cube(0, 8)).subdivide()
             var rockChild = sector.children().sector(0).withEther(WorldSectorEtherData.of(Material.ROCK))
             var withRock = sector.withChildren(sector.children().withSector(0, rockChild))
         when:
             var aggregated = withRock.aggregated()
-        then: 'The parent voxel becomes 1/512 rock, summarizing its sub-tree.'
-            Math.abs(aggregated.ether().fractionOf(Material.ROCK) - 1.0 / 512.0) < 1e-12
+        then: 'Corner cell (0,0,0) sits on the three negative faces, so each shows 1/64 rock...'
+            Math.abs(aggregated.ether().sideOf(Side.NEG_X).fractionOf(Material.ROCK) - 1.0 / 64.0) < 1e-12
+            Math.abs(aggregated.ether().sideOf(Side.NEG_Y).fractionOf(Material.ROCK) - 1.0 / 64.0) < 1e-12
+            Math.abs(aggregated.ether().sideOf(Side.NEG_Z).fractionOf(Material.ROCK) - 1.0 / 64.0) < 1e-12
+        and: '...while the opposite faces never see it (the interior is hidden).'
+            aggregated.ether().sideOf(Side.POS_X).fractionOf(Material.ROCK) == 0
+            aggregated.ether().sideOf(Side.POS_Y).fractionOf(Material.ROCK) == 0
+            aggregated.ether().sideOf(Side.POS_Z).fractionOf(Material.ROCK) == 0
     }
 
-    def "Aggregating a uniformly subdivided sector preserves its material exactly."()
+    def "Aggregating a uniformly subdivided sector preserves its material on every face."()
     {
-        given: 'Splitting a solid rock voxel must keep it solid rock.'
+        given: 'Splitting a solid rock voxel must keep it solid rock all over.'
             var rock = WorldSector.leaf(cube(0, 8), WorldSectorEtherData.of(Material.ROCK))
         when:
             var aggregated = rock.subdivide().aggregated()
         then:
-            Math.abs(aggregated.ether().fractionOf(Material.ROCK) - 1.0) < 1e-12
+            Side.values().every {
+                Math.abs(aggregated.ether().sideOf(it).fractionOf(Material.ROCK) - 1.0) < 1e-12
+            }
     }
 
-    def "Aggregation recurses through multiple levels."()
+    def "Per-side aggregation recurses through multiple levels, dividing by face area each time."()
     {
-        given: 'Two levels deep, with one unit cell set to rock.'
+        given: 'Two levels deep, with the corner unit cell (0,0,0) set to rock.'
             var root = WorldSector.empty(cube(0, 64)).subdivide()
             var level1 = root.children().sector(0).subdivide()
             var rockLeaf = level1.children().sector(0).withEther(WorldSectorEtherData.of(Material.ROCK))
@@ -121,7 +130,8 @@ class WorldTree_Spec extends Specification
             var rootWithLevels = root.withChildren(root.children().withSector(0, level1WithRock))
         when:
             var aggregated = rootWithLevels.aggregated()
-        then: 'The single rock cell is 1 of 512*512 leaves under the root.'
-            Math.abs(aggregated.ether().fractionOf(Material.ROCK) - 1.0 / (512.0 * 512.0)) < 1e-18
+        then: 'Each level averages over a 64-cell face, so the corner rock is 1/(64*64) on the -X face.'
+            Math.abs(aggregated.ether().sideOf(Side.NEG_X).fractionOf(Material.ROCK) - 1.0 / (64.0 * 64.0)) < 1e-15
+            aggregated.ether().sideOf(Side.POS_X).fractionOf(Material.ROCK) == 0
     }
 }

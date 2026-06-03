@@ -1,81 +1,67 @@
 package engine.world
 
 import app.engine.world.Material
+import app.engine.world.MaterialDistribution
+import app.engine.world.Side
 import app.engine.world.WorldSectorEtherData
 import spock.lang.Narrative
 import spock.lang.Specification
 import spock.lang.Title
 
-@Title("WorldSectorEtherData - what a sector is made of")
+@Title("WorldSectorEtherData - what a sector is made of, per face")
 @Narrative('''
 
-    A sector stores a mixture of material fractions, e.g. 90% air, 5% soil,
-    5% rock. This drives rendering and, crucially, the level-of-detail
-    aggregation where a parent averages the materials of its children.
+    A sector stores a material distribution per cube face (six sides) rather
+    than a single whole-sector mixture. Since materials are a visual property
+    and only the outer faces of a cube are ever seen, level-of-detail
+    aggregation summarizes each face from only the children on that face.
 
 ''')
 class WorldSectorEtherData_Spec extends Specification
 {
-    def "An empty sector reports zero for every material and is dominated by air."()
+    def "Empty ether has empty, air-dominated distributions on all six sides."()
     {
         given:
             var ether = WorldSectorEtherData.empty()
         expect:
-            ether.fractionOf(Material.ROCK) == 0
-            ether.total() == 0
+            Side.values().every { ether.sideOf(it).total() == 0 }
+            Side.values().every { ether.sideOf(it).dominantMaterial() == Material.AIR }
             ether.dominantMaterial() == Material.AIR
     }
 
-    def "A mixture exposes its fractions and dominant material."()
+    def "Uniform ether carries the same distribution on every side."()
     {
         given:
-            var ether = WorldSectorEtherData.empty()
-                                .with(Material.AIR, 0.90)
-                                .with(Material.SOIL, 0.05)
-                                .with(Material.ROCK, 0.05)
+            var ether = WorldSectorEtherData.of(Material.ROCK)
         expect:
-            ether.fractionOf(Material.AIR) == 0.90
-            Math.abs(ether.total() - 1.0) < 1e-12
-            ether.dominantMaterial() == Material.AIR
+            Side.values().every { ether.sideOf(it).dominantMaterial() == Material.ROCK }
+            ether.dominantMaterial() == Material.ROCK
     }
 
-    def "Normalizing rescales the fractions so they sum to one."()
+    def "Each side can carry its own distribution."()
+    {
+        given: 'A sector that is grass on top, rock on the bottom, untouched elsewhere.'
+            var ether = WorldSectorEtherData.empty()
+                                .withSide(Side.POS_Y, MaterialDistribution.of(Material.GRASS))
+                                .withSide(Side.NEG_Y, MaterialDistribution.of(Material.ROCK))
+        expect:
+            ether.sideOf(Side.POS_Y).dominantMaterial() == Material.GRASS
+            ether.sideOf(Side.NEG_Y).dominantMaterial() == Material.ROCK
+            ether.sideOf(Side.POS_X).dominantMaterial() == Material.AIR
+        and: 'The combined view averages all six sides into one mixture.'
+            ether.combined().fractionOf(Material.GRASS) > 0
+            ether.combined().fractionOf(Material.ROCK) > 0
+    }
+
+    def "Replacing a side leaves the others untouched (value semantics)."()
     {
         given:
-            var ether = WorldSectorEtherData.empty()
-                                .with(Material.SOIL, 2)
-                                .with(Material.ROCK, 2)
+            var base = WorldSectorEtherData.of(Material.SOIL)
         when:
-            var normalized = ether.normalized()
+            var changed = base.withSide(Side.POS_Y, MaterialDistribution.of(Material.GRASS))
         then:
-            Math.abs(normalized.total() - 1.0) < 1e-12
-            Math.abs(normalized.fractionOf(Material.SOIL) - 0.5) < 1e-12
-    }
-
-    def "Averaging children is the core of level-of-detail aggregation."()
-    {
-        given: 'One child is all rock, the other is all air.'
-            var rock = WorldSectorEtherData.of(Material.ROCK)
-            var air = WorldSectorEtherData.of(Material.AIR)
-        when: 'We average them, as a parent voxel would.'
-            var averaged = WorldSectorEtherData.average([rock, air, air, air])
-        then: 'The parent is a quarter rock, three quarters air.'
-            Math.abs(averaged.fractionOf(Material.ROCK) - 0.25) < 1e-12
-            Math.abs(averaged.fractionOf(Material.AIR) - 0.75) < 1e-12
-            averaged.dominantMaterial() == Material.AIR
-    }
-
-    def "Averaging no samples yields empty ether data."()
-    {
-        expect:
-            WorldSectorEtherData.average([]) == WorldSectorEtherData.empty()
-    }
-
-    def "A negative fraction is rejected."()
-    {
-        when:
-            WorldSectorEtherData.empty().with(Material.ROCK, -0.1)
-        then:
-            thrown(IllegalArgumentException)
+            changed.sideOf(Side.POS_Y).dominantMaterial() == Material.GRASS
+            changed.sideOf(Side.NEG_Y).dominantMaterial() == Material.SOIL
+            base.sideOf(Side.POS_Y).dominantMaterial() == Material.SOIL
     }
 }

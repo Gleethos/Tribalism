@@ -3,6 +3,7 @@ package app.engine.world.gen;
 import app.engine.primitives.BoundsF64;
 import app.engine.primitives.VecF64;
 import app.engine.world.Material;
+import app.engine.world.MaterialDistribution;
 import app.engine.world.WorldSector;
 import app.engine.world.WorldSectorEtherData;
 import app.engine.world.WorldTreeNode;
@@ -119,16 +120,22 @@ public record WorldGenerator(
         return first;
     }
 
-    /** A material mixture sampled across {@code bounds}, used when detail bottoms out. */
+    /**
+     *  A material mixture sampled across {@code bounds}, used when detail bottoms
+     *  out. At this leaf level there is no directional information, so the same
+     *  mixture is used for all six sides; the per-side ether becomes meaningful
+     *  higher up the tree, where {@link WorldSector#aggregated() aggregation}
+     *  summarizes each face from only the children on that face.
+     */
     private WorldSectorEtherData sampledEther( BoundsF64 bounds ) {
         VecF64[] points = samplePoints(bounds);
-        WorldSectorEtherData ether = WorldSectorEtherData.empty();
+        MaterialDistribution mix = MaterialDistribution.empty();
         double share = 1.0 / points.length;
         for ( VecF64 p : points ) {
             Material m = materialAt(p);
-            ether = ether.with(m, ether.fractionOf(m) + share);
+            mix = mix.with(m, mix.fractionOf(m) + share);
         }
-        return ether;
+        return WorldSectorEtherData.uniform(mix);
     }
 
     /** The eight corners plus the center of {@code bounds}. */

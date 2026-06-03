@@ -52,6 +52,31 @@ public record WorldTreeNode(
         return new WorldTreeNode(Tuple.of(WorldSector.class, sectors));
     }
 
+    /**
+     *  @return The linear indices of the {@code RESOLUTION^2} child cells that lie
+     *          on the given outer {@code side} of this node (e.g. {@link Side#POS_Y}
+     *          yields the top {@code 8x8} layer). This is what per-side
+     *          level-of-detail aggregation walks: only a face's boundary children
+     *          contribute to that face of the parent.
+     */
+    public static int[] boundaryCells( Side side ) {
+        int fixed = side.isPositive() ? RESOLUTION - 1 : 0;
+        int[] indices = new int[RESOLUTION * RESOLUTION];
+        int k = 0;
+        for ( int a = 0; a < RESOLUTION; a++ ) {
+            for ( int b = 0; b < RESOLUTION; b++ ) {
+                int x, y, z;
+                switch ( side.axis() ) {
+                    case 0  -> { x = fixed; y = a; z = b; }
+                    case 1  -> { y = fixed; x = a; z = b; }
+                    default -> { z = fixed; x = a; y = b; }
+                }
+                indices[k++] = indexOf(x, y, z);
+            }
+        }
+        return indices;
+    }
+
     /** @return The linear index for grid coordinate {@code (x, y, z)}. */
     public static int indexOf( int x, int y, int z ) {
         if ( x < 0 || y < 0 || z < 0 || x >= RESOLUTION || y >= RESOLUTION || z >= RESOLUTION )

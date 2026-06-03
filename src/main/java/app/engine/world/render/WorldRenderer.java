@@ -5,8 +5,10 @@ import app.engine.primitives.CameraF64;
 import app.engine.primitives.Mat4F64;
 import app.engine.primitives.VecF64;
 import app.engine.world.Material;
+import app.engine.world.Side;
 import app.engine.world.World;
 import app.engine.world.WorldSector;
+import app.engine.world.WorldSectorEtherData;
 import app.engine.world.WorldTreeNode;
 
 import java.awt.Color;
@@ -79,7 +81,7 @@ public final class WorldRenderer
         // Painter's algorithm: draw far voxels first so near ones cover them.
         renderables.sort(Comparator.comparingDouble((Renderable r) -> r.distance).reversed());
         for ( Renderable r : renderables )
-            drawVoxel(g, r.bounds, MaterialPalette.colorOf(r.material), viewProjection, camera, width, height);
+            drawVoxel(g, r.bounds, r.ether, viewProjection, camera, width, height);
     }
 
     /** Walks the tree, choosing the level of detail to draw at for each sector. */
@@ -95,13 +97,21 @@ public final class WorldRenderer
             for ( int i = 0; i < WorldTreeNode.SECTOR_COUNT; i++ )
                 collect(node.sector(i), camera, focal, out);
         } else {
-            Material material = sector.ether().dominantMaterial();
-            if ( !MaterialPalette.isTransparent(material) )
-                out.add(new Renderable(sector.bounds(), material, distance));
+            WorldSectorEtherData ether = sector.ether();
+            if ( isVisible(ether) )
+                out.add(new Renderable(sector.bounds(), ether, distance));
         }
     }
 
-    private void drawVoxel( Graphics2D g, BoundsF64 bounds, Color base, Mat4F64 vp, CameraF64 camera, int w, int h ) {
+    /** @return {@code true} if any face of the sector shows a non-transparent material. */
+    private static boolean isVisible( WorldSectorEtherData ether ) {
+        for ( Side side : Side.values() )
+            if ( !MaterialPalette.isTransparent(ether.sideOf(side).dominantMaterial()) )
+                return true;
+        return false;
+    }
+
+    private void drawVoxel( Graphics2D g, BoundsF64 bounds, WorldSectorEtherData ether, Mat4F64 vp, CameraF64 camera, int w, int h ) {
         VecF64[] corners = corners(bounds);
         double[][] screen = new double[8][];
         for ( int i = 0; i < 8; i++ ) {
@@ -110,8 +120,15 @@ public final class WorldRenderer
                 return; // a corner is at/behind the camera: skip this voxel for the first draft.
         }
 
-        for ( int[] face : FACES ) {
-            VecF64 normal = FACE_NORMALS[indexOfFace(face)];
+        for ( int f = 0; f < FACES.length; f++ ) {
+            Side side = FACE_SIDES[f];
+            // Each face is coloured by the material on that very side of the sector.
+            Material material = ether.sideOf(side).dominantMaterial();
+            if ( MaterialPalette.isTransparent(material) )
+                continue;
+
+            int[] face = FACES[f];
+            VecF64 normal = side.normal();
             VecF64 faceCenter = corners[face[0]].add(corners[face[2]]).div(2);
             // Back-face culling: only draw faces whose outward normal points towards the camera.
             if ( normal.dot(camera.position().sub(faceCenter)) <= 0 )
@@ -121,7 +138,7 @@ public final class WorldRenderer
             for ( int corner : face )
                 polygon.addPoint((int) Math.round(screen[corner][0]), (int) Math.round(screen[corner][1]));
 
-            g.setColor(shade(base, normal));
+            g.setColor(shade(MaterialPalette.colorOf(material), normal));
             g.fillPolygon(polygon);
         }
     }
@@ -173,8 +190,9 @@ public final class WorldRenderer
         return v < 0 ? 0 : (v > 255 ? 255 : v);
     }
 
-    // The six cube faces, each as four corner indices in boundary order, with
-    // matching outward normals (see corners(): corner i has bit 0 = x, 1 = y, 2 = z).
+    // The six cube faces, each as four corner indices in boundary order (see
+    // corners(): corner i has bit 0 = x, 1 = y, 2 = z), paired with the matching
+    // Side, whose normal() is used both for culling and per-face material lookup.
     private static final int[][] FACES = {
             { 0, 1, 5, 4 }, // -Y bottom
             { 2, 3, 7, 6 }, // +Y top
@@ -184,22 +202,10 @@ public final class WorldRenderer
             { 4, 5, 7, 6 }  // +Z back
     };
 
-    private static final VecF64[] FACE_NORMALS = {
-            VecF64.of(0, -1, 0),
-            VecF64.of(0, 1, 0),
-            VecF64.of(-1, 0, 0),
-            VecF64.of(1, 0, 0),
-            VecF64.of(0, 0, -1),
-            VecF64.of(0, 0, 1)
+    private static final Side[] FACE_SIDES = {
+            Side.NEG_Y, Side.POS_Y, Side.NEG_X, Side.POS_X, Side.NEG_Z, Side.POS_Z
     };
 
-    private static int indexOfFace( int[] face ) {
-        for ( int i = 0; i < FACES.length; i++ )
-            if ( FACES[i] == face )
-                return i;
-        throw new IllegalStateException("Unknown face.");
-    }
-
     /** A single cube to be drawn, tagged with its distance for painter's-order sorting. */
-    private record Renderable(BoundsF64 bounds, Material material, double distance) {}
+    private record Renderable(BoundsF64 bounds, WorldSectorEtherData ether, double distance) {}
 }

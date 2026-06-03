@@ -6,6 +6,9 @@ import org.jspecify.annotations.Nullable;
 import sprouts.Tuple;
 import sprouts.ValueSet;
 
+import java.util.ArrayList;
+import java.util.List;
+
 /**
  *  A single cubic cell of the world, and the recursive building block of the
  *  whole engine.
@@ -159,27 +162,34 @@ public record WorldSector(
      *  Recomputes the level-of-detail ether of this sector from the bottom up.
      *  <p>
      *  Leaves keep their own ether. A branching sector first aggregates each of
-     *  its children, then sets its own ether to the {@link WorldSectorEtherData#average
-     *  average} of those children &mdash; so a whole sub-tree can be summarized by
-     *  the single representative voxel at its root.
+     *  its children, then summarizes its own ether <i>per side</i>: each face of
+     *  this super-sector is the {@link MaterialDistribution#average average} of the
+     *  matching face of only the sub-sectors lying on that face (its
+     *  {@link WorldTreeNode#boundaryCells boundary layer}). The hidden interior is
+     *  never seen and so never contributes &mdash; which is exactly why a whole
+     *  sub-tree can collapse into one visually faithful representative voxel.
      *
      *  @return A sector whose ether (and that of every descendant) reflects the
-     *          averaged material of its sub-tree.
+     *          per-side averaged material of its sub-tree.
      */
     public WorldSector aggregated() {
         if ( children == null )
             return this;
 
         WorldSector[] aggregatedChildren = new WorldSector[WorldTreeNode.SECTOR_COUNT];
-        WorldSectorEtherData[] childEther = new WorldSectorEtherData[WorldTreeNode.SECTOR_COUNT];
-        for ( int i = 0; i < WorldTreeNode.SECTOR_COUNT; i++ ) {
-            WorldSector child = children.sector(i).aggregated();
-            aggregatedChildren[i] = child;
-            childEther[i] = child.ether();
-        }
+        for ( int i = 0; i < WorldTreeNode.SECTOR_COUNT; i++ )
+            aggregatedChildren[i] = children.sector(i).aggregated();
         WorldTreeNode aggregatedNode = new WorldTreeNode(Tuple.of(WorldSector.class, aggregatedChildren));
-        WorldSectorEtherData averaged = WorldSectorEtherData.average(Tuple.of(WorldSectorEtherData.class, childEther));
-        return withChildren(aggregatedNode).withEther(averaged);
+
+        WorldSectorEtherData ether = WorldSectorEtherData.empty();
+        for ( Side side : Side.values() ) {
+            int[] boundary = WorldTreeNode.boundaryCells(side);
+            List<MaterialDistribution> faces = new ArrayList<>(boundary.length);
+            for ( int cell : boundary )
+                faces.add(aggregatedNode.sector(cell).ether().sideOf(side));
+            ether = ether.withSide(side, MaterialDistribution.average(faces));
+        }
+        return withChildren(aggregatedNode).withEther(ether);
     }
 
     /**

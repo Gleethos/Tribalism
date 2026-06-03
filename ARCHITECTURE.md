@@ -47,18 +47,20 @@ app.engine
 │
 └── world               The world data model and its tooling
     ├── Material                Enum of materials (AIR, WATER, SOIL, GRASS, …)
-    ├── WorldSectionEtherData   Material mixture of a section (the "ether")
+    ├── MaterialDistribution    A mixture of material fractions (e.g. 90% air, 10% rock)
+    ├── Side                    One of the six cube faces (NEG_X … POS_Z)
+    ├── WorldSectorEtherData    Per-side ether: one MaterialDistribution for each Side
     ├── WorldTreeEntityId       Positional handle: long id + bounds
     ├── LightSource             Sealed light sum type (Sphere | Cube | Plane)
     ├── LightTrace              A ray of light radiating from a source
-    ├── WorldTreeNode           A node = Tuple of exactly 512 sections (8×8×8)
-    ├── WorldSection            The recursive cell of the world (the heart)
+    ├── WorldTreeNode           A node = Tuple of exactly 512 sectors (8×8×8)
+    ├── WorldSector             The recursive cell of the world (the heart)
     ├── Entity                  Sealed entity sum type (CameraEntity | VoxelEntity)
     ├── World                   The whole world as one value (root + entity lookup)
     │
     ├── gen              Procedural generation
     │   ├── PerlinNoise         Deterministic, seeded 3D gradient noise + fbm
-    │   └── WorldGenerator      Adaptive noise → section tree
+    │   └── WorldGenerator      Adaptive noise → sector tree
     │
     ├── render           First-draft Graphics2D rendering
     │   ├── MaterialPalette     Material → AWT Color (keeps AWT out of the model)
@@ -120,48 +122,48 @@ a shallow tree.
 
 ### Branching factor: 512 = 8×8×8
 
-Each `WorldTreeNode` holds **exactly 512** `WorldSection`s forming a perfect
+Each `WorldTreeNode` holds **exactly 512** `WorldSector`s forming a perfect
 `8 × 8 × 8` cube. (The original brief said "256", but 256 is not a perfect cube;
 512 = 8³ is both a perfect cube *and* a power of two, satisfying both the
 "cache-friendly" and "perfect 3D cube" goals.) Constants:
 
 ```java
 WorldTreeNode.RESOLUTION    == 8
-WorldTreeNode.SECTION_COUNT == 512
+WorldTreeNode.SECTOR_COUNT == 512
 ```
 
-Sections are stored linearly in `x + y·8 + z·64` order. `WorldTreeNode.indexOf(x, y, z)`
+Sectors are stored linearly in `x + y·8 + z·64` order. `WorldTreeNode.indexOf(x, y, z)`
 maps grid coordinates to that index.
 
-### `WorldSection` — the recursive cell
+### `WorldSector` — the recursive cell
 
-A `WorldSection` is the heart of the engine and is *recursive*:
+A `WorldSector` is the heart of the engine and is *recursive*:
 
 ```java
-record WorldSection(
+record WorldSector(
     BoundsF64                   bounds,       // the region it occupies
-    WorldSectionEtherData       ether,        // what it is made of
+    WorldSectorEtherData       ether,        // what it is made of
     ValueSet<WorldTreeEntityId> entities,     // entities positioned here
     ValueSet<LightSource>       lights,       // lights positioned here
     Tuple<LightTrace>           lightTraces,  // light radiating through here
-    @Nullable WorldTreeNode     children      // null = leaf voxel; else 512 sub-sections
+    @Nullable WorldTreeNode     children      // null = leaf voxel; else 512 sub-sectors
 )
 ```
 
-A section with `children == null` is a **leaf** — effectively a single voxel. A
-section with children is a branch of 512 finer sub-sections. This gives the
+A sector with `children == null` is a **leaf** — effectively a single voxel. A
+sector with children is a branch of 512 finer sub-sectors. This gives the
 structure **practically infinite resolution into the small and infinite scale
-into the large**: a single section can be a solid rock voxel, or a continent
+into the large**: a single sector can be a solid rock voxel, or a continent
 full of detail.
 
 ```
-                 WorldSection (bounds, ether, entities, lights, traces)
+                 WorldSector (bounds, ether, entities, lights, traces)
                         │ children?
             ┌───────────┴───────────┐
           null                 WorldTreeNode
-        (leaf voxel)        Tuple<WorldSection>[512]
+        (leaf voxel)        Tuple<WorldSector>[512]
                           ┌──────┬──────┬─── … ───┐
-                          │  0   │  1   │   …      │  (each a WorldSection,
+                          │  0   │  1   │   …      │  (each a WorldSector,
                           └──────┴──────┴──────────┘   recursing again)
 ```
 
@@ -172,11 +174,23 @@ All mutations are copy-on-write `with…` methods: `withEther`, `withChildren`,
 
 - **`Material`** — an enum: `AIR, WATER, SOIL, GRASS, SAND, ROCK, WOOD, METAL,
   ORGANIC`.
-- **`WorldSectionEtherData`** — *what a section is made of*, as a mixture of
-  material fractions (e.g. 90% air, 5% soil, 5% rock), stored in an
-  `Association<Material, Double>`. Provides `fractionOf`, `dominantMaterial`,
-  `normalized`, `blend`, and the static **`average(samples)`** used for
-  level-of-detail aggregation.
+- **`MaterialDistribution`** — a mixture of material fractions (e.g. 90% air, 5%
+  soil, 5% rock), stored in an `Association<Material, Double>`. Provides
+  `fractionOf`, `dominantMaterial`, `normalized`, `blend`, and the static
+  **`average(samples)`** used for level-of-detail aggregation.
+- **`Side`** — one of the six cube faces (`NEG_X, POS_X, NEG_Y, POS_Y, NEG_Z,
+  POS_Z`), each with an `axis()`, `isPositive()`, outward `normal()` and
+  `opposite()`.
+- **`WorldSectorEtherData`** — *what a sector is made of*, stored as **one
+  `MaterialDistribution` per `Side`** rather than a single whole-sector mixture.
+  Provides `sideOf(side)`, `withSide(side, dist)`, the convenience `combined()`
+  (the average of all six sides as one mixture) and `dominantMaterial()`.
+
+  Storing material *per face* is the key to correct, cheap level of detail:
+  materials are primarily a **visual** property, and only the outer faces of a
+  cube are ever seen. So a super-sector summarizes each of its faces from only
+  the matching faces of the sub-sectors lying on that face — never the hidden
+  interior.
 
 ### Entities & lights in the tree
 
@@ -189,27 +203,35 @@ The tree stores only lightweight, positional handles, never the real objects:
   `id`, `intensity`, `color` (RGB as `VecF64`), a `position()` and `bounds()`.
 - **`LightTrace`** = `(VecF64 direction, double intensity, long sourceId)` — a ray
   of light without its own identity, placed into the tree by the (future) update
-  loop so light radiates from its source across sections.
+  loop so light radiates from its source across sectors.
 
 ### Two key behaviours
 
-**1. Entity fall-down — `WorldSection.insert(entity, remainingDepth)`**
+**1. Entity fall-down — `WorldSector.insert(entity, remainingDepth)`**
 
-An entity descends into the deepest section that *still fully contains* its
-bounding box. At each level the section computes which single `8×8×8` sub-cell
+An entity descends into the deepest sector that *still fully contains* its
+bounding box. At each level the sector computes which single `8×8×8` sub-cell
 fully contains the entity; if exactly one does, it subdivides (on demand) and
 recurses; otherwise the entity comes to rest at the current level. This keeps the
 tree only as deep as the entities require and stores each entity exactly once, in
-its tightest enclosing section. `remove(entity, depth)` mirrors this for moving
+its tightest enclosing sector. `remove(entity, depth)` mirrors this for moving
 entities.
 
-**2. Level of detail — `WorldSection.aggregated()`**
+**2. Level of detail — `WorldSector.aggregated()`**
 
-A parent section summarizes its whole sub-tree by averaging its children:
-leaves keep their own ether; a branch aggregates each child recursively, then
-sets its own ether to the `average` of the children's ether. So any sub-tree can
-collapse into a single representative voxel — which is what makes cheap LoD
-rendering possible.
+A parent sector summarizes its whole sub-tree **per side**. Leaves keep their own
+ether; a branch first aggregates each child recursively, then computes each of
+its six faces independently: for a given `Side`, it averages that same face of
+only the sub-sectors on the parent's boundary layer for that side
+(`WorldTreeNode.boundaryCells(side)` — the 8×8 = 64 children touching that face).
+The hidden interior never contributes.
+
+Because each face averages over a 64-cell layer (not the full 512-cell volume), a
+single deep voxel contributes `1/64` per level it climbs on the faces it lies on,
+and `0` to the faces it never touches. So any sub-tree collapses into one
+*visually faithful* representative voxel — e.g. a super-sector straddling the
+ground shows grass/soil on its `POS_Y` (top) face and rock on `NEG_Y` (bottom) —
+which is what makes cheap, directionally-correct LoD rendering possible.
 
 ---
 
@@ -226,8 +248,8 @@ sealed interface Entity permits Entity.CameraEntity, Entity.VoxelEntity {
 ```
 
 - **`CameraEntity(treeId, CameraF64 camera)`** — a viewpoint into the world.
-- **`VoxelEntity(treeId, WorldSection section)`** — *itself a small world*: its
-  shape and material are a nested `WorldSection` (with the full recursive
+- **`VoxelEntity(treeId, WorldSector sector)`** — *itself a small world*: its
+  shape and material are a nested `WorldSector` (with the full recursive
   machinery), letting the entity move freely relative to the world it belongs to.
   (Recursive sub-entities — e.g. a knight holding a sword — are a future step.)
 
@@ -235,7 +257,7 @@ sealed interface Entity permits Entity.CameraEntity, Entity.VoxelEntity {
 
 ```java
 record World(
-    WorldSection             root,      // root of the spatial tree
+    WorldSector             root,      // root of the spatial tree
     Association<Long, Entity> entities   // id → actual entity
 )
 ```
@@ -259,7 +281,7 @@ which makes generation reproducible and testable.
 
 ### `WorldGenerator`
 
-Turns noise into a `WorldSection` tree. Material is a height-field function of
+Turns noise into a `WorldSector` tree. Material is a height-field function of
 position:
 
 ```
@@ -287,7 +309,7 @@ simulation state.
 
 ### Level-of-detail selection
 
-`WorldRenderer` walks the tree from the root and, for each section, estimates how
+`WorldRenderer` walks the tree from the root and, for each sector, estimates how
 big it would appear on screen:
 
 ```java
@@ -295,8 +317,8 @@ projectedEdgePixels(edgeLength, distance, focalLengthPx) = edgeLength · focal /
 focalLengthPx(camera, viewportHeight)                    = (height/2) / tan(fovY/2)
 ```
 
-If a section's projected edge exceeds a pixel threshold **and** it has children,
-the renderer recurses; otherwise it draws the section as a single "super-voxel".
+If a sector's projected edge exceeds a pixel threshold **and** it has children,
+the renderer recurses; otherwise it draws the sector as a single "super-voxel".
 Thus distant geometry is drawn coarsely (high in the tree) and nearby geometry
 finely — the LoD story made visible. These functions are pure and unit-tested.
 
@@ -350,7 +372,7 @@ structure:
 | `primitives/BoundsF64_Spec` | containment, `subdivide` grid ordering, union |
 | `primitives/Mat4F64_Spec`   | immutability, transforms, `M·M⁻¹ = I`, singular detection |
 | `primitives/CameraF64_Spec` | forward/view matrix, frustum validation |
-| `world/WorldSectionEtherData_Spec` | fractions, dominant material, averaging |
+| `world/WorldSectorEtherData_Spec` | fractions, dominant material, averaging |
 | `world/LightSource_Spec`    | sum-type variants, bounds, exhaustive matching |
 | `world/WorldTree_Spec`      | 512-node layout, fall-down, LoD aggregation |
 | `world/Entity_Spec`         | camera/voxel entities, sum-type matching |
@@ -369,7 +391,7 @@ Run them with:
 
 ## 10. Status & next steps
 
-**Built:** math primitives; the full immutable world tree (sections, nodes,
+**Built:** math primitives; the full immutable world tree (sectors, nodes,
 ether, entities, lights, traces); entity fall-down and LoD aggregation; the
 `Entity` sum type and `World` value; procedural generation; first-draft
 Graphics2D rendering with distance LoD; a runnable demo.
