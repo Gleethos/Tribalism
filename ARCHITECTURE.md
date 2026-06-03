@@ -297,7 +297,10 @@ materialAt(p):
 Generation is **adaptive**: a region is only subdivided into 512 children if its
 sample points (8 corners + center) disagree on material. Large stretches of pure
 air or pure rock collapse into a single leaf voxel, so detail concentrates around
-surfaces — exactly what the tree is designed for. The result is returned already
+surfaces — exactly what the tree is designed for. Leaf ether is **uniform** (the
+same sampled mixture on all six sides, since a leaf has no directional detail);
+the per-side ether only becomes meaningful higher up, once `aggregated()`
+summarizes each face from the children on it. The result is returned already
 `aggregated()` for correct LoD ether.
 
 ---
@@ -324,15 +327,18 @@ finely — the LoD story made visible. These functions are pure and unit-tested.
 
 ### Drawing
 
-Renderable voxels (dominant material ≠ AIR) are collected, sorted far-to-near
-(painter's algorithm), and each cube is drawn by:
+Renderable voxels (those with at least one non-AIR face) are collected, sorted
+far-to-near (painter's algorithm), and each cube is drawn by:
 
 1. projecting its 8 corners to screen via the camera's view-projection matrix
    (skipping voxels with a corner at/behind the camera),
 2. **back-face culling** (only faces whose outward normal points toward the
    camera),
-3. flat directional shading (ambient floor + diffuse against a fixed light),
-4. filling the face polygons via `Graphics2D`.
+3. colouring each face by **its own `Side`'s** dominant material
+   (`ether.sideOf(side).dominantMaterial()`), skipping faces that are AIR — so a
+   single super-voxel can be, say, grass on top and rock on the sides,
+4. flat directional shading (ambient floor + diffuse against a fixed light),
+5. filling the face polygons via `Graphics2D`.
 
 `MaterialPalette` maps each material to an AWT `Color`, keeping AWT out of the
 data model.
