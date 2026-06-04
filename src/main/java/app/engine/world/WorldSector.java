@@ -45,6 +45,7 @@ public final class WorldSector {
     // Derived, memoized. Purely a function of the fields above (specifically the
     // children), so it is excluded from equals/hashCode and computed at most once.
     private final Lazy<SideInsets> _insets;
+    private final Lazy<Boolean> _solidOpaque;
 
     // Cached hash. The value equals/hashCode are deep (they walk the whole sub-tree),
     // so memoizing the hash makes a sector a cheap key for value-keyed maps (e.g. the
@@ -66,6 +67,7 @@ public final class WorldSector {
         _lightTraces = Objects.requireNonNull(lightTraces);
         _children    = children;
         _insets      = Lazy.of(this::computeInsets);
+        _solidOpaque = Lazy.of(this::computeSolidOpaque);
     }
 
     public BoundsF64 bounds()                     { return _bounds; }
@@ -100,6 +102,18 @@ public final class WorldSector {
     /** @return {@code true} if this sector is empty space &mdash; invisible on every face. */
     public boolean isFullyTransparent() {
         return _ether.isInvisible();
+    }
+
+    /**
+     *  @return {@code true} if every voxel inside this sector is fully opaque (no air,
+     *          no holes) &mdash; a perfect occluder. Derived bottom-up and memoized: a
+     *          leaf is solid iff its ether {@link WorldSectorEtherData#isFullyOpaque()
+     *          is fully opaque}, a branch iff <i>all</i> its children are. The renderer
+     *          uses this both to draw such a sector as a single box (its mesh would
+     *          just be the shell) and to let it block whatever is behind it.
+     */
+    public boolean isSolidOpaque() {
+        return _solidOpaque.get();
     }
 
     /**
@@ -260,6 +274,15 @@ public final class WorldSector {
             ether = ether.withSide(side, TextureProfile.average(faces));
         }
         return withChildren(aggregatedNode).withEther(ether);
+    }
+
+    private boolean computeSolidOpaque() {
+        if ( _children == null )
+            return _ether.isFullyOpaque();
+        for ( int i = 0; i < WorldTreeNode.SECTOR_COUNT; i++ )
+            if ( !_children.sector(i).isSolidOpaque() )
+                return false;
+        return true;
     }
 
     // ---- Inset computation ------------------------------------------------------

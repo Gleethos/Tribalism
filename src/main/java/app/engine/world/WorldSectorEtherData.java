@@ -79,6 +79,19 @@ public record WorldSectorEtherData(
     }
 
     /**
+     *  @return {@code true} if the sector is fully opaque on every face
+     *          ({@link Texture#OPACITY} {@code == 1}). A leaf like this is a perfect
+     *          occluder: nothing behind it can be seen through it (see
+     *          {@link WorldSector#isSolidOpaque()}).
+     */
+    public boolean isFullyOpaque() {
+        for ( Side side : Side.values() )
+            if ( sideOf(side).intensityOf(Texture.OPACITY) < 1.0 )
+                return false;
+        return true;
+    }
+
+    /**
      *  @return A single representative appearance for the whole sector: the average
      *          of all six side profiles. Useful for code (and tests) that want one
      *          appearance for the sector rather than one per face.

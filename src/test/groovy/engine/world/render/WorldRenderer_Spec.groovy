@@ -7,10 +7,13 @@ import app.engine.world.Side
 import app.engine.world.Texture
 import app.engine.world.TextureProfile
 import app.engine.world.World
+import app.engine.world.WorldSector
 import app.engine.world.WorldSectorEtherData
+import app.engine.world.WorldTreeNode
 import app.engine.world.gen.WorldGenerator
 import app.engine.world.render.TexturePalette
 import app.engine.world.render.WorldRenderer
+import sprouts.Tuple
 import spock.lang.Narrative
 import spock.lang.Specification
 import spock.lang.Title
@@ -114,6 +117,45 @@ class WorldRenderer_Spec extends Specification
             var water = TexturePalette.colorOf(Material.WATER.texture())
             grass.green > grass.red && grass.green > grass.blue
             water.blue > water.red && water.blue > water.green
+    }
+
+    def "Solid geometry in front occludes whole sub-trees behind it."()
+    {
+        given: 'A world with a near solid block and a far solid block on the same line of sight, air elsewhere.'
+            var bounds = BoundsF64.cube(VecF64.zero(), 128)
+            var cells = bounds.subdivide(WorldTreeNode.RESOLUTION)
+            WorldSector[] kids = new WorldSector[WorldTreeNode.SECTOR_COUNT]
+            for ( int i = 0; i < WorldTreeNode.SECTOR_COUNT; i++ )
+                kids[i] = WorldSector.leaf(cells.get(i), WorldSectorEtherData.empty()) // air
+            int near = WorldTreeNode.indexOf(0, 4, 4)
+            int far  = WorldTreeNode.indexOf(7, 4, 4)
+            // Make them solid ROCK *branches* (so the root recurses and occlusion can act between them).
+            kids[near] = WorldSector.leaf(cells.get(near), WorldSectorEtherData.of(Material.ROCK)).subdivide().aggregated()
+            kids[far]  = WorldSector.leaf(cells.get(far),  WorldSectorEtherData.of(Material.ROCK)).subdivide().aggregated()
+            var world = World.of(WorldSector.empty(bounds)
+                                            .withChildren(new WorldTreeNode(Tuple.of(WorldSector, kids))))
+            var renderer = new WorldRenderer()
+            int w = 200, h = 200
+            var image = new BufferedImage(w, h, BufferedImage.TYPE_INT_RGB)
+            var g = image.createGraphics()
+        and: 'A camera up close, looking straight through the near block at the far one.'
+            var facing = new CameraF64(VecF64.of(-100, 8, 8), VecF64.of(0, 8, 8), VecF64.of(0, 1, 0),
+                                       Math.toRadians(60), 1.0, 0.5, 2000)
+        when:
+            renderer.render(g, world, facing, w, h)
+        then: 'The near block is drawn, and at least one sector behind it is occlusion-culled.'
+            renderer.facesDrawn() > 0
+            renderer.occlusionCulledSectors() > 0
+
+        when: 'The camera instead faces away from the world entirely.'
+            var away = new CameraF64(VecF64.of(-100, 8, 8), VecF64.of(-200, 8, 8), VecF64.of(0, 1, 0),
+                                     Math.toRadians(60), 1.0, 0.5, 2000)
+            renderer.render(g, world, away, w, h)
+        then: 'Frustum culling removes everything before occlusion even applies.'
+            renderer.facesDrawn() == 0
+            renderer.occlusionCulledSectors() == 0
+        cleanup:
+            g.dispose()
     }
 
     private static int countNonSky( BufferedImage image, java.awt.Color skyColor ) {

@@ -73,9 +73,10 @@ app.engine
     │   ├── TexturePalette      TextureProfile → AWT Color (keeps AWT out of the model)
     │   ├── Quad                One world-space face (4 corners + normal + profile)
     │   ├── Cubes               Bounds + Side → face Quad (shared box/mesh geometry)
-    │   ├── SectorMesh          A sector's occlusion-culled set of visible faces
+    │   ├── SectorMesh          A sector's face-culled set of visible faces (within a block)
     │   ├── SectorMeshCache     Builds + memoizes meshes, keyed by the (immutable) sector
-    │   └── WorldRenderer       Walks the tree: frustum + LoD + occlusion culling → quads
+    │   ├── CoverageGrid        Screen "already-blocked" buffer for occlusion culling
+    │   └── WorldRenderer       Walks near→far: frustum + occlusion + LoD culling → quads
     │
     └── demo
         └── WorldEngineDemo     Self-contained, runnable demo window
@@ -403,6 +404,27 @@ fraction of the world the camera can actually see, instead of traversing the who
 tree every frame. The frustum is built once per frame (cached on the camera) and
 threaded down the recursion.
 
+### Occlusion culling (skipping what's *hidden*)
+
+Frustum culling drops what's off-screen, but not what's on-screen *behind a wall*.
+For that the walk goes **near → far** (children recursed nearest-first) and carries
+a `CoverageGrid` — a coarse grid of screen tiles flagged "already blocked":
+
+- Before descending into a sector, its 8 world corners are projected to a screen
+  rectangle. If **every tile that rectangle touches is already covered**, the sector
+  (and its whole sub-tree) is hidden behind nearer solid geometry, so it is skipped.
+- A sector that is `isSolidOpaque()` (every voxel inside fully opaque — a perfect
+  occluder, detected lazily bottom-up like the insets) is drawn as a single box and
+  **marks the tiles inside its silhouette** (the convex hull of its projected
+  corners). Front-to-back order guarantees those marks come from *closer* geometry.
+
+The two rules are deliberately conservative so culling never hides something
+visible: marking is *inner* (only tiles fully inside an occluder), testing is
+*outer* (cull only if the whole rectangle is covered). One test in front of a wall
+prunes everything behind it — the hierarchy makes it cheap. (A solid occluder is
+drawn as a box rather than a mesh, since a solid block's mesh is just its shell
+anyway — so this also saves those meshes.)
+
 ### Level-of-detail selection (deciding *how deep* to descend)
 
 For sectors that survive culling, `WorldRenderer` estimates how big each would
@@ -418,7 +440,7 @@ coarse "super-voxel" (one inset-fitted box); otherwise it needs detail and the
 renderer descends. Thus distant geometry is drawn coarsely (high in the tree) and
 nearby geometry finely. These functions are pure and unit-tested.
 
-### Occlusion culling (deciding *which faces*)
+### Face culling within a block (deciding *which faces*)
 
 Descending all the way to individual leaf voxels and drawing each as a cube is
 wasteful: a solid region draws the faces *between* adjacent voxels, only to overdraw
@@ -522,8 +544,9 @@ structure:
 | `world/World_Spec`          | add/remove/move keeping tree + lookup in sync |
 | `world/gen/PerlinNoise_Spec`| determinism, range, lattice zeros |
 | `world/gen/WorldGenerator_Spec` | material classification, adaptive subdivision, reproducibility |
-| `world/render/WorldRenderer_Spec` | LoD maths, frustum culling, majority-opaque, texture→colour, render smoke test |
-| `world/render/SectorMeshCache_Spec` | occlusion culling (interior faces dropped), shared-face culling, mesh memoization |
+| `world/render/WorldRenderer_Spec` | LoD maths, frustum culling, majority-opaque, texture→colour, occlusion culling behind solids, render smoke test |
+| `world/render/SectorMeshCache_Spec` | within-block face culling (interior faces dropped), shared-face culling, mesh memoization |
+| `world/render/CoverageGrid_Spec` | conservative mark/test, off-screen handling, occlusion of covered rects |
 
 Run them with:
 
@@ -541,8 +564,10 @@ the appearance/material model (`Texture` qualities, `TextureProfile`, `MaterialI
 sum type, `Material` starter registry); entity fall-down, per-side LoD
 aggregation and lazily-derived per-side `SideInsets`; the `Entity` sum type and
 `World` value; procedural generation; first-draft Graphics2D rendering with
-distance LoD, frustum culling, inset-fitted LoD boxes **and cached, occlusion-culled
-voxel meshes**; a runnable demo.
+distance LoD, frustum culling, inset-fitted LoD boxes, cached face-culled voxel
+meshes **and near→far software occlusion culling** (a coverage grid that skips
+sub-trees hidden behind solid geometry); a free-fly **and** auto-orbit demo with a
+live face-count / cull-count HUD.
 
 ### The long-term rendering vision
 

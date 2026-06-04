@@ -146,4 +146,31 @@ class SectorInsets_Spec extends Specification
             branch { int x, int y, int z -> Material.ROCK }.ether().material() == Material.ROCK.materialId()
             branch { int x, int y, int z -> y < 4 ? Material.ROCK : Material.AIR }.ether().material() == MaterialId.diverse()
     }
+
+    // ---- Solid-opacity (occluder detection), also derived from sub-sectors ------
+
+    def "A branch is a solid occluder only when every voxel inside is fully opaque."()
+    {
+        expect: 'A wholly opaque block is solid...'
+            branch { int x, int y, int z -> Material.ROCK }.isSolidOpaque()
+        and: '...but any air, or any non-opaque material, anywhere disqualifies it.'
+            !branch { int x, int y, int z -> Material.AIR }.isSolidOpaque()
+            !branch { int x, int y, int z -> y < 4 ? Material.ROCK : Material.AIR }.isSolidOpaque()
+            !branch { int x, int y, int z -> Material.WATER }.isSolidOpaque()
+    }
+
+    def "A leaf is a solid occluder iff its material is fully opaque."()
+    {
+        expect:
+            WorldSector.leaf(cube(0, 8), WorldSectorEtherData.of(material)).isSolidOpaque() == solid
+        where:
+            material       || solid
+            Material.ROCK   || true
+            Material.SOIL   || true
+            Material.METAL  || true
+            Material.AIR    || false
+            Material.WATER  || false   // opacity 0.65
+            Material.ICE    || false   // opacity 0.5
+            Material.LEAVES || false   // opacity 0.8
+    }
 }

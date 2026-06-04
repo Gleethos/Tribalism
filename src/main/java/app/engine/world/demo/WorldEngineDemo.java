@@ -108,6 +108,8 @@ public final class WorldEngineDemo
                 g2.setColor(Color.WHITE);
                 g2.setFont(new Font(Font.MONOSPACED, Font.PLAIN, 12));
                 g2.drawString("World Engine demo  -  " + mode, 12, 20);
+                g2.drawString("faces drawn: " + renderer.facesDrawn()
+                            + "   occlusion-culled sectors: " + renderer.occlusionCulledSectors(), 12, 38);
             }
         };
         canvas.setPreferredSize(new Dimension(960, 600));
