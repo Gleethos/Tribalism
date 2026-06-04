@@ -5,9 +5,9 @@ import app.engine.primitives.CameraF64;
 import app.engine.primitives.Frustum;
 import app.engine.primitives.Mat4F64;
 import app.engine.primitives.VecF64;
-import app.engine.world.Material;
-import app.engine.world.MaterialDistribution;
 import app.engine.world.Side;
+import app.engine.world.Texture;
+import app.engine.world.TextureProfile;
 import app.engine.world.World;
 import app.engine.world.WorldSector;
 import app.engine.world.WorldSectorEtherData;
@@ -111,73 +111,42 @@ public final class WorldRenderer
                 collect(node.sector(i), camera, frustum, focal, out);
         } else {
             WorldSectorEtherData ether = sector.ether();
-            if ( isMajoritySolid(ether) )
+            if ( isMajorityOpaque(ether) )
                 out.add(new Renderable(sector.bounds(), ether, distance));
         }
     }
 
     /**
-     *  @return {@code true} if the sector is <i>majority solid</i> &mdash; its
-     *          combined per-side mixture is at least half non-transparent material.
+     *  @return {@code true} if the sector is <i>majority opaque</i> &mdash; its
+     *          combined per-side appearance has an {@link Texture#OPACITY} of at
+     *          least {@link TexturePalette#VISIBILITY_THRESHOLD}.
      *  <p>
      *  This is the "draw it as a voxel?" decision. Gating on a solid majority (rather
-     *  than merely "any solid face") keeps coarse LoD cubes from bulging out past the
-     *  true surface: a super-voxel that is mostly air, with only a sliver of solid on
-     *  one side, is left undrawn instead of being inflated into a full block.
+     *  than merely "any opaque face") keeps coarse LoD cubes from bulging out past the
+     *  true surface: a super-voxel that is mostly empty air, with only a sliver of
+     *  opaque matter on one side, is left undrawn instead of being inflated into a
+     *  full block.
      */
-    private static boolean isMajoritySolid( WorldSectorEtherData ether ) {
-        MaterialDistribution combined = ether.combined();
-        double solid = 0, transparent = 0;
-        for ( Material material : Material.values() ) {
-            double fraction = combined.fractionOf(material);
-            if ( MaterialPalette.isTransparent(material) )
-                transparent += fraction;
-            else
-                solid += fraction;
-        }
-        return solid > 0 && solid >= transparent;
+    public static boolean isMajorityOpaque( WorldSectorEtherData ether ) {
+        return TexturePalette.isVisible(ether.combined().intensityOf(Texture.OPACITY));
     }
 
     /**
-     *  The material a given face should be painted with.
+     *  The appearance a given face should be painted with.
      *  <p>
-     *  Normally this is the dominant material of that very {@link Side}. But an LoD
-     *  super-voxel's ether is aggregated <i>per side</i>, so an individual face near
-     *  the surface can come out air-dominant even when the cube is solid overall.
-     *  Skipping such a face would leave a see-through hole in an otherwise solid
-     *  cube (whereas a uniform leaf voxel never has this problem). To keep a drawn
-     *  cube closed, an air-dominant face falls back to the sector's
-     *  {@link #dominantSolidMaterial dominant solid material}. A transparent result
-     *  therefore means the <i>whole</i> sector is transparent, and the face is
-     *  genuinely not drawn.
+     *  Normally this is that very {@link Side}'s own profile. But an LoD super-voxel's
+     *  ether is aggregated <i>per side</i>, so an individual face near the surface can
+     *  come out (near) invisible even when the cube is opaque overall. Skipping such a
+     *  face would leave a see-through hole in an otherwise solid cube (a uniform leaf
+     *  voxel never has this problem). To keep a drawn cube closed, an invisible face
+     *  falls back to the sector's {@link WorldSectorEtherData#combined() combined}
+     *  appearance. The result is invisible only when the <i>whole</i> sector is.
      */
-    public static Material faceMaterial( WorldSectorEtherData ether, Side side ) {
-        Material material = ether.sideOf(side).dominantMaterial();
-        if ( !MaterialPalette.isTransparent(material) )
-            return material;
-        return dominantSolidMaterial(ether);
-    }
-
-    /**
-     *  @return The most prevalent non-transparent material across all six sides of
-     *          {@code ether} (using the {@link WorldSectorEtherData#combined()
-     *          combined} mixture), or {@link Material#AIR} if the sector is entirely
-     *          transparent.
-     */
-    public static Material dominantSolidMaterial( WorldSectorEtherData ether ) {
-        MaterialDistribution combined = ether.combined();
-        Material best = Material.AIR;
-        double bestFraction = 0;
-        for ( Material material : Material.values() ) {
-            if ( MaterialPalette.isTransparent(material) )
-                continue;
-            double fraction = combined.fractionOf(material);
-            if ( fraction > bestFraction ) {
-                bestFraction = fraction;
-                best = material;
-            }
-        }
-        return best;
+    public static TextureProfile faceProfile( WorldSectorEtherData ether, Side side ) {
+        TextureProfile profile = ether.sideOf(side);
+        if ( !TexturePalette.isVisible(profile.intensityOf(Texture.OPACITY)) )
+            return ether.combined();
+        return profile;
     }
 
     private void drawVoxel( Graphics2D g, BoundsF64 bounds, WorldSectorEtherData ether, Mat4F64 vp, CameraF64 camera, int w, int h ) {
@@ -191,10 +160,10 @@ public final class WorldRenderer
 
         for ( int f = 0; f < FACES.length; f++ ) {
             Side side = FACE_SIDES[f];
-            // Each face is coloured by the material on that very side of the sector.
-            Material material = faceMaterial(ether, side);
-            if ( MaterialPalette.isTransparent(material) )
-                continue; // only when the whole sector is transparent (e.g. all air).
+            // Each face is coloured from the appearance qualities on that very side.
+            TextureProfile profile = faceProfile(ether, side);
+            if ( profile.isInvisible() )
+                continue; // only when the whole sector is invisible (e.g. all air).
 
             int[] face = FACES[f];
             VecF64 normal = side.normal();
@@ -207,7 +176,7 @@ public final class WorldRenderer
             for ( int corner : face )
                 polygon.addPoint((int) Math.round(screen[corner][0]), (int) Math.round(screen[corner][1]));
 
-            g.setColor(shade(MaterialPalette.colorOf(material), normal));
+            g.setColor(shade(TexturePalette.colorOf(profile), normal));
             g.fillPolygon(polygon);
         }
     }

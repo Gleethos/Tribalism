@@ -50,10 +50,12 @@ app.engine
 │   └── Frustum         Six culling planes of a view volume (box visibility tests)
 │
 └── world               The world data model and its tooling
-    ├── Material                Enum of materials (AIR, WATER, SOIL, GRASS, …)
-    ├── MaterialDistribution    A mixture of material fractions (e.g. 90% air, 10% rock)
+    ├── Texture                 A visual appearance quality (GRAINY, LIQUID, REFLECTIVE, …)
+    ├── TextureProfile          A set of independent Texture intensities [0,1] (the look of a face)
+    ├── MaterialId              Sum type: Specific(int) | Diverse (what a cube is made of)
+    ├── Material                Starter substance registry (id + name + default TextureProfile)
     ├── Side                    One of the six cube faces (NEG_X … POS_Z)
-    ├── WorldSectorEtherData    Per-side ether: one MaterialDistribution for each Side
+    ├── WorldSectorEtherData    Ether: one MaterialId per cube + one TextureProfile per Side
     ├── WorldTreeEntityId       Positional handle: long id + bounds
     ├── LightSource             Sealed light sum type (Sphere | Cube | Plane)
     ├── LightTrace              A ray of light radiating from a source
@@ -67,7 +69,7 @@ app.engine
     │   └── WorldGenerator      Adaptive noise → sector tree
     │
     ├── render           First-draft Graphics2D rendering
-    │   ├── MaterialPalette     Material → AWT Color (keeps AWT out of the model)
+    │   ├── TexturePalette      TextureProfile → AWT Color (keeps AWT out of the model)
     │   └── WorldRenderer       Walks the tree, draws shaded voxels with LoD
     │
     └── demo
@@ -173,7 +175,7 @@ A `WorldSector` is the heart of the engine and is *recursive*:
 ```java
 record WorldSector(
     BoundsF64                   bounds,       // the region it occupies
-    WorldSectorEtherData       ether,        // what it is made of
+    WorldSectorEtherData        ether,        // what it looks like + what it is made of
     ValueSet<WorldTreeEntityId> entities,     // entities positioned here
     ValueSet<LightSource>       lights,       // lights positioned here
     Tuple<LightTrace>           lightTraces,  // light radiating through here
@@ -201,27 +203,42 @@ full of detail.
 All mutations are copy-on-write `with…` methods: `withEther`, `withChildren`,
 `withEntity`/`withoutEntity`, `withLight`/`withoutLight`, `withLightTrace`.
 
-### Material & ether data
+### Appearance & material (the "ether")
 
-- **`Material`** — an enum: `AIR, WATER, SOIL, GRASS, SAND, ROCK, WOOD, METAL,
-  ORGANIC`.
-- **`MaterialDistribution`** — a mixture of material fractions (e.g. 90% air, 5%
-  soil, 5% rock), stored in an `Association<Material, Double>`. Provides
-  `fractionOf`, `dominantMaterial`, `normalized`, `blend`, and the static
+The engine deliberately separates **how a sector looks** from **what it is made
+of**. The old "material percentages summing to 1" model is gone; in its place:
+
+- **`Texture`** — an enum of independent *visual appearance qualities*:
+  `OPACITY, REFLECTIVE, METALLIC, EMISSIVE, ROUGH, GRAINY, POWDERY, CRYSTALLINE,
+  LIQUID, WET, MOLTEN, FIBROUS, HAIRY, MOSSY, LEAFY, SPIKY, SHATTERED, POROUS,
+  LAYERED, VEINED`. These are *hints*, not a composition: they are the intended
+  inputs to a future procedural noise shader (see §7 / §10).
+- **`TextureProfile`** — a set of `Texture` intensities in `[0, 1]`, stored in an
+  `Association<Texture, Double>`. Crucially they are **independent** and need
+  **not sum to anything** — a surface can be a "grainy liquid" with both at full
+  strength. `none()` (every quality 0) is the null object: invisible empty space.
+  Provides `intensityOf`, `with` (clamped), `isInvisible`, `blend`, and the static
   **`average(samples)`** used for level-of-detail aggregation.
-- **`Side`** — one of the six cube faces (`NEG_X, POS_X, NEG_Y, POS_Y, NEG_Z,
-  POS_Z`), each with an `axis()`, `isPositive()`, outward `normal()` and
-  `opposite()`.
-- **`WorldSectorEtherData`** — *what a sector is made of*, stored as **one
-  `MaterialDistribution` per `Side`** rather than a single whole-sector mixture.
-  Provides `sideOf(side)`, `withSide(side, dist)`, the convenience `combined()`
-  (the average of all six sides as one mixture) and `dominantMaterial()`.
+- **`MaterialId`** — *what a cube is made of*, as a sum type:
+  `Specific(int id)` | `Diverse`. A leaf "block" is always one `Specific` material;
+  a coarse aggregate of disagreeing children is the `Diverse` null object. The
+  integer id (not an enum) lets the substance set scale to thousands. `merge(ids)`
+  folds children into the shared id, or `Diverse` if they differ.
+- **`Material`** — a record-backed *starter registry* of substances (id + name +
+  default `TextureProfile`): `AIR, ROCK, SOIL, GRASS, SAND, WATER, WOOD, METAL,
+  ICE, LAVA, SNOW, MOSS, CRYSTAL, CLAY, BARK, LEAVES, MUD, ORE`. It carries no
+  colour — hue is a *rendering* concern derived from the textures.
+- **`Side`** — one of the six cube faces (`NEG_X … POS_Z`), each with an `axis()`,
+  `isPositive()`, outward `normal()` and `opposite()`.
+- **`WorldSectorEtherData`** — a sector's "ether": **one `MaterialId` for the whole
+  cube** (the gameplay substance) plus **one `TextureProfile` per `Side`** (the
+  appearance). Provides `material()`/`withMaterial`, `sideOf(side)`/`withSide`, and
+  `combined()` (the average of all six side profiles).
 
-  Storing material *per face* is the key to correct, cheap level of detail:
-  materials are primarily a **visual** property, and only the outer faces of a
-  cube are ever seen. So a super-sector summarizes each of its faces from only
-  the matching faces of the sub-sectors lying on that face — never the hidden
-  interior.
+  Appearance is stored *per face* because only the outer faces of a cube are ever
+  seen — so a super-sector can summarize each of its faces from only the matching
+  faces of the sub-sectors lying on that face, never the hidden interior. The
+  single material, by contrast, is a whole-cube property (one per block).
 
 ### Entities & lights in the tree
 
@@ -250,18 +267,22 @@ entities.
 
 **2. Level of detail — `WorldSector.aggregated()`**
 
-A parent sector summarizes its whole sub-tree **per side**. Leaves keep their own
-ether; a branch first aggregates each child recursively, then computes each of
-its six faces independently: for a given `Side`, it averages that same face of
-only the sub-sectors on the parent's boundary layer for that side
-(`WorldTreeNode.boundaryCells(side)` — the 8×8 = 64 children touching that face).
-The hidden interior never contributes.
+A parent sector summarizes its whole sub-tree in two ways. Leaves keep their own
+ether; a branch first aggregates each child recursively, then:
 
-Because each face averages over a 64-cell layer (not the full 512-cell volume), a
-single deep voxel contributes `1/64` per level it climbs on the faces it lies on,
-and `0` to the faces it never touches. So any sub-tree collapses into one
-*visually faithful* representative voxel — e.g. a super-sector straddling the
-ground shows grass/soil on its `POS_Y` (top) face and rock on `NEG_Y` (bottom) —
+- **Appearance, per side.** For each `Side` it averages that same face of only the
+  sub-sectors on the parent's boundary layer for that side
+  (`WorldTreeNode.boundaryCells(side)` — the 8×8 = 64 children touching that face).
+  The hidden interior never contributes. Because each face averages over a 64-cell
+  layer (not the full 512-cell volume), a single deep opaque voxel contributes
+  `1/64` of `OPACITY` per level it climbs on the faces it lies on, and `0` to the
+  faces it never touches.
+- **Material, per cube.** The 512 children's `MaterialId`s are `merge`d into the
+  shared id if they all agree, otherwise `Diverse`.
+
+So any sub-tree collapses into one *visually faithful* representative voxel — e.g.
+a super-sector straddling the ground shows grassy/mossy texture on its `POS_Y`
+(top) face and rocky texture on `NEG_Y` (bottom), with a `Diverse` material —
 which is what makes cheap, directionally-correct LoD rendering possible.
 
 ---
@@ -328,11 +349,12 @@ materialAt(p):
 Generation is **adaptive**: a region is only subdivided into 512 children if its
 sample points (8 corners + center) disagree on material. Large stretches of pure
 air or pure rock collapse into a single leaf voxel, so detail concentrates around
-surfaces — exactly what the tree is designed for. Leaf ether is **uniform** (the
-same sampled mixture on all six sides, since a leaf has no directional detail);
-the per-side ether only becomes meaningful higher up, once `aggregated()`
-summarizes each face from the children on it. The result is returned already
-`aggregated()` for correct LoD ether.
+surfaces — exactly what the tree is designed for. A leaf is always a **single
+material** (a "block" is one type): a homogeneous region takes that material, and a
+bottomed-out mixed region takes its *dominant* sampled material — no percentages.
+Its ether is uniform (the material's appearance on all six faces); per-side
+appearance only becomes meaningful higher up, once `aggregated()` summarizes each
+face from the children on it. The result is returned already `aggregated()`.
 
 ---
 
@@ -368,29 +390,33 @@ finely — the LoD story made visible. These functions are pure and unit-tested.
 
 ### Drawing
 
-A sector survives to drawing only if it is **majority solid** — its
-`combined()` per-side mixture is at least half non-transparent material
-(`isMajoritySolid`). Gating on a solid *majority* (rather than merely "any solid
-face") stops coarse LoD cubes from bulging out past the true surface: a
-super-voxel that is mostly air with only a sliver of solid is left undrawn rather
-than inflated into a full block. Surviving voxels are collected, sorted far-to-near
-(painter's algorithm), and each cube is drawn by:
+A sector survives to drawing only if it is **majority opaque** — its `combined()`
+appearance has `OPACITY` ≥ `TexturePalette.VISIBILITY_THRESHOLD` (`isMajorityOpaque`).
+Gating on an opacity *majority* (rather than "any opaque face") stops coarse LoD
+cubes from bulging out past the true surface: a super-voxel that is mostly empty
+air with only a sliver of opaque matter is left undrawn rather than inflated into a
+full block. Surviving voxels are collected, sorted far-to-near (painter's
+algorithm), and each cube is drawn by:
 
 1. projecting its 8 corners to screen via the camera's view-projection matrix
    (skipping voxels with a corner at/behind the camera),
 2. **back-face culling** (only faces whose outward normal points toward the
    camera),
-3. colouring each face by **its own `Side`'s** dominant material
-   (`faceMaterial`) — so a single super-voxel can be, say, grass on top and rock
-   on the sides. An LoD cube's ether is aggregated per side, so a face can come out
-   air-dominant even on a solid cube; such a face **falls back** to the sector's
-   dominant solid material rather than being skipped, so a drawn cube is never left
-   with see-through holes (a face is only skipped if the *whole* sector is air),
+3. colouring each face from **its own `Side`'s** `TextureProfile` (`faceProfile`)
+   — so a single super-voxel can read grassy on top and rocky on the sides. An LoD
+   cube's appearance is aggregated per side, so a face can come out (near-)invisible
+   even on an opaque cube; such a face **falls back** to the sector's `combined()`
+   profile rather than being skipped, so a drawn cube is never left with see-through
+   holes (a face is only skipped if the *whole* sector is invisible),
 4. flat directional shading (ambient floor + diffuse against a fixed light),
 5. filling the face polygons via `Graphics2D`.
 
-`MaterialPalette` maps each material to an AWT `Color`, keeping AWT out of the
-data model.
+`TexturePalette` derives a face's colour from its appearance qualities — an
+intensity-weighted blend of a tint per `Texture` (grainy→tan, liquid→blue,
+hairy/mossy→green, molten→orange, …). This is a **crude stand-in for a future
+procedural noise shader** (§10) and keeps AWT out of the data model. Note the
+renderer never looks at `MaterialId`: the *appearance* drives the picture, while
+the material is reserved for gameplay.
 
 ### Result
 
@@ -429,15 +455,17 @@ structure:
 | `primitives/CameraF64_Spec` | forward/view matrix, frustum validation, value equality, matrix memoization |
 | `primitives/Frustum_Spec`   | plane extraction, conservative box culling, point containment |
 | `util/Lazy_Spec`            | compute-once memoization, concurrent first-access safety |
-| `world/MaterialDistribution_Spec` | fractions, dominant material, normalize, averaging |
-| `world/WorldSectorEtherData_Spec` | per-side distributions, uniform/combined, value semantics |
+| `world/TextureProfile_Spec` | independent qualities, clamping, averaging, blend, invisibility |
+| `world/MaterialId_Spec`     | Specific vs Diverse, merge of agreeing/disagreeing ids |
+| `world/Material_Spec`       | starter registry, unique ids, air = invisible null substance |
+| `world/WorldSectorEtherData_Spec` | one material per cube + per-side appearance, combined |
 | `world/LightSource_Spec`    | sum-type variants, bounds, exhaustive matching |
-| `world/WorldTree_Spec`      | 512-node layout, fall-down, per-side LoD aggregation |
+| `world/WorldTree_Spec`      | 512-node layout, fall-down, per-side LoD + material merge |
 | `world/Entity_Spec`         | camera/voxel entities, sum-type matching |
 | `world/World_Spec`          | add/remove/move keeping tree + lookup in sync |
 | `world/gen/PerlinNoise_Spec`| determinism, range, lattice zeros |
 | `world/gen/WorldGenerator_Spec` | material classification, adaptive subdivision, reproducibility |
-| `world/render/WorldRenderer_Spec` | LoD maths, frustum culling, offscreen render smoke test |
+| `world/render/WorldRenderer_Spec` | LoD maths, frustum culling, majority-opaque, texture→colour, render smoke test |
 
 Run them with:
 
@@ -451,9 +479,29 @@ Run them with:
 
 **Built:** math primitives (incl. a lazily-caching `CameraF64` and a `Frustum`);
 the full immutable world tree (sectors, nodes, ether, entities, lights, traces);
-entity fall-down and per-side LoD aggregation; the `Entity` sum type and `World`
-value; procedural generation; first-draft Graphics2D rendering with distance LoD
-**and frustum culling**; a runnable demo.
+the appearance/material model (`Texture` qualities, `TextureProfile`, `MaterialId`
+sum type, `Material` starter registry); entity fall-down and per-side LoD
+aggregation; the `Entity` sum type and `World` value; procedural generation;
+first-draft Graphics2D rendering with distance LoD **and frustum culling**; a
+runnable demo.
+
+### The long-term rendering vision
+
+The split introduced by the appearance/material model is deliberate and points at
+the real renderer to come:
+
+- **Appearance drives the picture.** A surface's look is a `TextureProfile` — a set
+  of independent, shader-friendly *hints* (`GRAINY`, `LIQUID`, `REFLECTIVE`,
+  `MOLTEN`, `HAIRY`, …), not a fixed image or a material enum. The intended renderer
+  feeds these straight into a **procedural noise shader**: each quality biases the
+  noise field and lighting model (its frequency and anisotropy, specular/metallic
+  response, emission, displacement, surface flow, …) so a material's appearance
+  *emerges procedurally* and scales to thousands of materials without texture
+  assets. `TexturePalette`'s tint-blend is just the throwaway 2D stand-in for this.
+- **Material is for gameplay.** The single per-cube `MaterialId` is what the
+  simulation reasons about ("this block is ore"); the renderer ignores it. No
+  percentages, no "what's inside" — at the point something matters to a player it is
+  already a discrete item, not a fraction of a voxel.
 
 **Not yet built (future steps):**
 
@@ -462,6 +510,9 @@ value; procedural generation; first-draft Graphics2D rendering with distance LoD
 - **Generation around camera entities** within a radius (streaming the world as
   the camera moves), rather than a single fixed region.
 - Recursive sub-entities inside `VoxelEntity`.
-- A real renderer (the `Graphics2D` path is a first draft) and dynamic 64→32-bit
+- The **procedural noise shader** that consumes `TextureProfile` hints (replacing
+  the first-draft `Graphics2D`/`TexturePalette` path), plus dynamic 64→32-bit
   scaling for GPU rendering.
+- A richer, registry-backed material system (resolving `MaterialId` to gameplay
+  substances) as the world gains items and interactions.
 - Integration of a world view into the main Tribalism application.

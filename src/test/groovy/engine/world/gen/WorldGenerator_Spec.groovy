@@ -54,7 +54,7 @@ class WorldGenerator_Spec extends Specification
             var sector = gen.generate(cubeAround(VecF64.of(0, 200, 0), 16), 2)
         then:
             sector.isLeaf()
-            sector.ether().dominantMaterial() == Material.AIR
+            sector.ether().material() == Material.AIR.materialId()
     }
 
     def "A region entirely underground generates a single rock leaf."()
@@ -65,7 +65,7 @@ class WorldGenerator_Spec extends Specification
             var sector = gen.generate(cubeAround(VecF64.of(0, -200, 0), 16), 2)
         then:
             sector.isLeaf()
-            sector.ether().dominantMaterial() == Material.ROCK
+            sector.ether().material() == Material.ROCK.materialId()
     }
 
     def "A region straddling the surface is subdivided for detail."()

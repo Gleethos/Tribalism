@@ -3,11 +3,13 @@ import app.engine.primitives.BoundsF64
 import app.engine.primitives.CameraF64
 import app.engine.primitives.VecF64
 import app.engine.world.Material
-import app.engine.world.MaterialDistribution
 import app.engine.world.Side
+import app.engine.world.Texture
+import app.engine.world.TextureProfile
 import app.engine.world.World
 import app.engine.world.WorldSectorEtherData
 import app.engine.world.gen.WorldGenerator
+import app.engine.world.render.TexturePalette
 import app.engine.world.render.WorldRenderer
 import spock.lang.Narrative
 import spock.lang.Specification
@@ -85,27 +87,33 @@ class WorldRenderer_Spec extends Specification
             countNonSky(image, skyColor) == 0
     }
 
-    def "An air-dominant face of an otherwise-solid LoD cube falls back to a solid material (no holes)."()
+    def "An invisible face of an otherwise-opaque LoD cube falls back to the combined appearance (no holes)."()
     {
-        given: 'An LoD ether whose top is air-dominant but whose other sides are solid rock.'
+        given: 'An LoD ether whose top aggregated to near-invisible, with solid rock elsewhere.'
             var ether = WorldSectorEtherData.of(Material.ROCK)
-                                .withSide(Side.POS_Y, MaterialDistribution.empty()
-                                                            .with(Material.AIR, 0.7)
-                                                            .with(Material.ROCK, 0.3))
-        expect: 'A solid side paints with its own material...'
-            WorldRenderer.faceMaterial(ether, Side.NEG_Y) == Material.ROCK
-        and: '...while the air-dominant top is filled with the dominant solid material instead of being skipped.'
-            ether.sideOf(Side.POS_Y).dominantMaterial() == Material.AIR
-            WorldRenderer.faceMaterial(ether, Side.POS_Y) == Material.ROCK
+                                .withSide(Side.POS_Y, TextureProfile.of(Texture.OPACITY, 0.1))
+        expect: 'A solid side keeps its own appearance...'
+            WorldRenderer.faceProfile(ether, Side.NEG_Y).intensityOf(Texture.OPACITY) == 1.0
+        and: '...while the near-invisible top falls back to the combined profile instead of being skipped.'
+            !ether.sideOf(Side.POS_Y).isInvisible()
+            WorldRenderer.faceProfile(ether, Side.POS_Y).intensityOf(Texture.OPACITY) > TexturePalette.VISIBILITY_THRESHOLD
     }
 
-    def "A fully transparent sector stays transparent on every face (still drawn as nothing)."()
+    def "Majority-opaque decides whether a sector is drawn at all."()
     {
-        given:
-            var allAir = WorldSectorEtherData.of(Material.AIR)
-        expect:
-            Side.values().every { WorldRenderer.faceMaterial(allAir, it) == Material.AIR }
-            WorldRenderer.dominantSolidMaterial(allAir) == Material.AIR
+        expect: 'A solid rock cube is drawn...'
+            WorldRenderer.isMajorityOpaque(WorldSectorEtherData.of(Material.ROCK))
+        and: '...empty air is not.'
+            !WorldRenderer.isMajorityOpaque(WorldSectorEtherData.empty())
+    }
+
+    def "The texture palette derives a plausible colour from appearance qualities."()
+    {
+        expect: 'Grass reads green-dominant, water blue-dominant.'
+            var grass = TexturePalette.colorOf(Material.GRASS.texture())
+            var water = TexturePalette.colorOf(Material.WATER.texture())
+            grass.green > grass.red && grass.green > grass.blue
+            water.blue > water.red && water.blue > water.green
     }
 
     private static int countNonSky( BufferedImage image, java.awt.Color skyColor ) {

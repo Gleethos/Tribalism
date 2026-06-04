@@ -3,11 +3,13 @@ package app.engine.world.gen;
 import app.engine.primitives.BoundsF64;
 import app.engine.primitives.VecF64;
 import app.engine.world.Material;
-import app.engine.world.MaterialDistribution;
 import app.engine.world.WorldSector;
 import app.engine.world.WorldSectorEtherData;
 import app.engine.world.WorldTreeNode;
 import sprouts.Tuple;
+
+import java.util.HashMap;
+import java.util.Map;
 
 /**
  *  Procedurally generates a {@link WorldSector} tree from 3D noise.
@@ -94,7 +96,7 @@ public record WorldGenerator(
             return WorldSector.leaf(bounds, WorldSectorEtherData.of(homogeneous));
 
         if ( depth <= 0 )
-            return WorldSector.leaf(bounds, sampledEther(bounds));
+            return WorldSector.leaf(bounds, WorldSectorEtherData.of(dominantMaterial(bounds)));
 
         Tuple<BoundsF64> cells = bounds.subdivide(WorldTreeNode.RESOLUTION);
         WorldSector[] children = new WorldSector[WorldTreeNode.SECTOR_COUNT];
@@ -114,28 +116,30 @@ public record WorldGenerator(
             Material m = materialAt(p);
             if ( first == null )
                 first = m;
-            else if ( m != first )
+            else if ( !first.equals(m) )
                 return null;
         }
         return first;
     }
 
     /**
-     *  A material mixture sampled across {@code bounds}, used when detail bottoms
-     *  out. At this leaf level there is no directional information, so the same
-     *  mixture is used for all six sides; the per-side ether becomes meaningful
-     *  higher up the tree, where {@link WorldSector#aggregated() aggregation}
-     *  summarizes each face from only the children on that face.
+     *  @return The most frequently sampled material across {@code bounds}. Used when
+     *          detail bottoms out: a "block" is always a single material, so the
+     *          dominant sample wins rather than recording any mixture.
      */
-    private WorldSectorEtherData sampledEther( BoundsF64 bounds ) {
-        VecF64[] points = samplePoints(bounds);
-        MaterialDistribution mix = MaterialDistribution.empty();
-        double share = 1.0 / points.length;
-        for ( VecF64 p : points ) {
-            Material m = materialAt(p);
-            mix = mix.with(m, mix.fractionOf(m) + share);
+    private Material dominantMaterial( BoundsF64 bounds ) {
+        Map<Material, Integer> counts = new HashMap<>();
+        for ( VecF64 p : samplePoints(bounds) )
+            counts.merge(materialAt(p), 1, Integer::sum);
+        Material dominant = Material.AIR;
+        int best = -1;
+        for ( Map.Entry<Material, Integer> entry : counts.entrySet() ) {
+            if ( entry.getValue() > best ) {
+                best = entry.getValue();
+                dominant = entry.getKey();
+            }
         }
-        return WorldSectorEtherData.uniform(mix);
+        return dominant;
     }
 
     /** The eight corners plus the center of {@code bounds}. */

@@ -1,0 +1,83 @@
+package engine.world
+
+import app.engine.world.Texture
+import app.engine.world.TextureProfile
+import spock.lang.Narrative
+import spock.lang.Specification
+import spock.lang.Title
+
+@Title("TextureProfile - independent visual appearance qualities")
+@Narrative('''
+
+    A texture profile is a set of appearance qualities (grainy, liquid, hairy, ...),
+    each with an independent intensity in [0, 1]. Unlike the old material model the
+    qualities do NOT sum to one: a surface can be both fully grainy and fully liquid.
+    The empty profile (every quality 0) is the null object: invisible air.
+
+''')
+class TextureProfile_Spec extends Specification
+{
+    def "The empty profile is invisible and reports zero for every quality."()
+    {
+        given:
+            var profile = TextureProfile.none()
+        expect:
+            profile.isInvisible()
+            profile.intensityOf(Texture.GRAINY) == 0
+            profile.presentQualities().isEmpty()
+    }
+
+    def "Qualities are independent and need not sum to one."()
+    {
+        given: 'A grainy liquid: both at full strength.'
+            var profile = TextureProfile.none()
+                                .with(Texture.GRAINY, 1.0)
+                                .with(Texture.LIQUID, 1.0)
+        expect:
+            profile.intensityOf(Texture.GRAINY) == 1.0
+            profile.intensityOf(Texture.LIQUID) == 1.0
+            !profile.isInvisible()
+            profile.presentQualities().toSet() == [Texture.GRAINY, Texture.LIQUID].toSet()
+    }
+
+    def "Intensities are clamped to [0, 1]."()
+    {
+        expect:
+            TextureProfile.none().with(Texture.ROUGH, 5.0).intensityOf(Texture.ROUGH) == 1.0
+            TextureProfile.none().with(Texture.ROUGH, -2.0).intensityOf(Texture.ROUGH) == 0.0
+    }
+
+    def "Constructing a profile with an out-of-range intensity is rejected."()
+    {
+        when:
+            new TextureProfile(sprouts.Association.between(Texture, Double).put(Texture.WET, 1.5))
+        then:
+            thrown(IllegalArgumentException)
+    }
+
+    def "Averaging profiles is the core of level-of-detail aggregation."()
+    {
+        given: 'One face is fully grainy, three are empty.'
+            var grainy = TextureProfile.of(Texture.GRAINY, 1.0)
+            var none = TextureProfile.none()
+        when:
+            var averaged = TextureProfile.average([grainy, none, none, none])
+        then: 'The result is a quarter as grainy.'
+            Math.abs(averaged.intensityOf(Texture.GRAINY) - 0.25) < 1e-12
+    }
+
+    def "Averaging no samples yields the empty profile."()
+    {
+        expect:
+            TextureProfile.average([]) == TextureProfile.none()
+    }
+
+    def "Blending interpolates each quality towards the other profile."()
+    {
+        given:
+            var dry = TextureProfile.of(Texture.WET, 0.0)
+            var soaked = TextureProfile.of(Texture.WET, 1.0)
+        expect:
+            Math.abs(dry.blend(soaked, 0.25).intensityOf(Texture.WET) - 0.25) < 1e-12
+    }
+}

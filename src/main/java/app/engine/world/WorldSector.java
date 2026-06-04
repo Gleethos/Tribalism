@@ -161,33 +161,44 @@ public record WorldSector(
     /**
      *  Recomputes the level-of-detail ether of this sector from the bottom up.
      *  <p>
-     *  Leaves keep their own ether. A branching sector first aggregates each of
-     *  its children, then summarizes its own ether <i>per side</i>: each face of
-     *  this super-sector is the {@link MaterialDistribution#average average} of the
-     *  matching face of only the sub-sectors lying on that face (its
-     *  {@link WorldTreeNode#boundaryCells boundary layer}). The hidden interior is
-     *  never seen and so never contributes &mdash; which is exactly why a whole
-     *  sub-tree can collapse into one visually faithful representative voxel.
+     *  Leaves keep their own ether. A branching sector first aggregates each of its
+     *  children, then summarizes its own ether in two ways:
+     *  <ul>
+     *      <li><b>Appearance, per side:</b> each face of this super-sector is the
+     *          {@link TextureProfile#average average} of the matching face of only
+     *          the sub-sectors lying on that face (its
+     *          {@link WorldTreeNode#boundaryCells boundary layer}). The hidden
+     *          interior is never seen and so never contributes.</li>
+     *      <li><b>Material, per cube:</b> the children's material ids are
+     *          {@link MaterialId#merge merged} &mdash; the shared id if they all
+     *          agree, otherwise {@link MaterialId#diverse() Diverse}.</li>
+     *  </ul>
+     *  This is what lets a whole sub-tree collapse into one visually faithful
+     *  representative voxel.
      *
      *  @return A sector whose ether (and that of every descendant) reflects the
-     *          per-side averaged material of its sub-tree.
+     *          per-side appearance and merged material of its sub-tree.
      */
     public WorldSector aggregated() {
         if ( children == null )
             return this;
 
         WorldSector[] aggregatedChildren = new WorldSector[WorldTreeNode.SECTOR_COUNT];
-        for ( int i = 0; i < WorldTreeNode.SECTOR_COUNT; i++ )
-            aggregatedChildren[i] = children.sector(i).aggregated();
+        List<MaterialId> childMaterials = new ArrayList<>(WorldTreeNode.SECTOR_COUNT);
+        for ( int i = 0; i < WorldTreeNode.SECTOR_COUNT; i++ ) {
+            WorldSector child = children.sector(i).aggregated();
+            aggregatedChildren[i] = child;
+            childMaterials.add(child.ether().material());
+        }
         WorldTreeNode aggregatedNode = new WorldTreeNode(Tuple.of(WorldSector.class, aggregatedChildren));
 
-        WorldSectorEtherData ether = WorldSectorEtherData.empty();
+        WorldSectorEtherData ether = WorldSectorEtherData.empty().withMaterial(MaterialId.merge(childMaterials));
         for ( Side side : Side.values() ) {
             int[] boundary = WorldTreeNode.boundaryCells(side);
-            List<MaterialDistribution> faces = new ArrayList<>(boundary.length);
+            List<TextureProfile> faces = new ArrayList<>(boundary.length);
             for ( int cell : boundary )
                 faces.add(aggregatedNode.sector(cell).ether().sideOf(side));
-            ether = ether.withSide(side, MaterialDistribution.average(faces));
+            ether = ether.withSide(side, TextureProfile.average(faces));
         }
         return withChildren(aggregatedNode).withEther(ether);
     }

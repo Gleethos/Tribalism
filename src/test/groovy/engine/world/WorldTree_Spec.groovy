@@ -3,7 +3,9 @@ package engine.world
 import app.engine.primitives.BoundsF64
 import app.engine.primitives.VecF64
 import app.engine.world.Material
+import app.engine.world.MaterialId
 import app.engine.world.Side
+import app.engine.world.Texture
 import app.engine.world.WorldSector
 import app.engine.world.WorldSectorEtherData
 import app.engine.world.WorldTreeEntityId
@@ -98,26 +100,30 @@ class WorldTree_Spec extends Specification
             var withRock = sector.withChildren(sector.children().withSector(0, rockChild))
         when:
             var aggregated = withRock.aggregated()
-        then: 'Corner cell (0,0,0) sits on the three negative faces, so each shows 1/64 rock...'
-            Math.abs(aggregated.ether().sideOf(Side.NEG_X).fractionOf(Material.ROCK) - 1.0 / 64.0) < 1e-12
-            Math.abs(aggregated.ether().sideOf(Side.NEG_Y).fractionOf(Material.ROCK) - 1.0 / 64.0) < 1e-12
-            Math.abs(aggregated.ether().sideOf(Side.NEG_Z).fractionOf(Material.ROCK) - 1.0 / 64.0) < 1e-12
+        then: 'Corner cell (0,0,0) sits on the three negative faces, so each is 1/64 opaque...'
+            Math.abs(aggregated.ether().sideOf(Side.NEG_X).intensityOf(Texture.OPACITY) - 1.0 / 64.0) < 1e-12
+            Math.abs(aggregated.ether().sideOf(Side.NEG_Y).intensityOf(Texture.OPACITY) - 1.0 / 64.0) < 1e-12
+            Math.abs(aggregated.ether().sideOf(Side.NEG_Z).intensityOf(Texture.OPACITY) - 1.0 / 64.0) < 1e-12
         and: '...while the opposite faces never see it (the interior is hidden).'
-            aggregated.ether().sideOf(Side.POS_X).fractionOf(Material.ROCK) == 0
-            aggregated.ether().sideOf(Side.POS_Y).fractionOf(Material.ROCK) == 0
-            aggregated.ether().sideOf(Side.POS_Z).fractionOf(Material.ROCK) == 0
+            aggregated.ether().sideOf(Side.POS_X).intensityOf(Texture.OPACITY) == 0
+            aggregated.ether().sideOf(Side.POS_Y).intensityOf(Texture.OPACITY) == 0
+            aggregated.ether().sideOf(Side.POS_Z).intensityOf(Texture.OPACITY) == 0
+        and: 'Mixing rock and air children makes the whole-cube material Diverse.'
+            aggregated.ether().material().isDiverse()
     }
 
-    def "Aggregating a uniformly subdivided sector preserves its material on every face."()
+    def "Aggregating a uniformly subdivided sector preserves its appearance and material."()
     {
         given: 'Splitting a solid rock voxel must keep it solid rock all over.'
             var rock = WorldSector.leaf(cube(0, 8), WorldSectorEtherData.of(Material.ROCK))
         when:
             var aggregated = rock.subdivide().aggregated()
-        then:
+        then: 'Every face stays fully opaque...'
             Side.values().every {
-                Math.abs(aggregated.ether().sideOf(it).fractionOf(Material.ROCK) - 1.0) < 1e-12
+                Math.abs(aggregated.ether().sideOf(it).intensityOf(Texture.OPACITY) - 1.0) < 1e-12
             }
+        and: '...and the single material is preserved (all children agreed).'
+            aggregated.ether().material() == Material.ROCK.materialId()
     }
 
     def "Per-side aggregation recurses through multiple levels, dividing by face area each time."()
@@ -130,8 +136,8 @@ class WorldTree_Spec extends Specification
             var rootWithLevels = root.withChildren(root.children().withSector(0, level1WithRock))
         when:
             var aggregated = rootWithLevels.aggregated()
-        then: 'Each level averages over a 64-cell face, so the corner rock is 1/(64*64) on the -X face.'
-            Math.abs(aggregated.ether().sideOf(Side.NEG_X).fractionOf(Material.ROCK) - 1.0 / (64.0 * 64.0)) < 1e-15
-            aggregated.ether().sideOf(Side.POS_X).fractionOf(Material.ROCK) == 0
+        then: 'Each level averages over a 64-cell face, so the corner rock is 1/(64*64) opaque on the -X face.'
+            Math.abs(aggregated.ether().sideOf(Side.NEG_X).intensityOf(Texture.OPACITY) - 1.0 / (64.0 * 64.0)) < 1e-15
+            aggregated.ether().sideOf(Side.POS_X).intensityOf(Texture.OPACITY) == 0
     }
 }

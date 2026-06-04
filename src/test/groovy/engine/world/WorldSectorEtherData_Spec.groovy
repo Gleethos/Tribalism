@@ -1,67 +1,66 @@
 package engine.world
 
 import app.engine.world.Material
-import app.engine.world.MaterialDistribution
+import app.engine.world.MaterialId
 import app.engine.world.Side
+import app.engine.world.Texture
+import app.engine.world.TextureProfile
 import app.engine.world.WorldSectorEtherData
 import spock.lang.Narrative
 import spock.lang.Specification
 import spock.lang.Title
 
-@Title("WorldSectorEtherData - what a sector is made of, per face")
+@Title("WorldSectorEtherData - a sector's material (one per cube) and per-side appearance")
 @Narrative('''
 
-    A sector stores a material distribution per cube face (six sides) rather
-    than a single whole-sector mixture. Since materials are a visual property
-    and only the outer faces of a cube are ever seen, level-of-detail
-    aggregation summarizes each face from only the children on that face.
+    The "ether" of a sector carries one gameplay material id for the whole cube,
+    plus a texture profile per face (appearance is per side, since only the outer
+    faces are seen). Empty space is the air material with an invisible profile.
 
 ''')
 class WorldSectorEtherData_Spec extends Specification
 {
-    def "Empty ether has empty, air-dominated distributions on all six sides."()
+    def "Empty ether is the air material, invisible on all six sides."()
     {
         given:
             var ether = WorldSectorEtherData.empty()
         expect:
-            Side.values().every { ether.sideOf(it).total() == 0 }
-            Side.values().every { ether.sideOf(it).dominantMaterial() == Material.AIR }
-            ether.dominantMaterial() == Material.AIR
+            ether.material() == MaterialId.of(0)
+            Side.values().every { ether.sideOf(it).isInvisible() }
     }
 
-    def "Uniform ether carries the same distribution on every side."()
+    def "A material gives one id for the cube and its appearance on every side."()
     {
         given:
             var ether = WorldSectorEtherData.of(Material.ROCK)
-        expect:
-            Side.values().every { ether.sideOf(it).dominantMaterial() == Material.ROCK }
-            ether.dominantMaterial() == Material.ROCK
+        expect: 'A single material id for the whole cube...'
+            ether.material() == Material.ROCK.materialId()
+        and: '...and the material appearance on each face.'
+            Side.values().every { ether.sideOf(it).intensityOf(Texture.OPACITY) == 1.0 }
     }
 
-    def "Each side can carry its own distribution."()
+    def "Each side can carry its own appearance while the cube keeps one material."()
     {
-        given: 'A sector that is grass on top, rock on the bottom, untouched elsewhere.'
-            var ether = WorldSectorEtherData.empty()
-                                .withSide(Side.POS_Y, MaterialDistribution.of(Material.GRASS))
-                                .withSide(Side.NEG_Y, MaterialDistribution.of(Material.ROCK))
+        given: 'A block whose top reads mossy, the rest as plain rock.'
+            var ether = WorldSectorEtherData.of(Material.ROCK)
+                                .withSide(Side.POS_Y, TextureProfile.of(Texture.MOSSY, 1.0))
         expect:
-            ether.sideOf(Side.POS_Y).dominantMaterial() == Material.GRASS
-            ether.sideOf(Side.NEG_Y).dominantMaterial() == Material.ROCK
-            ether.sideOf(Side.POS_X).dominantMaterial() == Material.AIR
-        and: 'The combined view averages all six sides into one mixture.'
-            ether.combined().fractionOf(Material.GRASS) > 0
-            ether.combined().fractionOf(Material.ROCK) > 0
+            ether.material() == Material.ROCK.materialId()
+            ether.sideOf(Side.POS_Y).intensityOf(Texture.MOSSY) == 1.0
+            ether.sideOf(Side.NEG_Y).intensityOf(Texture.MOSSY) == 0.0
+        and: 'The combined view averages all six side profiles.'
+            ether.combined().intensityOf(Texture.MOSSY) > 0
     }
 
-    def "Replacing a side leaves the others untouched (value semantics)."()
+    def "The whole-cube material can be replaced (e.g. to Diverse on aggregation)."()
     {
         given:
-            var base = WorldSectorEtherData.of(Material.SOIL)
+            var ether = WorldSectorEtherData.of(Material.ROCK)
         when:
-            var changed = base.withSide(Side.POS_Y, MaterialDistribution.of(Material.GRASS))
+            var diverse = ether.withMaterial(MaterialId.diverse())
         then:
-            changed.sideOf(Side.POS_Y).dominantMaterial() == Material.GRASS
-            changed.sideOf(Side.NEG_Y).dominantMaterial() == Material.SOIL
-            base.sideOf(Side.POS_Y).dominantMaterial() == Material.SOIL
+            diverse.material().isDiverse()
+        and: 'Replacing the material leaves the per-side appearance untouched.'
+            diverse.sideOf(Side.POS_X) == ether.sideOf(Side.POS_X)
     }
 }
