@@ -368,16 +368,24 @@ finely — the LoD story made visible. These functions are pure and unit-tested.
 
 ### Drawing
 
-Renderable voxels (those with at least one non-AIR face) are collected, sorted
-far-to-near (painter's algorithm), and each cube is drawn by:
+A sector survives to drawing only if it is **majority solid** — its
+`combined()` per-side mixture is at least half non-transparent material
+(`isMajoritySolid`). Gating on a solid *majority* (rather than merely "any solid
+face") stops coarse LoD cubes from bulging out past the true surface: a
+super-voxel that is mostly air with only a sliver of solid is left undrawn rather
+than inflated into a full block. Surviving voxels are collected, sorted far-to-near
+(painter's algorithm), and each cube is drawn by:
 
 1. projecting its 8 corners to screen via the camera's view-projection matrix
    (skipping voxels with a corner at/behind the camera),
 2. **back-face culling** (only faces whose outward normal points toward the
    camera),
 3. colouring each face by **its own `Side`'s** dominant material
-   (`ether.sideOf(side).dominantMaterial()`), skipping faces that are AIR — so a
-   single super-voxel can be, say, grass on top and rock on the sides,
+   (`faceMaterial`) — so a single super-voxel can be, say, grass on top and rock
+   on the sides. An LoD cube's ether is aggregated per side, so a face can come out
+   air-dominant even on a solid cube; such a face **falls back** to the sector's
+   dominant solid material rather than being skipped, so a drawn cube is never left
+   with see-through holes (a face is only skipped if the *whole* sector is air),
 4. flat directional shading (ambient floor + diffuse against a fixed light),
 5. filling the face polygons via `Graphics2D`.
 
