@@ -23,14 +23,24 @@ import java.util.List;
 
 /**
  *  A first-draft renderer that draws a {@link World} into a {@link Graphics2D}
- *  surface as shaded voxel cubes.
+ *  surface as shaded voxel faces.
  *  <p>
  *  What the user sees is purely a function of world state. The renderer walks the
- *  world tree and, for each sector, decides via {@link #projectedEdgePixels} how
- *  big it would appear on screen: distant sectors are drawn as a single coarse
- *  "super-voxel", while nearby sectors are recursed into for finer detail. This
- *  is the level-of-detail story made visible &mdash; the further away something is,
- *  the higher up the tree we stop.
+ *  world tree under three culling/level-of-detail decisions:
+ *  <ul>
+ *      <li><b>Frustum culling</b> &mdash; a sector outside the view volume (and its
+ *          whole sub-tree) is skipped.</li>
+ *      <li><b>Level of detail</b> &mdash; a sector too small on screen
+ *          ({@link #projectedEdgePixels}) is drawn as a single coarse, inset-fitted
+ *          box rather than recursed into.</li>
+ *      <li><b>Occlusion culling</b> &mdash; once the walk reaches a full-detail block
+ *          of voxels (a branch whose children are all leaves), it is drawn from a
+ *          cached {@link SectorMesh}, which omits faces buried between opaque voxels.
+ *          Because a {@link WorldSector} is an immutable value it is a perfect cache
+ *          key, so an unchanged block is meshed once and reused every frame.</li>
+ *  </ul>
+ *  Everything decomposes to {@link Quad}s, which are back-face culled, depth-sorted
+ *  (painter's algorithm) and filled as 2D polygons.
  */
 public final class WorldRenderer
 {
@@ -38,6 +48,7 @@ public final class WorldRenderer
     private final double _refineThresholdPx;
     private final VecF64 _lightDirection;
     private final Color _skyColor;
+    private final SectorMeshCache _meshCache = new SectorMeshCache();
 
     public WorldRenderer() {
         this(28.0, VecF64.of(-0.4, -1.0, -0.3).normalize(), new Color(135, 180, 235));
@@ -78,46 +89,80 @@ public final class WorldRenderer
         Frustum frustum = camera.frustum();
         double focal = focalLengthPx(camera, height);
 
-        List<Renderable> renderables = new ArrayList<>();
-        collect(world.root(), camera, frustum, focal, renderables);
+        List<Quad> quads = new ArrayList<>();
+        collect(world.root(), camera, frustum, focal, quads);
 
-        // Painter's algorithm: draw far voxels first so near ones cover them.
-        renderables.sort(Comparator.comparingDouble((Renderable r) -> r.distance).reversed());
-        for ( Renderable r : renderables )
-            drawVoxel(g, r.bounds, r.ether, viewProjection, camera, width, height);
+        List<Drawable> drawables = new ArrayList<>();
+        for ( Quad quad : quads ) {
+            VecF64 center = quad.centroid();
+            // Back-face culling: only keep faces whose outward normal points towards the camera.
+            if ( quad.normal().dot(camera.position().sub(center)) <= 0 )
+                continue;
+            Polygon polygon = projectQuad(quad, viewProjection, width, height);
+            if ( polygon == null )
+                continue; // a corner is at/behind the camera: skip this face for the first draft.
+            Color color = shade(TexturePalette.colorOf(quad.profile()), quad.normal());
+            drawables.add(new Drawable(polygon, color, camera.position().distance(center)));
+        }
+
+        // Painter's algorithm: draw far faces first so near ones cover them.
+        drawables.sort(Comparator.comparingDouble((Drawable d) -> d.distance).reversed());
+        for ( Drawable d : drawables ) {
+            g.setColor(d.color);
+            g.fillPolygon(d.polygon);
+        }
     }
 
     /**
-     *  Walks the tree, choosing the level of detail to draw at for each sector.
-     *  <p>
-     *  Frustum culling comes first: a sector whose bounds fall entirely outside the
-     *  view volume is skipped wholesale, and with it the entire sub-tree beneath it.
-     *  This is what keeps the walk cheap &mdash; we only ever descend into the
-     *  fraction of the world the camera can actually see.
+     *  Walks the tree, emitting the {@link Quad}s to draw under frustum culling,
+     *  level-of-detail and occlusion culling.
      */
-    private void collect( WorldSector sector, CameraF64 camera, Frustum frustum, double focal, List<Renderable> out ) {
+    private void collect( WorldSector sector, CameraF64 camera, Frustum frustum, double focal, List<Quad> out ) {
         if ( !frustum.intersects(sector.bounds()) )
             return; // outside the view: prune this sector and its whole sub-tree.
 
         double distance = camera.position().distance(sector.bounds().center());
         double edge = maxEdge(sector.bounds());
+        boolean wantsDetail = projectedEdgePixels(edge, distance, focal) > _refineThresholdPx;
 
-        boolean canRefine = sector.children() != null;
-        boolean wantsRefine = projectedEdgePixels(edge, distance, focal) > _refineThresholdPx;
-
-        if ( canRefine && wantsRefine ) {
+        if ( !wantsDetail ) {
+            // Far enough to draw as one coarse box, shrunk by its insets to fit content.
+            emitBox(sector.insets().shrink(sector.bounds()), sector.ether(), out);
+            return;
+        }
+        if ( sector.isLeaf() ) {
+            // A single large voxel: there is no finer structure, so draw its box.
+            emitBox(sector.bounds(), sector.ether(), out);
+            return;
+        }
+        if ( hasOnlyLeafChildren(sector) ) {
+            // A full-detail block of voxels: draw its cached, occlusion-culled mesh.
+            out.addAll(_meshCache.meshOf(sector).quads().toList());
+        } else {
             WorldTreeNode node = sector.children();
             for ( int i = 0; i < WorldTreeNode.SECTOR_COUNT; i++ )
                 collect(node.sector(i), camera, frustum, focal, out);
-        } else {
-            WorldSectorEtherData ether = sector.ether();
-            if ( isMajorityOpaque(ether) ) {
-                // Shrink the drawn box to fit the sector's actual content, so a coarse
-                // LoD voxel neither sticks out into empty air nor leaves a hole.
-                BoundsF64 fitted = sector.insets().shrink(sector.bounds());
-                out.add(new Renderable(fitted, ether, distance));
-            }
         }
+    }
+
+    /** Emits the (up to six) visible faces of a coarse box, hole-filling invisible sides. */
+    private void emitBox( BoundsF64 bounds, WorldSectorEtherData ether, List<Quad> out ) {
+        if ( !isMajorityOpaque(ether) )
+            return;
+        for ( Side side : Side.values() ) {
+            TextureProfile profile = faceProfile(ether, side);
+            if ( profile.isInvisible() )
+                continue; // only when the whole sector is invisible (e.g. all air).
+            out.add(Cubes.faceQuad(bounds, side, profile));
+        }
+    }
+
+    private static boolean hasOnlyLeafChildren( WorldSector sector ) {
+        WorldTreeNode node = sector.children();
+        for ( int i = 0; i < WorldTreeNode.SECTOR_COUNT; i++ )
+            if ( !node.sector(i).isLeaf() )
+                return false;
+        return true;
     }
 
     /**
@@ -153,38 +198,6 @@ public final class WorldRenderer
         return profile;
     }
 
-    private void drawVoxel( Graphics2D g, BoundsF64 bounds, WorldSectorEtherData ether, Mat4F64 vp, CameraF64 camera, int w, int h ) {
-        VecF64[] corners = corners(bounds);
-        double[][] screen = new double[8][];
-        for ( int i = 0; i < 8; i++ ) {
-            screen[i] = project(corners[i], vp, w, h);
-            if ( screen[i] == null )
-                return; // a corner is at/behind the camera: skip this voxel for the first draft.
-        }
-
-        for ( int f = 0; f < FACES.length; f++ ) {
-            Side side = FACE_SIDES[f];
-            // Each face is coloured from the appearance qualities on that very side.
-            TextureProfile profile = faceProfile(ether, side);
-            if ( profile.isInvisible() )
-                continue; // only when the whole sector is invisible (e.g. all air).
-
-            int[] face = FACES[f];
-            VecF64 normal = side.normal();
-            VecF64 faceCenter = corners[face[0]].add(corners[face[2]]).div(2);
-            // Back-face culling: only draw faces whose outward normal points towards the camera.
-            if ( normal.dot(camera.position().sub(faceCenter)) <= 0 )
-                continue;
-
-            Polygon polygon = new Polygon();
-            for ( int corner : face )
-                polygon.addPoint((int) Math.round(screen[corner][0]), (int) Math.round(screen[corner][1]));
-
-            g.setColor(shade(TexturePalette.colorOf(profile), normal));
-            g.fillPolygon(polygon);
-        }
-    }
-
     /** Flat directional shading with an ambient floor, clamped to valid colour values. */
     private Color shade( Color base, VecF64 normal ) {
         double diffuse = Math.max(0, normal.dot(_lightDirection.negate()));
@@ -193,6 +206,22 @@ public final class WorldRenderer
         int gr = clampColor((int) Math.round(base.getGreen() * brightness));
         int b = clampColor((int) Math.round(base.getBlue()  * brightness));
         return new Color(r, gr, b);
+    }
+
+    /**
+     *  Projects a quad's four world corners to a screen polygon.
+     *  @return The polygon, or {@code null} if any corner is at/behind the camera.
+     */
+    private static Polygon projectQuad( Quad quad, Mat4F64 vp, int w, int h ) {
+        VecF64[] corners = { quad.c0(), quad.c1(), quad.c2(), quad.c3() };
+        Polygon polygon = new Polygon();
+        for ( VecF64 corner : corners ) {
+            double[] screen = project(corner, vp, w, h);
+            if ( screen == null )
+                return null;
+            polygon.addPoint((int) Math.round(screen[0]), (int) Math.round(screen[1]));
+        }
+        return polygon;
     }
 
     /**
@@ -216,38 +245,10 @@ public final class WorldRenderer
         return Math.max(size.x(), Math.max(size.y(), size.z()));
     }
 
-    private static VecF64[] corners( BoundsF64 b ) {
-        VecF64 lo = b.min(), hi = b.max();
-        VecF64[] c = new VecF64[8];
-        for ( int i = 0; i < 8; i++ )
-            c[i] = VecF64.of(
-                    (i & 1) == 0 ? lo.x() : hi.x(),
-                    (i & 2) == 0 ? lo.y() : hi.y(),
-                    (i & 4) == 0 ? lo.z() : hi.z()
-            );
-        return c;
-    }
-
     private static int clampColor( int v ) {
-        return v < 0 ? 0 : (v > 255 ? 255 : v);
+        return v < 0 ? 0 : Math.min(v, 255);
     }
 
-    // The six cube faces, each as four corner indices in boundary order (see
-    // corners(): corner i has bit 0 = x, 1 = y, 2 = z), paired with the matching
-    // Side, whose normal() is used both for culling and per-face material lookup.
-    private static final int[][] FACES = {
-            { 0, 1, 5, 4 }, // -Y bottom
-            { 2, 3, 7, 6 }, // +Y top
-            { 0, 2, 6, 4 }, // -X left
-            { 1, 3, 7, 5 }, // +X right
-            { 0, 1, 3, 2 }, // -Z front
-            { 4, 5, 7, 6 }  // +Z back
-    };
-
-    private static final Side[] FACE_SIDES = {
-            Side.NEG_Y, Side.POS_Y, Side.NEG_X, Side.POS_X, Side.NEG_Z, Side.POS_Z
-    };
-
-    /** A single cube to be drawn, tagged with its distance for painter's-order sorting. */
-    private record Renderable(BoundsF64 bounds, WorldSectorEtherData ether, double distance) {}
+    /** A face ready to draw: its screen polygon, colour, and distance for painter's ordering. */
+    private record Drawable(Polygon polygon, Color color, double distance) {}
 }

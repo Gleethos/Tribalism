@@ -46,6 +46,11 @@ public final class WorldSector {
     // children), so it is excluded from equals/hashCode and computed at most once.
     private final Lazy<SideInsets> _insets;
 
+    // Cached hash. The value equals/hashCode are deep (they walk the whole sub-tree),
+    // so memoizing the hash makes a sector a cheap key for value-keyed maps (e.g. the
+    // renderer's mesh cache). 0 means "not yet computed"; the recompute is benign.
+    private int _hash;
+
     public WorldSector(
         BoundsF64 bounds,
         WorldSectorEtherData ether,
@@ -345,7 +350,12 @@ public final class WorldSector {
 
     @Override
     public int hashCode() {
-        return Objects.hash(_bounds, _ether, _entities, _lights, _lightTraces, _children);
+        int h = _hash;
+        if ( h == 0 ) {
+            h = Objects.hash(_bounds, _ether, _entities, _lights, _lightTraces, _children);
+            _hash = h;
+        }
+        return h;
     }
 
     @Override

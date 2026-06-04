@@ -71,7 +71,11 @@ app.engine
     │
     ├── render           First-draft Graphics2D rendering
     │   ├── TexturePalette      TextureProfile → AWT Color (keeps AWT out of the model)
-    │   └── WorldRenderer       Walks the tree, draws shaded voxels with LoD
+    │   ├── Quad                One world-space face (4 corners + normal + profile)
+    │   ├── Cubes               Bounds + Side → face Quad (shared box/mesh geometry)
+    │   ├── SectorMesh          A sector's occlusion-culled set of visible faces
+    │   ├── SectorMeshCache     Builds + memoizes meshes, keyed by the (immutable) sector
+    │   └── WorldRenderer       Walks the tree: frustum + LoD + occlusion culling → quads
     │
     └── demo
         └── WorldEngineDemo     Self-contained, runnable demo window
@@ -409,36 +413,55 @@ projectedEdgePixels(edgeLength, distance, focalLengthPx) = edgeLength · focal /
 focalLengthPx(camera, viewportHeight)                    = (height/2) / tan(fovY/2)
 ```
 
-If a sector's projected edge exceeds a pixel threshold **and** it has children,
-the renderer recurses; otherwise it draws the sector as a single "super-voxel".
-Thus distant geometry is drawn coarsely (high in the tree) and nearby geometry
-finely — the LoD story made visible. These functions are pure and unit-tested.
+If a sector's projected edge is *below* the threshold it is drawn as a single
+coarse "super-voxel" (one inset-fitted box); otherwise it needs detail and the
+renderer descends. Thus distant geometry is drawn coarsely (high in the tree) and
+nearby geometry finely. These functions are pure and unit-tested.
+
+### Occlusion culling (deciding *which faces*)
+
+Descending all the way to individual leaf voxels and drawing each as a cube is
+wasteful: a solid region draws the faces *between* adjacent voxels, only to overdraw
+them. So when the walk reaches a **full-detail block** — a branch whose children are
+all leaves (an 8×8×8 grid of voxels) — it does not recurse into 512 cubes. Instead
+it draws the block's **`SectorMesh`**: the set of *exposed* voxel faces, where a face
+is kept only if the neighbouring voxel in that direction is empty (or lies outside
+the block). Faces buried between two opaque voxels are dropped, collapsing a solid
+block from up to `512·6 = 3072` faces to its outer shell (e.g. `384`).
+
+Meshing a block is relatively expensive — but a `WorldSector` is an **immutable
+value**, so it is the perfect cache key. `SectorMeshCache` is a `WeakHashMap<WorldSector,
+SectorMesh>`: a block re-encountered next frame reuses its mesh for free, and meshes
+for blocks the world no longer references are garbage-collected. Lookups stay cheap
+because `WorldSector` **memoizes its (otherwise deep) hash code**, and `equals`
+short-circuits on identity for the common "same instance again" hit. (Block-boundary
+faces are drawn conservatively — we don't peek into the neighbouring block — a small,
+correct over-draw. *Greedy meshing* of coplanar same-appearance faces is a natural
+future win on top of this.)
 
 ### Drawing
 
-A sector survives to drawing only if it is **majority opaque** — its `combined()`
-appearance has `OPACITY` ≥ `TexturePalette.VISIBILITY_THRESHOLD` (`isMajorityOpaque`).
-Gating on an opacity *majority* (rather than "any opaque face") stops coarse LoD
-cubes from bulging out past the true surface: a super-voxel that is mostly empty
-air with only a sliver of opaque matter is left undrawn rather than inflated into a
-full block. Each surviving voxel is then **shrunk to fit its content** —
-`sector.insets().shrink(sector.bounds())` — so a half-full LoD box stops at the
-content surface (no protrusion, no hole) instead of spanning its full cell. The
-fitted boxes are collected, sorted far-to-near (painter's algorithm), and each is
-drawn by:
+The walk produces a flat list of world-space **`Quad`s** from two sources:
 
-1. projecting its 8 corners to screen via the camera's view-projection matrix
-   (skipping voxels with a corner at/behind the camera),
-2. **back-face culling** (only faces whose outward normal points toward the
-   camera),
-3. colouring each face from **its own `Side`'s** `TextureProfile` (`faceProfile`)
-   — so a single super-voxel can read grassy on top and rocky on the sides. An LoD
-   cube's appearance is aggregated per side, so a face can come out (near-)invisible
-   even on an opaque cube; such a face **falls back** to the sector's `combined()`
-   profile rather than being skipped, so a drawn cube is never left with see-through
-   holes (a face is only skipped if the *whole* sector is invisible),
-4. flat directional shading (ambient floor + diffuse against a fixed light),
-5. filling the face polygons via `Graphics2D`.
+- **Coarse boxes** (distant sectors / lone big leaves). A box is emitted only if its
+  sector is **majority opaque** — `combined()` `OPACITY` ≥
+  `TexturePalette.VISIBILITY_THRESHOLD` (`isMajorityOpaque`) — so a mostly-empty
+  super-voxel isn't inflated into a full block. The box is first **shrunk to fit its
+  content** (`sector.insets().shrink(sector.bounds())`) so it stops at the content
+  surface (no protrusion, no hole). Each face is coloured from **its own `Side`'s**
+  `TextureProfile` (`faceProfile`) — grassy on top, rocky on the sides — falling back
+  to the sector's `combined()` profile if an aggregated face came out invisible (so a
+  drawn box is never holey).
+- **Mesh quads** (full-detail blocks), straight from the cached `SectorMesh`.
+
+All quads are then handled uniformly:
+
+1. **back-face culling** (only faces whose outward normal points toward the camera),
+2. projecting the 4 corners to screen via the camera's view-projection matrix
+   (skipping a quad if any corner is at/behind the camera),
+3. flat directional shading (ambient floor + diffuse against a fixed light),
+4. depth-sorting far-to-near (painter's algorithm, per quad) and filling the polygon
+   via `Graphics2D`.
 
 `TexturePalette` derives a face's colour from its appearance qualities — an
 intensity-weighted blend of a tint per `Texture` (grainy→tan, liquid→blue,
@@ -497,6 +520,7 @@ structure:
 | `world/gen/PerlinNoise_Spec`| determinism, range, lattice zeros |
 | `world/gen/WorldGenerator_Spec` | material classification, adaptive subdivision, reproducibility |
 | `world/render/WorldRenderer_Spec` | LoD maths, frustum culling, majority-opaque, texture→colour, render smoke test |
+| `world/render/SectorMeshCache_Spec` | occlusion culling (interior faces dropped), shared-face culling, mesh memoization |
 
 Run them with:
 
@@ -514,7 +538,8 @@ the appearance/material model (`Texture` qualities, `TextureProfile`, `MaterialI
 sum type, `Material` starter registry); entity fall-down, per-side LoD
 aggregation and lazily-derived per-side `SideInsets`; the `Entity` sum type and
 `World` value; procedural generation; first-draft Graphics2D rendering with
-distance LoD, frustum culling **and inset-fitted LoD boxes**; a runnable demo.
+distance LoD, frustum culling, inset-fitted LoD boxes **and cached, occlusion-culled
+voxel meshes**; a runnable demo.
 
 ### The long-term rendering vision
 
@@ -544,6 +569,8 @@ the real renderer to come:
 - The **procedural noise shader** that consumes `TextureProfile` hints (replacing
   the first-draft `Graphics2D`/`TexturePalette` path), plus dynamic 64→32-bit
   scaling for GPU rendering.
+- **Greedy meshing** (merging coplanar same-appearance quads) and content-keyed,
+  position-independent meshes on top of the current `SectorMeshCache`.
 - A richer, registry-backed material system (resolving `MaterialId` to gameplay
   substances) as the world gains items and interactions.
 - Integration of a world view into the main Tribalism application.
