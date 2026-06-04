@@ -488,9 +488,12 @@ java -cp <classpath> app.engine.world.demo.WorldEngineDemo
 ```
 
 It procedurally generates a 128-unit landscape (seed `1337`, depth 2), adds a
-`CameraEntity`, and orbits the camera around the world with a ~30 FPS Swing timer,
-re-rendering each frame. It is intentionally isolated from the main Tribalism
-application.
+`CameraEntity`, and orbits the camera around the world with a ~60 FPS Swing timer,
+re-rendering each frame. Pressing a movement key (**W/A/S/D**, **Q/E** or
+**Space** for down/up, **Shift** to sprint) or **moving the mouse** hands control
+to a **free-fly camera** — seeded from the current orbit pose so the view never
+snaps — for inspecting the rendering up close. It is intentionally isolated from
+the main Tribalism application.
 
 ---
 
