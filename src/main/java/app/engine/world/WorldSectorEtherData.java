@@ -67,6 +67,18 @@ public record WorldSectorEtherData(
     }
 
     /**
+     *  @return {@code true} if the sector is fully transparent &mdash; invisible on
+     *          every face (empty space / air). This is the "is this empty?" test the
+     *          inset algorithm uses to peel off empty layers.
+     */
+    public boolean isInvisible() {
+        for ( Side side : Side.values() )
+            if ( !sideOf(side).isInvisible() )
+                return false;
+        return true;
+    }
+
+    /**
      *  @return A single representative appearance for the whole sector: the average
      *          of all six side profiles. Useful for code (and tests) that want one
      *          appearance for the sector rather than one per face.

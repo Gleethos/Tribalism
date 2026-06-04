@@ -2,19 +2,21 @@ package app.engine.world;
 
 import app.engine.primitives.BoundsF64;
 import app.engine.primitives.VecF64;
+import app.engine.util.Lazy;
 import org.jspecify.annotations.Nullable;
 import sprouts.Tuple;
 import sprouts.ValueSet;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Objects;
 
 /**
  *  A single cubic cell of the world, and the recursive building block of the
  *  whole engine.
  *  <p>
- *  A sector knows the {@link BoundsF64 region} it occupies and what it is made
- *  of ({@link WorldSectorEtherData}). It positionally holds the
+ *  A sector knows the {@link BoundsF64 region} it occupies and what it looks like /
+ *  is made of ({@link WorldSectorEtherData}). It positionally holds the
  *  {@link WorldTreeEntityId entities} and {@link LightSource lights} that fall
  *  within it, plus any {@link LightTrace light traces} radiating through it.
  *  <p>
@@ -25,23 +27,49 @@ import java.util.List;
  *  {@link #aggregated() ether aggregation}, an automatic level-of-detail story
  *  into the large.
  *  <p>
- *  Every operation returns a new sector; nothing is ever mutated.
- *
- *  @param bounds      The region this sector occupies in world space.
- *  @param ether       The material mixture this sector is made of.
- *  @param entities    The entities positioned within this sector.
- *  @param lights      The lights positioned within this sector.
- *  @param lightTraces The light traces currently radiating through this sector.
- *  @param children    The finer sub-sectors, or {@code null} if this is a leaf voxel.
+ *  Every operation returns a new sector; nothing is ever mutated. The class still
+ *  behaves as a <b>value</b> &mdash; immutable, with {@code equals}/{@code hashCode}
+ *  defined purely by its six fields. It is a {@code class} rather than a
+ *  {@code record} only so it can encapsulate one derived, lazily-computed field:
+ *  its {@link #insets() side insets}, summarized from its sub-sectors.
  */
-public record WorldSector(
-    BoundsF64 bounds,
-    WorldSectorEtherData ether,
-    ValueSet<WorldTreeEntityId> entities,
-    ValueSet<LightSource> lights,
-    Tuple<LightTrace> lightTraces,
-    @Nullable WorldTreeNode children
-) {
+public final class WorldSector {
+
+    private final BoundsF64 _bounds;
+    private final WorldSectorEtherData _ether;
+    private final ValueSet<WorldTreeEntityId> _entities;
+    private final ValueSet<LightSource> _lights;
+    private final Tuple<LightTrace> _lightTraces;
+    private final @Nullable WorldTreeNode _children;
+
+    // Derived, memoized. Purely a function of the fields above (specifically the
+    // children), so it is excluded from equals/hashCode and computed at most once.
+    private final Lazy<SideInsets> _insets;
+
+    public WorldSector(
+        BoundsF64 bounds,
+        WorldSectorEtherData ether,
+        ValueSet<WorldTreeEntityId> entities,
+        ValueSet<LightSource> lights,
+        Tuple<LightTrace> lightTraces,
+        @Nullable WorldTreeNode children
+    ) {
+        _bounds      = Objects.requireNonNull(bounds);
+        _ether       = Objects.requireNonNull(ether);
+        _entities    = Objects.requireNonNull(entities);
+        _lights      = Objects.requireNonNull(lights);
+        _lightTraces = Objects.requireNonNull(lightTraces);
+        _children    = children;
+        _insets      = Lazy.of(this::computeInsets);
+    }
+
+    public BoundsF64 bounds()                     { return _bounds; }
+    public WorldSectorEtherData ether()           { return _ether; }
+    public ValueSet<WorldTreeEntityId> entities() { return _entities; }
+    public ValueSet<LightSource> lights()         { return _lights; }
+    public Tuple<LightTrace> lightTraces()        { return _lightTraces; }
+    public @Nullable WorldTreeNode children()     { return _children; }
+
     /** @return An empty leaf sector over {@code bounds} made of the given {@code ether}. */
     public static WorldSector leaf( BoundsF64 bounds, WorldSectorEtherData ether ) {
         return new WorldSector(
@@ -61,35 +89,60 @@ public record WorldSector(
 
     /** @return {@code true} if this sector has no finer sub-sectors. */
     public boolean isLeaf() {
-        return children == null;
+        return _children == null;
+    }
+
+    /** @return {@code true} if this sector is empty space &mdash; invisible on every face. */
+    public boolean isFullyTransparent() {
+        return _ether.isInvisible();
+    }
+
+    /**
+     *  The per-face {@link SideInsets insets} of this sector, summarized from its
+     *  sub-sectors and memoized lazily (computed at most once, on first access).
+     *  <p>
+     *  A leaf has no sub-sectors to traverse, so all of its insets are {@code 0}.
+     *  A branch derives each face's inset with an <b>inward-moving</b> algorithm:
+     *  starting at that face it peels off whole child layers while every sub-sector
+     *  in the layer is {@link #isFullyTransparent() fully transparent}, adding one
+     *  full layer of inset each time. At the first layer that holds any content it
+     *  adds the <i>smallest</i> matching-side inset among that layer's non-transparent
+     *  sub-sectors (so the inset refines below child granularity) and stops. The
+     *  result is a fraction in {@code [0, 1]} of this sector's extent: {@code 0} =
+     *  content reaches the face, {@code 1} = that whole half is empty.
+     *
+     *  @return How far content is recessed from each of the six faces.
+     */
+    public SideInsets insets() {
+        return _insets.get();
     }
 
     public WorldSector withEther( WorldSectorEtherData newEther ) {
-        return new WorldSector(bounds, newEther, entities, lights, lightTraces, children);
+        return new WorldSector(_bounds, newEther, _entities, _lights, _lightTraces, _children);
     }
 
     public WorldSector withChildren( @Nullable WorldTreeNode newChildren ) {
-        return new WorldSector(bounds, ether, entities, lights, lightTraces, newChildren);
+        return new WorldSector(_bounds, _ether, _entities, _lights, _lightTraces, newChildren);
     }
 
     public WorldSector withEntity( WorldTreeEntityId entity ) {
-        return new WorldSector(bounds, ether, entities.add(entity), lights, lightTraces, children);
+        return new WorldSector(_bounds, _ether, _entities.add(entity), _lights, _lightTraces, _children);
     }
 
     public WorldSector withoutEntity( WorldTreeEntityId entity ) {
-        return new WorldSector(bounds, ether, entities.remove(entity), lights, lightTraces, children);
+        return new WorldSector(_bounds, _ether, _entities.remove(entity), _lights, _lightTraces, _children);
     }
 
     public WorldSector withLight( LightSource light ) {
-        return new WorldSector(bounds, ether, entities, lights.add(light), lightTraces, children);
+        return new WorldSector(_bounds, _ether, _entities, _lights.add(light), _lightTraces, _children);
     }
 
     public WorldSector withoutLight( LightSource light ) {
-        return new WorldSector(bounds, ether, entities, lights.remove(light), lightTraces, children);
+        return new WorldSector(_bounds, _ether, _entities, _lights.remove(light), _lightTraces, _children);
     }
 
     public WorldSector withLightTrace( LightTrace trace ) {
-        return new WorldSector(bounds, ether, entities, lights, lightTraces.add(trace), children);
+        return new WorldSector(_bounds, _ether, _entities, _lights, _lightTraces.add(trace), _children);
     }
 
     /**
@@ -100,9 +153,9 @@ public record WorldSector(
      *  unchanged.
      */
     public WorldSector subdivide() {
-        if ( children != null )
+        if ( _children != null )
             return this;
-        return withChildren(WorldTreeNode.uniform(bounds, ether));
+        return withChildren(WorldTreeNode.uniform(_bounds, _ether));
     }
 
     /**
@@ -147,15 +200,15 @@ public record WorldSector(
      *  @return A new sector without the entity, or this sector if it was absent.
      */
     public WorldSector remove( WorldTreeEntityId entity, int remainingDepth ) {
-        if ( entities.contains(entity) )
+        if ( _entities.contains(entity) )
             return withoutEntity(entity);
-        if ( children == null || remainingDepth <= 0 )
+        if ( _children == null || remainingDepth <= 0 )
             return this;
         int cell = soleContainingCell(entity.bounds());
         if ( cell < 0 )
             return this;
-        WorldSector child = children.sector(cell).remove(entity, remainingDepth - 1);
-        return withChildren(children.withSector(cell, child));
+        WorldSector child = _children.sector(cell).remove(entity, remainingDepth - 1);
+        return withChildren(_children.withSector(cell, child));
     }
 
     /**
@@ -173,20 +226,21 @@ public record WorldSector(
      *          {@link MaterialId#merge merged} &mdash; the shared id if they all
      *          agree, otherwise {@link MaterialId#diverse() Diverse}.</li>
      *  </ul>
-     *  This is what lets a whole sub-tree collapse into one visually faithful
-     *  representative voxel.
+     *  (The per-face {@link #insets() insets} are derived the same way, but lazily on
+     *  demand rather than here.) This is what lets a whole sub-tree collapse into one
+     *  visually faithful representative voxel.
      *
      *  @return A sector whose ether (and that of every descendant) reflects the
      *          per-side appearance and merged material of its sub-tree.
      */
     public WorldSector aggregated() {
-        if ( children == null )
+        if ( _children == null )
             return this;
 
         WorldSector[] aggregatedChildren = new WorldSector[WorldTreeNode.SECTOR_COUNT];
         List<MaterialId> childMaterials = new ArrayList<>(WorldTreeNode.SECTOR_COUNT);
         for ( int i = 0; i < WorldTreeNode.SECTOR_COUNT; i++ ) {
-            WorldSector child = children.sector(i).aggregated();
+            WorldSector child = _children.sector(i).aggregated();
             aggregatedChildren[i] = child;
             childMaterials.add(child.ether().material());
         }
@@ -203,6 +257,47 @@ public record WorldSector(
         return withChildren(aggregatedNode).withEther(ether);
     }
 
+    // ---- Inset computation ------------------------------------------------------
+
+    private SideInsets computeInsets() {
+        if ( _children == null )
+            return SideInsets.none();
+
+        boolean[] transparent = new boolean[WorldTreeNode.SECTOR_COUNT];
+        for ( int i = 0; i < WorldTreeNode.SECTOR_COUNT; i++ )
+            transparent[i] = _children.sector(i).isFullyTransparent();
+
+        SideInsets insets = SideInsets.none();
+        for ( Side side : Side.values() )
+            insets = insets.with(side, insetFromSide(side, transparent));
+        return insets;
+    }
+
+    /** Walks layers inward from {@code side}, accumulating empty layers (and a final partial layer). */
+    private double insetFromSide( Side side, boolean[] transparent ) {
+        int res = WorldTreeNode.RESOLUTION;
+        double layers = 0;
+        for ( int depth = 0; depth < res; depth++ ) {
+            boolean allTransparent = true;
+            double minChildInset = 1.0;
+            for ( int idx : WorldTreeNode.layerCells(side, depth) ) {
+                if ( !transparent[idx] ) {
+                    allTransparent = false;
+                    double childInset = _children.sector(idx).insets().forSide(side);
+                    if ( childInset < minChildInset )
+                        minChildInset = childInset;
+                }
+            }
+            if ( allTransparent ) {
+                layers += 1.0; // a fully empty layer recesses content by a full child cell.
+            } else {
+                layers += minChildInset; // content begins partway into this layer; refine below it.
+                break;
+            }
+        }
+        return layers / res;
+    }
+
     /**
      *  Determines which single sub-cell of an {@code 8x8x8} subdivision of this
      *  sector fully contains {@code region}.
@@ -211,7 +306,7 @@ public record WorldSector(
      *          region straddles a cell boundary or falls outside this sector.
      */
     private int soleContainingCell( BoundsF64 region ) {
-        if ( !bounds.contains(region) )
+        if ( !_bounds.contains(region) )
             return -1;
         int[] minCell = cellOf(region.min());
         int[] maxCell = cellOf(region.max());
@@ -223,10 +318,10 @@ public record WorldSector(
     /** @return The {@code [x, y, z]} grid coordinate of {@code point}, clamped into the node. */
     private int[] cellOf( VecF64 point ) {
         int res = WorldTreeNode.RESOLUTION;
-        VecF64 size = bounds.size();
-        int x = clampCell((int) Math.floor((point.x() - bounds.min().x()) / (size.x() / res)), res);
-        int y = clampCell((int) Math.floor((point.y() - bounds.min().y()) / (size.y() / res)), res);
-        int z = clampCell((int) Math.floor((point.z() - bounds.min().z()) / (size.z() / res)), res);
+        VecF64 size = _bounds.size();
+        int x = clampCell((int) Math.floor((point.x() - _bounds.min().x()) / (size.x() / res)), res);
+        int y = clampCell((int) Math.floor((point.y() - _bounds.min().y()) / (size.y() / res)), res);
+        int z = clampCell((int) Math.floor((point.z() - _bounds.min().z()) / (size.z() / res)), res);
         return new int[]{ x, y, z };
     }
 
@@ -234,5 +329,29 @@ public record WorldSector(
         if ( value < 0 )    return 0;
         if ( value >= res ) return res - 1;
         return value;
+    }
+
+    @Override
+    public boolean equals( Object obj ) {
+        if ( this == obj ) return true;
+        if ( !(obj instanceof WorldSector other) ) return false;
+        return _bounds.equals(other._bounds)
+            && _ether.equals(other._ether)
+            && _entities.equals(other._entities)
+            && _lights.equals(other._lights)
+            && _lightTraces.equals(other._lightTraces)
+            && Objects.equals(_children, other._children);
+    }
+
+    @Override
+    public int hashCode() {
+        return Objects.hash(_bounds, _ether, _entities, _lights, _lightTraces, _children);
+    }
+
+    @Override
+    public String toString() {
+        return "WorldSector[bounds=" + _bounds + ", ether=" + _ether
+             + ", entities=" + _entities.size() + ", lights=" + _lights.size()
+             + ", lightTraces=" + _lightTraces.size() + ", leaf=" + isLeaf() + ']';
     }
 }

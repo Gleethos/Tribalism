@@ -60,7 +60,21 @@ public record WorldTreeNode(
      *          contribute to that face of the parent.
      */
     public static int[] boundaryCells( Side side ) {
-        int fixed = side.isPositive() ? RESOLUTION - 1 : 0;
+        return layerCells(side, 0);
+    }
+
+    /**
+     *  @return The linear indices of the {@code RESOLUTION^2} child cells in the
+     *          {@code depth}-th layer counted inward from the given {@code side}
+     *          ({@code depth == 0} is the boundary layer on that face, {@code depth
+     *          == RESOLUTION - 1} the far layer). This is what the inward-moving
+     *          inset algorithm peels off layer by layer.
+     *  @throws IndexOutOfBoundsException if {@code depth} is not in {@code [0, RESOLUTION)}.
+     */
+    public static int[] layerCells( Side side, int depth ) {
+        if ( depth < 0 || depth >= RESOLUTION )
+            throw new IndexOutOfBoundsException("Layer depth " + depth + " is outside [0, " + RESOLUTION + ").");
+        int fixed = side.isPositive() ? RESOLUTION - 1 - depth : depth;
         int[] indices = new int[RESOLUTION * RESOLUTION];
         int k = 0;
         for ( int a = 0; a < RESOLUTION; a++ ) {

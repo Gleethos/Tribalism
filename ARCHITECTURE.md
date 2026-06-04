@@ -55,6 +55,7 @@ app.engine
     ├── MaterialId              Sum type: Specific(int) | Diverse (what a cube is made of)
     ├── Material                Starter substance registry (id + name + default TextureProfile)
     ├── Side                    One of the six cube faces (NEG_X … POS_Z)
+    ├── SideInsets              Per-face content recess [0,1] (lets LoD boxes fit content)
     ├── WorldSectorEtherData    Ether: one MaterialId per cube + one TextureProfile per Side
     ├── WorldTreeEntityId       Positional handle: long id + bounds
     ├── LightSource             Sealed light sum type (Sphere | Cube | Plane)
@@ -173,15 +174,21 @@ maps grid coordinates to that index.
 A `WorldSector` is the heart of the engine and is *recursive*:
 
 ```java
-record WorldSector(
-    BoundsF64                   bounds,       // the region it occupies
-    WorldSectorEtherData        ether,        // what it looks like + what it is made of
-    ValueSet<WorldTreeEntityId> entities,     // entities positioned here
-    ValueSet<LightSource>       lights,       // lights positioned here
-    Tuple<LightTrace>           lightTraces,  // light radiating through here
-    @Nullable WorldTreeNode     children      // null = leaf voxel; else 512 sub-sectors
-)
+final class WorldSector {           // a value (immutable, value equals/hashCode)
+    BoundsF64                   bounds;       // the region it occupies
+    WorldSectorEtherData        ether;        // what it looks like + what it is made of
+    ValueSet<WorldTreeEntityId> entities;     // entities positioned here
+    ValueSet<LightSource>       lights;       // lights positioned here
+    Tuple<LightTrace>           lightTraces;  // light radiating through here
+    @Nullable WorldTreeNode     children;     // null = leaf voxel; else 512 sub-sectors
+    Lazy<SideInsets>            insets;        // derived: how far content is recessed per face
+}
 ```
+
+It is a `final class` rather than a `record` for the same reason as `CameraF64`:
+so it can encapsulate one *derived, lazily-memoized* field — its
+[`SideInsets`](#side-insets) — while still behaving as an immutable value (its
+`equals`/`hashCode` cover only the six defining fields, never the cache).
 
 A sector with `children == null` is a **leaf** — effectively a single voxel. A
 sector with children is a branch of 512 finer sub-sectors. This gives the
@@ -284,6 +291,25 @@ So any sub-tree collapses into one *visually faithful* representative voxel — 
 a super-sector straddling the ground shows grassy/mossy texture on its `POS_Y`
 (top) face and rocky texture on `NEG_Y` (bottom), with a `Diverse` material —
 which is what makes cheap, directionally-correct LoD rendering possible.
+
+**3. Side insets — `WorldSector.insets()`** <a id="side-insets"></a>
+
+Per-side appearance fixes the *colour* of a coarse LoD box, but not its *shape*: a
+"half-full" sector (solid bottom, air top) drawn as a full cube would either stick
+out into empty air or, if skipped, leave a hole. **`SideInsets`** fixes the shape.
+Each face carries an inset in `[0, 1]` — the fraction of the sector's extent by
+which its content is recessed from that face — and the renderer shrinks the drawn
+box accordingly.
+
+Insets are derived bottom-up and **memoized as a single `Lazy<SideInsets>`** on the
+sector (a leaf has none — all zero). For each face a branch runs an *inward-moving*
+algorithm: starting at the face it peels off whole child layers
+(`WorldTreeNode.layerCells(side, depth)`) while **every** sub-sector in the layer
+is `isFullyTransparent()`, adding one full layer of inset each time; at the first
+layer that holds content it adds the *smallest* matching-side inset among that
+layer's non-transparent children (so the inset refines recursively, below child
+granularity) and stops. A solid bottom / air top thus yields `POS_Y = 0.5`,
+`NEG_Y = 0`; a fully empty branch yields `1.0` on every face.
 
 ---
 
@@ -395,8 +421,11 @@ appearance has `OPACITY` ≥ `TexturePalette.VISIBILITY_THRESHOLD` (`isMajorityO
 Gating on an opacity *majority* (rather than "any opaque face") stops coarse LoD
 cubes from bulging out past the true surface: a super-voxel that is mostly empty
 air with only a sliver of opaque matter is left undrawn rather than inflated into a
-full block. Surviving voxels are collected, sorted far-to-near (painter's
-algorithm), and each cube is drawn by:
+full block. Each surviving voxel is then **shrunk to fit its content** —
+`sector.insets().shrink(sector.bounds())` — so a half-full LoD box stops at the
+content surface (no protrusion, no hole) instead of spanning its full cell. The
+fitted boxes are collected, sorted far-to-near (painter's algorithm), and each is
+drawn by:
 
 1. projecting its 8 corners to screen via the camera's view-projection matrix
    (skipping voxels with a corner at/behind the camera),
@@ -459,6 +488,8 @@ structure:
 | `world/MaterialId_Spec`     | Specific vs Diverse, merge of agreeing/disagreeing ids |
 | `world/Material_Spec`       | starter registry, unique ids, air = invisible null substance |
 | `world/WorldSectorEtherData_Spec` | one material per cube + per-side appearance, combined |
+| `world/SideInsets_Spec`     | clamping, per-face lookup, box shrink, collapse on cross |
+| `world/SectorInsets_Spec`   | inward-layer inset algorithm, recursive refinement, appearance derived from sub-sectors |
 | `world/LightSource_Spec`    | sum-type variants, bounds, exhaustive matching |
 | `world/WorldTree_Spec`      | 512-node layout, fall-down, per-side LoD + material merge |
 | `world/Entity_Spec`         | camera/voxel entities, sum-type matching |
@@ -480,10 +511,10 @@ Run them with:
 **Built:** math primitives (incl. a lazily-caching `CameraF64` and a `Frustum`);
 the full immutable world tree (sectors, nodes, ether, entities, lights, traces);
 the appearance/material model (`Texture` qualities, `TextureProfile`, `MaterialId`
-sum type, `Material` starter registry); entity fall-down and per-side LoD
-aggregation; the `Entity` sum type and `World` value; procedural generation;
-first-draft Graphics2D rendering with distance LoD **and frustum culling**; a
-runnable demo.
+sum type, `Material` starter registry); entity fall-down, per-side LoD
+aggregation and lazily-derived per-side `SideInsets`; the `Entity` sum type and
+`World` value; procedural generation; first-draft Graphics2D rendering with
+distance LoD, frustum culling **and inset-fitted LoD boxes**; a runnable demo.
 
 ### The long-term rendering vision
 

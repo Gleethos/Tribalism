@@ -111,8 +111,12 @@ public final class WorldRenderer
                 collect(node.sector(i), camera, frustum, focal, out);
         } else {
             WorldSectorEtherData ether = sector.ether();
-            if ( isMajorityOpaque(ether) )
-                out.add(new Renderable(sector.bounds(), ether, distance));
+            if ( isMajorityOpaque(ether) ) {
+                // Shrink the drawn box to fit the sector's actual content, so a coarse
+                // LoD voxel neither sticks out into empty air nor leaves a hole.
+                BoundsF64 fitted = sector.insets().shrink(sector.bounds());
+                out.add(new Renderable(fitted, ether, distance));
+            }
         }
     }
 
