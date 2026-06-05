@@ -3,6 +3,7 @@ import app.engine.primitives.BoundsF64
 import app.engine.primitives.CameraF64
 import app.engine.primitives.VecF64
 import app.engine.world.Material
+import app.engine.world.ScreenId
 import app.engine.world.Side
 import app.engine.world.Texture
 import app.engine.world.TextureProfile
@@ -67,7 +68,7 @@ class WorldRenderer_Spec extends Specification
             var image = new BufferedImage(w, h, BufferedImage.TYPE_INT_RGB)
             var g = image.createGraphics()
         when:
-            new WorldRenderer(28.0, VecF64.of(-0.4, -1.0, -0.3), skyColor).render(g, world, camera, w, h)
+            new WorldRenderer(28.0, VecF64.of(-0.4, -1.0, -0.3), skyColor).render(g, onScreen(world, camera, w, h), ScreenId.of(1L))
             g.dispose()
         then: 'A meaningful fraction of pixels differ from the sky colour (terrain was drawn).'
             countNonSky(image, skyColor) > (w * h) * 0.05
@@ -84,7 +85,7 @@ class WorldRenderer_Spec extends Specification
             var image = new BufferedImage(w, h, BufferedImage.TYPE_INT_RGB)
             var g = image.createGraphics()
         when:
-            new WorldRenderer(28.0, VecF64.of(-0.4, -1.0, -0.3), skyColor).render(g, world, lookingAway, w, h)
+            new WorldRenderer(28.0, VecF64.of(-0.4, -1.0, -0.3), skyColor).render(g, onScreen(world, lookingAway, w, h), ScreenId.of(1L))
             g.dispose()
         then: 'The whole world is behind the camera, so every sector is culled and nothing is drawn.'
             countNonSky(image, skyColor) == 0
@@ -142,7 +143,7 @@ class WorldRenderer_Spec extends Specification
             var facing = new CameraF64(VecF64.of(-100, 8, 8), VecF64.of(0, 8, 8), VecF64.of(0, 1, 0),
                                        Math.toRadians(60), 1.0, 0.5, 2000)
         when:
-            renderer.render(g, world, facing, w, h)
+            renderer.render(g, onScreen(world, facing, w, h), ScreenId.of(1L))
         then: 'The near block is drawn, and at least one sector behind it is occlusion-culled.'
             renderer.facesDrawn() > 0
             renderer.occlusionCulledSectors() > 0
@@ -150,12 +151,19 @@ class WorldRenderer_Spec extends Specification
         when: 'The camera instead faces away from the world entirely.'
             var away = new CameraF64(VecF64.of(-100, 8, 8), VecF64.of(-200, 8, 8), VecF64.of(0, 1, 0),
                                      Math.toRadians(60), 1.0, 0.5, 2000)
-            renderer.render(g, world, away, w, h)
+            renderer.render(g, onScreen(world, away, w, h), ScreenId.of(1L))
         then: 'Frustum culling removes everything before occlusion even applies.'
             renderer.facesDrawn() == 0
             renderer.occlusionCulledSectors() == 0
         cleanup:
             g.dispose()
+    }
+
+    /** Gives the world a camera (id 1) and a screen (id 1) bound to it, so it can be rendered. */
+    private static World onScreen( World world, CameraF64 camera, int w, int h ) {
+        return world.createCamera(1L, camera)
+                    .createScreen(ScreenId.of(1L), w, h)
+                    .bindScreenToCamera(ScreenId.of(1L), 1L)
     }
 
     private static int countNonSky( BufferedImage image, java.awt.Color skyColor ) {

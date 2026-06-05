@@ -57,14 +57,18 @@ public final class WorldRenderer
     /** @return The number of sectors (and their sub-trees) skipped by occlusion culling in the most recent {@link #render}. */
     public int occlusionCulledSectors() { return _occlusionCulled; }
 
-    public void render( Graphics2D g, World world, CameraF64 camera, int width, int height ) {
+    public void render( Graphics2D g, World world, ScreenId screenId ) {
+        Screen screen = world.screen(screenId).orElse(null);
+        int width  = screen == null ? 0 : screen.width();
+        int height = screen == null ? 0 : screen.height();
+
         g.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
         g.setColor(_skyColor);
         g.fillRect(0, 0, width, height);
 
         List<ScreenFace> faces = new ArrayList<>();
         World.RenderStats stats = world.collectSectorsForRendering(
-                camera, width, height, _refineThresholdPx,
+                screenId, _refineThresholdPx,
                 ( sector, wantsDetail, view ) -> {
                     if ( sector.isSolidOpaque() ) {
                         emitBox(sector, view, _lightDirection, faces);

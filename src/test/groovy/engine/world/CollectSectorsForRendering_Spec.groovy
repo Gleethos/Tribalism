@@ -4,6 +4,7 @@ import app.engine.primitives.BoundsF64
 import app.engine.primitives.CameraF64
 import app.engine.primitives.VecF64
 import app.engine.world.Material
+import app.engine.world.ScreenId
 import app.engine.world.SectorDrawCollector
 import app.engine.world.World
 import app.engine.world.WorldSector
@@ -19,13 +20,23 @@ import spock.lang.Title
 @Narrative('''
 
     All of the per-frame visibility logic - frustum culling, occlusion culling and
-    the level-of-detail decision - lives on the World, not on any renderer. That lets
-    us assert those behaviours directly by collecting the sectors the world considers
-    visible from a camera, with no drawing surface and no renderer in sight.
+    the level-of-detail decision - lives on the World, not on any renderer. The world
+    is asked to collect for a screen id (which resolves to its bound camera and size),
+    so we assert those behaviours directly by collecting the sectors it considers
+    visible, with no drawing surface and no renderer in sight.
 
 ''')
 class CollectSectorsForRendering_Spec extends Specification
 {
+    private static final ScreenId SCREEN = ScreenId.of(1L)
+
+    /** Gives the world a camera (id 1) and a screen (SCREEN) bound to it, so it can be collected. */
+    private static World onScreen( World world, CameraF64 camera, int w, int h ) {
+        return world.createCamera(1L, camera)
+                    .createScreen(SCREEN, w, h)
+                    .bindScreenToCamera(SCREEN, 1L)
+    }
+
     /** Collects every sector the world hands out, remembering each sector's wantsDetail flag. */
     private static final class Capture implements SectorDrawCollector {
         final List<WorldSector> sectors = []
@@ -45,8 +56,8 @@ class CollectSectorsForRendering_Spec extends Specification
             var seen = new Capture()
             var none = new Capture()
         when:
-            var seenStats = world.collectSectorsForRendering(facing, 240, 160, 28.0, seen)
-            var noneStats = world.collectSectorsForRendering(away,   240, 160, 28.0, none)
+            var seenStats = onScreen(world, facing, 240, 160).collectSectorsForRendering(SCREEN, 28.0, seen)
+            var noneStats = onScreen(world, away,   240, 160).collectSectorsForRendering(SCREEN, 28.0, none)
         then: 'Facing the world yields visible sectors...'
             seenStats.sectorsCollected() > 0
             seen.sectors.size() == seenStats.sectorsCollected()
@@ -74,11 +85,11 @@ class CollectSectorsForRendering_Spec extends Specification
             var facing = new CameraF64(VecF64.of(-100, 8, 8), VecF64.of(0, 8, 8), VecF64.of(0, 1, 0), Math.toRadians(60), 1.0, 0.5, 2000)
             var away   = new CameraF64(VecF64.of(-100, 8, 8), VecF64.of(-200, 8, 8), VecF64.of(0, 1, 0), Math.toRadians(60), 1.0, 0.5, 2000)
         when:
-            var facingStats = world.collectSectorsForRendering(facing, 200, 200, 28.0, new Capture())
+            var facingStats = onScreen(world, facing, 200, 200).collectSectorsForRendering(SCREEN, 28.0, new Capture())
         then: 'At least one sector behind the near block is occlusion-culled.'
             facingStats.occlusionCulledSectors() > 0
         when:
-            var awayStats = world.collectSectorsForRendering(away, 200, 200, 28.0, new Capture())
+            var awayStats = onScreen(world, away, 200, 200).collectSectorsForRendering(SCREEN, 28.0, new Capture())
         then: 'Facing away, frustum culling removes everything before occlusion even applies.'
             awayStats.sectorsCollected() == 0
             awayStats.occlusionCulledSectors() == 0
@@ -95,8 +106,8 @@ class CollectSectorsForRendering_Spec extends Specification
             var up = new Capture()
             var off = new Capture()
         when:
-            world.collectSectorsForRendering(near, 600, 600, 28.0, up)
-            world.collectSectorsForRendering(far,  600, 600, 28.0, off)
+            onScreen(world, near, 600, 600).collectSectorsForRendering(SCREEN, 28.0, up)
+            onScreen(world, far,  600, 600).collectSectorsForRendering(SCREEN, 28.0, off)
         then: 'Up close the root wants detail; from far away it is collected as one coarse box.'
             up.wantsDetail[root] == true
             off.wantsDetail[root] == false

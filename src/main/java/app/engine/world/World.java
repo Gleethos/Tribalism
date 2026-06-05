@@ -5,54 +5,109 @@ import app.engine.primitives.CameraF64;
 import app.engine.primitives.VecF64;
 import org.jspecify.annotations.Nullable;
 import sprouts.Association;
+import sprouts.Pair;
 import sprouts.Tuple;
+import sprouts.ValueSet;
 
 import java.util.Arrays;
 import java.util.Comparator;
+import java.util.Objects;
 import java.util.Optional;
 
 /**
  *  The whole world as a single immutable value.
  *  <p>
- *  A world is just two things: the {@code root} of the spatial {@link WorldSector}
- *  tree, and an {@code entities} lookup from id to {@link Entity}. The tree is used
- *  purely for positional queries (it holds only {@link WorldTreeEntityId}s), while
- *  the association is the authoritative store of the actual entities. Keeping the
- *  two in sync is the job of {@link #withEntity} / {@link #withoutEntity}.
+ *  A world ties together four things:
+ *  <ul>
+ *      <li>the {@code root} of the spatial {@link WorldSector} tree (positional
+ *          queries; it holds only {@link WorldTreeEntityId}s),</li>
+ *      <li>an {@code entities} lookup from id to {@link Entity} (the authoritative
+ *          store of actual entities, cameras included),</li>
+ *      <li>the {@link Screen}s it renders to, each referencing a camera by id, and</li>
+ *      <li>the accumulated per-screen input state (which keys are currently held),
+ *          which is encapsulated &mdash; events only report <i>changes</i>, so the
+ *          world must remember held state between {@link #update updates}.</li>
+ *  </ul>
+ *  It is a {@code class} rather than a {@code record} precisely so this last piece can
+ *  be encapsulated and so the type has room to grow; it nonetheless remains a
+ *  <b>value</b>: immutable, every operation returns a new world, and
+ *  {@code equals}/{@code hashCode} are defined purely by its fields.
  *  <p>
- *  This value is what an update loop transforms from one tick to the next; nothing
- *  is ever mutated in place.
- *
- *  @param root     The root sector of the world tree.
- *  @param entities The lookup from entity id to the actual entity.
+ *  {@link #update(EngineInputs)} is the function an engine loop applies each tick to
+ *  fold input into world state (today: free-fly camera control via {@link CameraFlight}).
  */
-public record World(
-    WorldSector root,
-    Association<Long, Entity> entities
-) {
+public final class World
+{
     /** A sensible default cap on how deep an entity may fall into the tree. */
     public static final int DEFAULT_MAX_DEPTH = 8;
 
+    private final WorldSector _root;
+    private final Association<Long, Entity> _entities;
+    private final Association<ScreenId, Screen> _screens;
+    private final Association<ScreenId, ScreenInputState> _inputStates;
+
+    private World(
+        WorldSector root,
+        Association<Long, Entity> entities,
+        Association<ScreenId, Screen> screens,
+        Association<ScreenId, ScreenInputState> inputStates
+    ) {
+        _root        = Objects.requireNonNull(root);
+        _entities    = Objects.requireNonNull(entities);
+        _screens     = Objects.requireNonNull(screens);
+        _inputStates = Objects.requireNonNull(inputStates);
+    }
+
     /** @return An empty world whose root covers {@code bounds}, made of nothing. */
     public static World of( BoundsF64 bounds ) {
-        return new World(WorldSector.empty(bounds), Association.between(Long.class, Entity.class));
+        return of(WorldSector.empty(bounds));
     }
 
-    /** @return A world over the given {@code root} with no entities yet. */
+    /** @return A world over the given {@code root} with no entities or screens yet. */
     public static World of( WorldSector root ) {
-        return new World(root, Association.between(Long.class, Entity.class));
+        return new World(
+                root,
+                Association.between(Long.class, Entity.class),
+                Association.between(ScreenId.class, Screen.class),
+                Association.between(ScreenId.class, ScreenInputState.class)
+        );
     }
+
+    // ---- Core accessors ---------------------------------------------------------
+
+    public WorldSector root() { return _root; }
+
+    public Association<Long, Entity> entities() { return _entities; }
 
     public Optional<Entity> entity( long id ) {
-        return entities.get(id);
+        return _entities.get(id);
     }
 
     public Tuple<Entity> allEntities() {
-        return entities.values();
+        return _entities.values();
     }
 
+    /** @return The camera entity with the given id, if one exists and it is a camera. */
+    public Optional<Entity.CameraEntity> camera( long id ) {
+        return _entities.get(id)
+                        .filter(e -> e instanceof Entity.CameraEntity)
+                        .map(e -> (Entity.CameraEntity) e);
+    }
+
+    /** @return The screen with the given id, if the world has one. */
+    public Optional<Screen> screen( ScreenId id ) {
+        return _screens.get(id);
+    }
+
+    /** @return Every screen the world currently knows about. */
+    public Tuple<Screen> allScreens() {
+        return _screens.values();
+    }
+
+    // ---- Entity transforms (tree + lookup kept in sync) -------------------------
+
     public World withRoot( WorldSector newRoot ) {
-        return new World(newRoot, entities);
+        return new World(newRoot, _entities, _screens, _inputStates);
     }
 
     /**
@@ -61,8 +116,8 @@ public record World(
      *  itself is stored in the lookup.
      */
     public World withEntity( Entity entity, int maxDepth ) {
-        WorldSector newRoot = root.insert(entity.treeId(), maxDepth);
-        return new World(newRoot, entities.put(entity.id(), entity));
+        WorldSector newRoot = _root.insert(entity.treeId(), maxDepth);
+        return new World(newRoot, _entities.put(entity.id(), entity), _screens, _inputStates);
     }
 
     public World withEntity( Entity entity ) {
@@ -71,8 +126,8 @@ public record World(
 
     /** Removes an entity from both the tree and the lookup. */
     public World withoutEntity( Entity entity, int maxDepth ) {
-        WorldSector newRoot = root.remove(entity.treeId(), maxDepth);
-        return new World(newRoot, entities.remove(entity.id()));
+        WorldSector newRoot = _root.remove(entity.treeId(), maxDepth);
+        return new World(newRoot, _entities.remove(entity.id()), _screens, _inputStates);
     }
 
     public World withoutEntity( Entity entity ) {
@@ -88,8 +143,119 @@ public record World(
      *  @param updated  The new state of the same entity (same id, possibly new bounds).
      */
     public World withMovedEntity( Entity previous, Entity updated, int maxDepth ) {
-        WorldSector newRoot = root.remove(previous.treeId(), maxDepth).insert(updated.treeId(), maxDepth);
-        return new World(newRoot, entities.put(updated.id(), updated));
+        WorldSector newRoot = _root.remove(previous.treeId(), maxDepth).insert(updated.treeId(), maxDepth);
+        return new World(newRoot, _entities.put(updated.id(), updated), _screens, _inputStates);
+    }
+
+    // ---- Cameras ----------------------------------------------------------------
+
+    /**
+     *  Creates (or replaces) a camera entity with the given id.
+     *  <p>
+     *  Unlike a {@link Entity.VoxelEntity}, a camera has no voxel presence, so it lives
+     *  only in the entity lookup and is <i>not</i> placed into the spatial tree &mdash;
+     *  nothing queries cameras positionally, and keeping one out of the tree avoids
+     *  churning it as the camera flies around every frame.
+     */
+    public World createCamera( long id, CameraF64 camera ) {
+        return new World(_root, _entities.put(id, Entity.CameraEntity.of(id, camera)), _screens, _inputStates);
+    }
+
+    /** Removes the camera entity with the given id (screens bound to it then render nothing). */
+    public World destroyCamera( long id ) {
+        return new World(_root, _entities.remove(id), _screens, _inputStates);
+    }
+
+    // ---- Screens ----------------------------------------------------------------
+
+    /** Adds (or replaces) a screen. */
+    public World withScreen( Screen screen ) {
+        return new World(_root, _entities, _screens.put(screen.id(), screen), _inputStates);
+    }
+
+    /** Creates a new, unbound screen of the given id and pixel size. */
+    public World createScreen( ScreenId id, int width, int height ) {
+        return withScreen(Screen.of(id, width, height));
+    }
+
+    /** Removes a screen and any input state accumulated for it. */
+    public World destroyScreen( ScreenId id ) {
+        return new World(_root, _entities, _screens.remove(id), _inputStates.remove(id));
+    }
+
+    /** @return This world with the screen resized (its bound camera, if any, is kept). */
+    public World resizeScreen( ScreenId id, int width, int height ) {
+        Screen screen = _screens.get(id).orElseThrow(() ->
+                new IllegalArgumentException("No screen with id " + id + " to resize."));
+        return withScreen(screen.withSize(width, height));
+    }
+
+    /**
+     *  Binds a screen to a camera entity, by id. The same camera may be bound to several
+     *  screens. The camera need not exist yet (the binding simply renders nothing until
+     *  it does), but the screen must.
+     */
+    public World bindScreenToCamera( ScreenId screenId, long cameraId ) {
+        Screen screen = _screens.get(screenId).orElseThrow(() ->
+                new IllegalArgumentException("No screen with id " + screenId + " to bind."));
+        return withScreen(screen.withCamera(cameraId));
+    }
+
+    // ---- The update step --------------------------------------------------------
+
+    /**
+     *  Folds one step of input into a new world state.
+     *  <p>
+     *  For each screen named in {@code inputs}, its {@link ScreenInputs event log} is
+     *  applied: key presses/releases update that screen's held-key state, and held keys
+     *  plus accumulated cursor movement are turned into <b>camera mutations</b> on the
+     *  screen's bound camera via {@link CameraFlight}. Screens not mentioned in the
+     *  inputs are left untouched.
+     *
+     *  @param inputs What happened on each screen, and how much time elapsed.
+     *  @return The world advanced by one step.
+     */
+    public World update( EngineInputs inputs ) {
+        World result = this;
+        for ( Pair<ScreenId, ScreenInputs> entry : inputs.screens() )
+            result = result.applyScreenInputs(entry.first(), entry.second(), inputs.dtSeconds());
+        return result;
+    }
+
+    private World applyScreenInputs( ScreenId screenId, ScreenInputs screenInputs, double dtSeconds ) {
+        ScreenInputState state = _inputStates.get(screenId).orElse(ScreenInputState.empty());
+        ValueSet<Key> held = state.heldKeys();
+        double lookDx = 0, lookDy = 0;
+        for ( ScreenInputEvent event : screenInputs.events() ) {
+            switch ( event ) {
+                case ScreenInputEvent.KeyPressed e   -> held = held.add(e.key());
+                case ScreenInputEvent.KeyReleased e  -> held = held.remove(e.key());
+                case ScreenInputEvent.CursorMoved e  -> { lookDx += e.deltaX(); lookDy += e.deltaY(); }
+                case ScreenInputEvent.CursorDown ignored -> { /* reserved for future picking/interaction */ }
+                case ScreenInputEvent.CursorUp ignored   -> { /* reserved */ }
+                case ScreenInputEvent.Scrolled ignored   -> { /* reserved for future zoom/dolly */ }
+            }
+        }
+        Association<ScreenId, ScreenInputState> newStates = _inputStates.put(screenId, new ScreenInputState(held));
+
+        Association<Long, Entity> newEntities = _entities;
+        Optional<Screen> screen = screen(screenId);
+        if ( screen.isPresent() && screen.get().camera().isPresent() ) {
+            long cameraId = screen.get().camera().getAsLong();
+            Optional<Entity.CameraEntity> cam = camera(cameraId);
+            if ( cam.isPresent() ) {
+                CameraF64 moved = CameraFlight.fly(cam.get().camera(), held, lookDx, lookDy, maxEdge(_root.bounds()), dtSeconds);
+                newEntities = _entities.put(cameraId, Entity.CameraEntity.of(cameraId, moved));
+            }
+        }
+        return new World(_root, newEntities, _screens, newStates);
+    }
+
+    /** The currently-held keys for one screen; remembered between updates since events report only changes. */
+    private record ScreenInputState(ValueSet<Key> heldKeys) {
+        static ScreenInputState empty() {
+            return new ScreenInputState(ValueSet.of(Key.class));
+        }
     }
 
     // ---- Visibility traversal for rendering -------------------------------------
@@ -101,12 +267,15 @@ public record World(
     public record RenderStats(
         int sectorsCollected,
         int occlusionCulledSectors
-    ) {}
+    ) {
+        /** Nothing collected (e.g. an unbound or unknown screen). */
+        public static final RenderStats NONE = new RenderStats(0, 0);
+    }
 
     /**
-     *  Walks the world tree from the given camera's viewpoint and hands every sector
-     *  worth drawing to {@code collector}, applying every visibility decision itself so
-     *  that no renderer (or test) has to traverse the tree:
+     *  Walks the world tree from the viewpoint of the camera bound to {@code screenId}
+     *  and hands every sector worth drawing to {@code collector}, applying every
+     *  visibility decision itself so that no renderer (or test) has to traverse the tree:
      *  <ul>
      *      <li><b>Frustum culling</b> &mdash; a sector outside the view volume (and its
      *          whole sub-tree) is skipped.</li>
@@ -119,25 +288,36 @@ public record World(
      *          {@code refineThresholdPx} is collected as one coarse box
      *          ({@code wantsDetail == false}) instead of being refined into its children.</li>
      *  </ul>
-     *  How a collected sector becomes pixels (a box, a mesh, &hellip;) is entirely the
-     *  {@link SectorDrawCollector collector}'s business; this method only decides
-     *  <i>what</i> is visible, never <i>how</i> it looks.
+     *  The camera and viewport size come entirely from the screen (the camera's aspect is
+     *  overridden to the screen's). If the screen is unknown, unbound, or its camera no
+     *  longer exists, nothing is collected ({@link RenderStats#NONE}). How a collected
+     *  sector becomes pixels is the {@link SectorDrawCollector collector}'s business; this
+     *  method only decides <i>what</i> is visible.
      *
-     *  @param camera           The viewpoint to render from.
-     *  @param width            The viewport width in pixels.
-     *  @param height           The viewport height in pixels.
+     *  @param screenId          The screen (hence camera + viewport) to render from.
      *  @param refineThresholdPx The on-screen edge size, in pixels, above which a sector
      *                           is refined into its children rather than drawn as one box.
      *  @param collector         Receives each (potentially) visible sector.
      *  @return Counts describing what the traversal collected and culled.
      */
     public RenderStats collectSectorsForRendering(
-        CameraF64 camera, int width, int height, double refineThresholdPx, SectorDrawCollector collector
+        ScreenId screenId, double refineThresholdPx, SectorDrawCollector collector
     ) {
-        ViewInfo view = ViewInfo.of(camera, width, height);
+        Optional<Screen> maybeScreen = screen(screenId);
+        if ( maybeScreen.isEmpty() )
+            return RenderStats.NONE;
+        Screen screen = maybeScreen.get();
+        if ( screen.camera().isEmpty() )
+            return RenderStats.NONE;
+        Optional<Entity.CameraEntity> cam = camera(screen.camera().getAsLong());
+        if ( cam.isEmpty() )
+            return RenderStats.NONE;
+
+        CameraF64 camera = cam.get().camera().withAspect(screen.aspect());
+        ViewInfo view = ViewInfo.of(camera, screen.width(), screen.height());
         RenderTraversal traversal = new RenderTraversal(
-                view, new CoverageGrid(width, height, COVERAGE_TILE), refineThresholdPx, collector);
-        traversal.collect(root);
+                view, new CoverageGrid(screen.width(), screen.height(), COVERAGE_TILE), refineThresholdPx, collector);
+        traversal.collect(_root);
         return new RenderStats(traversal.collected, traversal.occlusionCulled);
     }
 
@@ -155,6 +335,11 @@ public record World(
     /** @return The focal length in pixels for a camera rendered into a viewport of the given height. */
     public static double focalLengthPx( CameraF64 camera, int viewportHeight ) {
         return (viewportHeight / 2.0) / Math.tan(camera.fovYRadians() / 2.0);
+    }
+
+    private static double maxEdge( BoundsF64 bounds ) {
+        VecF64 size = bounds.size();
+        return Math.max(size.x(), Math.max(size.y(), size.z()));
     }
 
     /** Holds the per-frame walk state so the recursion stays a set of small methods. */
@@ -221,7 +406,7 @@ public record World(
         }
 
         /** @return The 8 corners of {@code bounds} projected to screen, or {@code null} if any is behind the camera. */
-        private @Nullable double[][] project8( BoundsF64 bounds ) {
+        private double @Nullable [][] project8( BoundsF64 bounds ) {
             VecF64 lo = bounds.min(), hi = bounds.max();
             double[][] screen = new double[8][];
             for ( int i = 0; i < 8; i++ ) {
@@ -248,10 +433,25 @@ public record World(
             for ( double[] p : pts ) m = Math.max(m, p[axis]);
             return m;
         }
+    }
 
-        private static double maxEdge( BoundsF64 bounds ) {
-            VecF64 size = bounds.size();
-            return Math.max(size.x(), Math.max(size.y(), size.z()));
-        }
+    @Override
+    public boolean equals( Object obj ) {
+        if ( this == obj ) return true;
+        if ( !(obj instanceof World other) ) return false;
+        return _root.equals(other._root)
+            && _entities.equals(other._entities)
+            && _screens.equals(other._screens)
+            && _inputStates.equals(other._inputStates);
+    }
+
+    @Override
+    public int hashCode() {
+        return Objects.hash(_root, _entities, _screens, _inputStates);
+    }
+
+    @Override
+    public String toString() {
+        return "World[entities=" + _entities.size() + ", screens=" + _screens.size() + ']';
     }
 }

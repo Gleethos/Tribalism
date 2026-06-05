@@ -63,10 +63,19 @@ app.engine
     ├── WorldTreeNode           A node = Tuple of exactly 512 sectors (8×8×8)
     ├── WorldSector             The recursive cell of the world (the heart)
     ├── Entity                  Sealed entity sum type (CameraEntity | VoxelEntity)
+    ├── ScreenId                Typed id of a Screen
+    ├── Screen                  A render target: id + pixel size + (optional) bound camera id
+    ├── PointerId               Typed id of a pointer (mouse / one touch point)
+    ├── PointerButton           PRIMARY | SECONDARY | MIDDLE
+    ├── Key                     Engine-neutral keyboard key (app maps toolkit codes onto it)
+    ├── ScreenInputEvent        Sum type: one thing that happened on a screen (key/cursor/scroll)
+    ├── ScreenInputs            A screen's event log (Tuple<ScreenInputEvent>) since last update
+    ├── EngineInputs            One update step's input: dt + per-screen ScreenInputs
+    ├── CameraFlight            Pure free-fly control: held keys + look delta → moved camera
     ├── ViewInfo                A frame's camera + frustum + projection (and how to project a point)
     ├── SectorDrawCollector     Sink a visibility walk hands each drawable sector to
     ├── CoverageGrid            Screen "already-blocked" buffer for occlusion culling
-    ├── World                   The whole world as one value (root + entity lookup + visibility walk)
+    ├── World                   The whole world as one value class (tree + entities + screens + update)
     │
     ├── gen              Procedural generation
     │   ├── PerlinNoise         Deterministic, seeded 3D gradient noise + fbm
@@ -332,32 +341,53 @@ sealed interface Entity permits Entity.CameraEntity, Entity.VoxelEntity {
 }
 ```
 
-- **`CameraEntity(treeId, CameraF64 camera)`** — a viewpoint into the world.
+- **`CameraEntity(treeId, CameraF64 camera)`** — a viewpoint into the world. Every
+  camera is an entity, so it has an `id` and is identifiable/bindable from outside.
 - **`VoxelEntity(treeId, WorldSector sector)`** — *itself a small world*: its
   shape and material are a nested `WorldSector` (with the full recursive
   machinery), letting the entity move freely relative to the world it belongs to.
   (Recursive sub-entities — e.g. a knight holding a sword — are a future step.)
 
-### `World` (the top-level value)
+### `World` (the top-level value class)
 
-```java
-record World(
-    WorldSector             root,      // root of the spatial tree
-    Association<Long, Entity> entities   // id → actual entity
-)
+`World` is an immutable **value class** (no longer a record — it has grown past what
+a record can hold and needs to encapsulate some state) tying together four things:
+
+```text
+WorldSector                       root          // spatial tree (positional queries)
+Association<Long, Entity>         entities       // id → actual entity (cameras included)
+Association<ScreenId, Screen>     screens        // render targets the world knows about
+(private) per-screen input state                 // currently-held keys, between updates
 ```
 
-The `root` is used purely for positional queries (it holds only
-`WorldTreeEntityId`s); the `entities` association is the authoritative store of
-actual entities. `withEntity` / `withoutEntity` / `withMovedEntity` keep the two
-in sync — inserting/removing the positional handle in the tree *and* updating the
-lookup. `World` is the value an update loop transforms tick to tick.
+The `root` holds only `WorldTreeEntityId`s; the `entities` association is the
+authoritative store. `withEntity` / `withoutEntity` / `withMovedEntity` keep the two
+in sync for **voxel** entities. **Cameras**, by contrast, have no voxel presence, so
+`createCamera` / `destroyCamera` touch only the entity lookup and never grow the tree
+(nothing queries cameras positionally, and a flying camera would otherwise churn it).
 
-`World` is also the **query API** for everything that needs to interrogate the
-world rather than mutate it. Most importantly it owns the per-frame visibility walk
-`collectSectorsForRendering` (frustum + occlusion + LoD culling), so a renderer
-consumes a clean stream of visible sectors instead of coupling itself to the tree
-structure — see §7.
+**Screens & cameras (multi-screen support).** A `Screen` is a render target: a
+`ScreenId`, a pixel `width`/`height`, and the id of the camera it shows. A screen
+references its camera **one-way**, by id, so the same camera can drive several screens
+at once. `createScreen` / `destroyScreen` / `resizeScreen` / `bindScreenToCamera`
+manage them; `screen(id)` / `allScreens()` query them. A screen is unbound until bound,
+and rendering an unbound or dangling screen simply produces nothing.
+
+**The update step.** `World update(EngineInputs)` is the function an engine loop applies
+each tick. `EngineInputs` carries a `dtSeconds` and an `Association<ScreenId, ScreenInputs>`;
+each `ScreenInputs` is an ordered `Tuple<ScreenInputEvent>` — an **event log** of what
+happened on that screen since the last update (`KeyPressed`/`KeyReleased`,
+`CursorMoved`/`CursorDown`/`CursorUp` with a `PointerId` for multi-touch, `Scrolled`).
+Events report *changes*, so the world **remembers held keys between updates** (the
+encapsulated per-screen state); update folds the events into that state and turns held
+keys + accumulated cursor delta into **camera mutations** on each screen's bound camera
+via the pure `CameraFlight` controls (the free-fly logic, lifted out of the demo into
+the engine). Keys are the engine-neutral `Key` enum, so the world model never sees AWT.
+
+`World` is also the **query API** for everything that interrogates the world rather than
+mutating it — most importantly the per-frame visibility walk `collectSectorsForRendering`
+(frustum + occlusion + LoD culling), so a renderer consumes a clean stream of visible
+sectors instead of coupling to the tree (see §7).
 
 ---
 
@@ -409,14 +439,16 @@ per-frame visibility walk therefore lives on **`World`**, not on any renderer:
 
 ```java
 World.RenderStats collectSectorsForRendering(
-        CameraF64 camera, int width, int height, double refineThresholdPx,
-        SectorDrawCollector collector)
+        ScreenId screenId, double refineThresholdPx, SectorDrawCollector collector)
 ```
 
-It walks the sector tree from the camera's viewpoint applying **frustum culling**,
-**occlusion culling** and the **level-of-detail decision** (all described below),
-and hands every sector worth drawing to the `collector` together with a
-`ViewInfo` (the frame's camera + frustum + projection) and a `wantsDetail` flag.
+It is asked to render a **screen**: the screen resolves to its bound camera and pixel
+size (the camera's aspect is overridden to the screen's), so the viewpoint is implied
+by the world's own state rather than passed in. (An unknown, unbound or dangling screen
+collects nothing — `RenderStats.NONE`.) It walks the sector tree from that viewpoint
+applying **frustum culling**, **occlusion culling** and the **level-of-detail decision**
+(all described below), and hands every sector worth drawing to the `collector` together
+with a `ViewInfo` (the frame's camera + frustum + projection) and a `wantsDetail` flag.
 It returns a small `RenderStats` (sectors collected, sectors occlusion-culled). A
 `SectorDrawCollector` decides *how* a collected sector becomes pixels — a box, a
 mesh — but never has to traverse the tree itself.
@@ -545,13 +577,17 @@ the LoD selection.
 java -cp <classpath> app.engine.world.demo.WorldEngineDemo
 ```
 
-It procedurally generates a 128-unit landscape (seed `1337`, depth 2), adds a
-`CameraEntity`, and orbits the camera around the world with a ~60 FPS Swing timer,
-re-rendering each frame. Pressing a movement key (**W/A/S/D**, **Q/E** or
-**Space** for down/up, **Shift** to sprint) or **moving the mouse** hands control
-to a **free-fly camera** — seeded from the current orbit pose so the view never
-snaps — for inspecting the rendering up close. It is intentionally isolated from
-the main Tribalism application.
+It procedurally generates a 128-unit landscape (seed `1337`, depth 2), then drives
+everything through the **real engine pipeline**: it `createCamera`s a camera entity,
+`createScreen`s a screen bound to it, and runs a ~60 FPS Swing timer. Each frame the
+demo only *translates* raw Swing input into `ScreenInputEvent`s, calls
+`world.update(EngineInputs(dt, {screen: events}))`, and asks the renderer to draw the
+screen (`renderer.render(g, world, screenId)`); the panel's size is mirrored onto the
+screen via `resizeScreen`. The camera orbits on its own until you press a movement key
+(**W/A/S/D**, **Q/E** or **Space** for down/up, **Shift** to sprint) or **move the
+mouse**, at which point control passes to you — but the actual fly logic now lives in
+the engine (`CameraFlight`, exercised by `World.update`), not in the demo. It is
+intentionally isolated from the main Tribalism application.
 
 ---
 
@@ -578,6 +614,9 @@ structure:
 | `world/WorldTree_Spec`      | 512-node layout, fall-down, per-side LoD + material merge |
 | `world/Entity_Spec`         | camera/voxel entities, sum-type matching |
 | `world/World_Spec`          | add/remove/move keeping tree + lookup in sync |
+| `world/WorldScreens_Spec`   | screen/camera lifecycle, one-way binding, resize, cameras stay out of the tree |
+| `world/WorldUpdate_Spec`    | inputs → camera mutations, held keys remembered between updates, unbound no-op |
+| `world/CameraFlight_Spec`   | pure free-fly math: move/strafe/sprint/look, dt scaling, no-input identity |
 | `world/CollectSectorsForRendering_Spec` | the visibility walk (frustum + occlusion + LoD) tested with no renderer |
 | `world/CoverageGrid_Spec`   | conservative mark/test, off-screen handling, occlusion of covered rects |
 | `world/gen/PerlinNoise_Spec`| determinism, range, lattice zeros |
@@ -599,12 +638,16 @@ Run them with:
 the full immutable world tree (sectors, nodes, ether, entities, lights, traces);
 the appearance/material model (`Texture` qualities, `TextureProfile`, `MaterialId`
 sum type, `Material` starter registry); entity fall-down, per-side LoD
-aggregation and lazily-derived per-side `SideInsets`; the `Entity` sum type and
-`World` value; procedural generation; first-draft Graphics2D rendering with
-distance LoD, frustum culling, inset-fitted LoD boxes, cached face-culled voxel
-meshes **and near→far software occlusion culling** (a coverage grid that skips
-sub-trees hidden behind solid geometry); a free-fly **and** auto-orbit demo with a
-live face-count / cull-count HUD.
+aggregation and lazily-derived per-side `SideInsets`; the `Entity` sum type;
+the `World` **value class** with multi-**screen** support (screens bound one-way to
+camera entities by id), an event-based input model (`EngineInputs` → per-screen
+`ScreenInputs` event logs) and a `World.update` step that folds input into **camera
+mutations** via the pure `CameraFlight` controls (held state remembered between
+updates); procedural generation; first-draft Graphics2D rendering with distance LoD,
+frustum culling, inset-fitted LoD boxes, cached face-culled voxel meshes **and
+near→far software occlusion culling** (a coverage grid that skips sub-trees hidden
+behind solid geometry); a free-fly **and** auto-orbit demo, driven end-to-end through
+`World.update`, with a live face-count / cull-count HUD.
 
 ### The long-term rendering vision
 
@@ -626,8 +669,8 @@ the real renderer to come:
 
 **Not yet built (future steps):**
 
-- The **update loop** that advances `World` tick to tick (entity behaviour,
-  light-trace propagation/radiation).
+- Extending `World.update` beyond camera control: **entity behaviour** and
+  **light-trace propagation/radiation** as part of the same per-tick step.
 - **Generation around camera entities** within a radius (streaming the world as
   the camera moves), rather than a single fixed region.
 - Recursive sub-entities inside `VoxelEntity`.

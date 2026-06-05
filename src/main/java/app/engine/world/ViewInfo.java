@@ -49,7 +49,7 @@ public record ViewInfo(
      *  @return {@code {screenX, screenY}}, or {@code null} if the point is at or
      *          behind the camera (clip {@code w <= 0}).
      */
-    public @Nullable double[] project( VecF64 p ) {
+    public double @Nullable [] project( VecF64 p ) {
         Mat4F64 vp = viewProjection;
         double x = vp.get(0, 0) * p.x() + vp.get(0, 1) * p.y() + vp.get(0, 2) * p.z() + vp.get(0, 3);
         double y = vp.get(1, 0) * p.x() + vp.get(1, 1) * p.y() + vp.get(1, 2) * p.z() + vp.get(1, 3);
