@@ -25,12 +25,17 @@ import java.awt.Font;
 import java.awt.Graphics;
 import java.awt.Graphics2D;
 import java.awt.Point;
+import java.awt.event.ComponentAdapter;
+import java.awt.event.ComponentEvent;
 import java.awt.event.KeyAdapter;
 import java.awt.event.KeyEvent;
 import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.ConcurrentLinkedQueue;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicReference;
 
 /**
  *  A self-contained demo of the world engine: it procedurally generates a small
@@ -84,20 +89,22 @@ public final class WorldEngineDemo
     private static void showWindow( World initialWorld ) {
         WorldRenderer renderer = new WorldRenderer();
 
-        // Everything below runs on the Swing event-dispatch thread (listeners, the Timer
-        // and painting all fire there), so this plain mutable state needs no synchronization.
-        World[] worldRef = { initialWorld };
-        boolean[] underControl = { false };
-        List<ScreenInputEvent> pending = new ArrayList<>();
-        Point[] lastCursor = { null };
+        // A World is a deeply immutable value, so it can cross threads with no locking: the
+        // background updater writes the latest world, the EDT only reads it for rendering. Input
+        // events are produced on the EDT (listeners) and consumed on the updater.
+        AtomicReference<World> worldRef = new AtomicReference<>(initialWorld);
+        AtomicBoolean underControl = new AtomicBoolean(false);
+        ConcurrentLinkedQueue<ScreenInputEvent> events = new ConcurrentLinkedQueue<>();
+        AtomicReference<Dimension> sizeRef = new AtomicReference<>(new Dimension(INITIAL_W, INITIAL_H));
+        Point[] lastCursor = { null }; // EDT-only: cursor deltas are computed before enqueueing.
 
         JPanel canvas = new JPanel() {
             @Override
             protected void paintComponent( Graphics g ) {
                 super.paintComponent(g);
-                renderer.render((Graphics2D) g, worldRef[0], SCREEN_ID);
+                renderer.render((Graphics2D) g, worldRef.get(), SCREEN_ID);
 
-                String mode = underControl[0]
+                String mode = underControl.get()
                         ? "free-fly  -  W/A/S/D move, Q/E or Space up/down, Shift sprint, mouse look"
                         : "auto-orbit  -  press W/A/S/D or move the mouse to take control";
                 g.setColor(Color.WHITE);
@@ -109,25 +116,30 @@ public final class WorldEngineDemo
         };
         canvas.setPreferredSize(new Dimension(INITIAL_W, INITIAL_H));
         canvas.setFocusable(true);
+        canvas.addComponentListener(new ComponentAdapter() {
+            @Override public void componentResized( ComponentEvent e ) { sizeRef.set(canvas.getSize()); }
+        });
 
+        // Input handlers (EDT). For control-taking events, flip the flag BEFORE enqueueing so the
+        // updater never sees an event without also seeing that we are now in control.
         canvas.addKeyListener(new KeyAdapter() {
             @Override public void keyPressed( KeyEvent e ) {
                 Key key = mapKey(e.getKeyCode());
-                if ( key != null ) { pending.add(new ScreenInputEvent.KeyPressed(key)); underControl[0] = true; }
+                if ( key != null ) { underControl.set(true); events.add(new ScreenInputEvent.KeyPressed(key)); }
             }
             @Override public void keyReleased( KeyEvent e ) {
                 Key key = mapKey(e.getKeyCode());
-                if ( key != null ) pending.add(new ScreenInputEvent.KeyReleased(key));
+                if ( key != null ) events.add(new ScreenInputEvent.KeyReleased(key));
             }
         });
 
         MouseAdapter mouse = new MouseAdapter() {
             @Override public void mousePressed( MouseEvent e ) {
                 canvas.requestFocusInWindow();
-                pending.add(new ScreenInputEvent.CursorDown(PointerId.MOUSE, e.getX(), e.getY(), buttonOf(e)));
+                events.add(new ScreenInputEvent.CursorDown(PointerId.MOUSE, e.getX(), e.getY(), buttonOf(e)));
             }
             @Override public void mouseReleased( MouseEvent e ) {
-                pending.add(new ScreenInputEvent.CursorUp(PointerId.MOUSE, e.getX(), e.getY(), buttonOf(e)));
+                events.add(new ScreenInputEvent.CursorUp(PointerId.MOUSE, e.getX(), e.getY(), buttonOf(e)));
             }
             @Override public void mouseEntered( MouseEvent e ) { lastCursor[0] = e.getPoint(); }
             @Override public void mouseExited( MouseEvent e )  { lastCursor[0] = null; }
@@ -138,9 +150,9 @@ public final class WorldEngineDemo
                 lastCursor[0] = e.getPoint();
                 if ( last == null )
                     return; // just (re)entered: establish a reference without a jump.
-                pending.add(new ScreenInputEvent.CursorMoved(PointerId.MOUSE, e.getX(), e.getY(),
-                                                             e.getX() - last.x, e.getY() - last.y));
-                underControl[0] = true;
+                underControl.set(true);
+                events.add(new ScreenInputEvent.CursorMoved(PointerId.MOUSE, e.getX(), e.getY(),
+                                                            e.getX() - last.x, e.getY() - last.y));
             }
         };
         canvas.addMouseListener(mouse);
@@ -154,37 +166,50 @@ public final class WorldEngineDemo
         frame.setVisible(true);
         canvas.requestFocusInWindow();
 
-        // ~60 FPS loop: feed inputs to the world, then repaint what the screen now shows.
-        long[] lastTick = { System.nanoTime() };
-        long orbitStart = System.nanoTime();
-        new Timer(16, e -> {
-            long now = System.nanoTime();
-            double dt = (now - lastTick[0]) / 1_000_000_000.0;
-            lastTick[0] = now;
+        // Background updater: advance the world (input + terrain generation) off the paint thread,
+        // so the next frame's world is computed while the EDT is busy rendering the current one.
+        Thread updater = new Thread(() -> {
+            long last = System.nanoTime();
+            long orbitStart = last;
+            while ( !Thread.currentThread().isInterrupted() ) {
+                long now = System.nanoTime();
+                double dt = (now - last) / 1_000_000_000.0;
+                last = now;
 
-            World world = worldRef[0];
+                World world = worldRef.get();
 
-            // Keep the modelled screen the same size as the actual panel.
-            int w = Math.max(1, canvas.getWidth());
-            int h = Math.max(1, canvas.getHeight());
-            Screen screen = world.screen(SCREEN_ID).orElseThrow();
-            if ( screen.width() != w || screen.height() != h )
-                world = world.resizeScreen(SCREEN_ID, w, h);
+                // Keep the modelled screen the same size as the actual panel.
+                Dimension size = sizeRef.get();
+                int w = Math.max(1, size.width), h = Math.max(1, size.height);
+                Screen screen = world.screen(SCREEN_ID).orElseThrow();
+                if ( screen.width() != w || screen.height() != h )
+                    world = world.resizeScreen(SCREEN_ID, w, h);
 
-            if ( underControl[0] ) {
-                ScreenInputs inputs = ScreenInputs.of(pending.toArray(new ScreenInputEvent[0]));
-                pending.clear();
-                world = world.update(EngineInputs.of(dt).withScreen(SCREEN_ID, inputs));
-            } else {
-                pending.clear(); // ignore stray events while orbiting
-                double angle = (now - orbitStart) / 4_000_000_000.0;
-                world = world.createCamera(CAMERA_ID, orbitingCamera(angle, (double) w / h))
-                             .update(EngineInputs.of(dt)); // empty inputs: just stream terrain in around the camera
+                List<ScreenInputEvent> drained = new ArrayList<>();
+                for ( ScreenInputEvent ev; (ev = events.poll()) != null; )
+                    drained.add(ev);
+                ScreenInputs inputs = ScreenInputs.of(drained.toArray(new ScreenInputEvent[0]));
+
+                if ( underControl.get() ) {
+                    world = world.update(EngineInputs.of(dt).withScreen(SCREEN_ID, inputs));
+                } else {
+                    // Orbit pins the camera to its path; held keys are empty here, so feeding the
+                    // (only ever no-op) inputs alongside it just streams terrain in.
+                    double angle = (now - orbitStart) / 4_000_000_000.0;
+                    world = world.createCamera(CAMERA_ID, orbitingCamera(angle, (double) w / h))
+                                 .update(EngineInputs.of(dt).withScreen(SCREEN_ID, inputs));
+                }
+                worldRef.set(world);
+
+                try { Thread.sleep(6); } // pace updates; cheap once nearby chunks are generated.
+                catch ( InterruptedException ie ) { Thread.currentThread().interrupt(); }
             }
+        }, "world-updater");
+        updater.setDaemon(true);
+        updater.start();
 
-            worldRef[0] = world;
-            canvas.repaint();
-        }).start();
+        // EDT: simply repaint the latest published world at ~60 FPS.
+        new Timer(16, e -> canvas.repaint()).start();
     }
 
     /** Maps the AWT key codes the demo cares about onto engine-neutral {@link Key}s. */

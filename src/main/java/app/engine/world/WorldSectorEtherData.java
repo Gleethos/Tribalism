@@ -1,9 +1,6 @@
 package app.engine.world;
 
-import sprouts.Association;
-
-import java.util.ArrayList;
-import java.util.List;
+import java.util.Arrays;
 
 /**
  *  The "ether" of a {@link WorldSector}: what it looks like and what it is made of.
@@ -20,19 +17,29 @@ import java.util.List;
  *  This replaces the old material-percentage model: appearance is now a set of
  *  independent {@link Texture} qualities (not a distribution that sums to one), and
  *  "what it is" is a single id rather than a mixture. Empty space (air) is the null
- *  object: a {@code Specific} air material with {@link TextureProfile#none()} on
- *  every side, hence invisible.
+ *  object: an air material with {@link TextureProfile#none()} on every side.
  *  <p>
- *  A face absent from the association reads back as {@link TextureProfile#none()}.
- *  The record carries full value semantics by delegating to its fields.
- *
- *  @param material A single gameplay material id for the whole sector.
- *  @param sides    A mapping from cube face to the appearance on that face.
+ *  <b>Representation.</b> The six faces are a plain {@code TextureProfile[]} indexed by
+ *  {@link Side#ordinal()} &mdash; not a map &mdash; so {@link #sideOf} is a direct array
+ *  read with no hashing, which matters because it sits on the hot aggregation path. It is
+ *  a {@code class} rather than a {@code record} purely to <i>encapsulate</i> that array
+ *  (owned, never exposed) while staying an immutable <b>value</b>: every mutator returns a
+ *  new ether and {@code equals}/{@code hashCode} compare material plus the six faces.
  */
-public record WorldSectorEtherData(
-    MaterialId material,
-    Association<Side, TextureProfile> sides
-) {
+public final class WorldSectorEtherData
+{
+    private static final int SIDES = Side.values().length;
+
+    private final MaterialId _material;
+    /** Appearance per face, indexed by {@link Side#ordinal()}; entries are never null. Never exposed. */
+    private final TextureProfile[] _sides;
+
+    /** Takes ownership of {@code sides}: callers must not retain or mutate it afterwards. */
+    private WorldSectorEtherData( MaterialId material, TextureProfile[] sides ) {
+        _material = material;
+        _sides = sides;
+    }
+
     /** Empty space: the air material with an invisible appearance on every side. */
     public static WorldSectorEtherData empty() {
         return of(Material.AIR);
@@ -45,25 +52,31 @@ public record WorldSectorEtherData(
 
     /** @return Ether with the given {@code material} and the same {@code appearance} on all six faces. */
     public static WorldSectorEtherData uniform( MaterialId material, TextureProfile appearance ) {
-        Association<Side, TextureProfile> sides = Association.between(Side.class, TextureProfile.class);
-        for ( Side side : Side.values() )
-            sides = sides.put(side, appearance);
+        TextureProfile[] sides = new TextureProfile[SIDES];
+        Arrays.fill(sides, appearance);
         return new WorldSectorEtherData(material, sides);
     }
 
-    /** @return The appearance on the given {@code side} (empty/invisible if unset). */
+    /** @return The single gameplay material id of the whole cube. */
+    public MaterialId material() {
+        return _material;
+    }
+
+    /** @return The appearance on the given {@code side}. */
     public TextureProfile sideOf( Side side ) {
-        return sides.get(side).orElse(TextureProfile.none());
+        return _sides[side.ordinal()];
     }
 
     /** @return A copy of this ether with {@code side} replaced by {@code appearance}. */
     public WorldSectorEtherData withSide( Side side, TextureProfile appearance ) {
-        return new WorldSectorEtherData(material, sides.put(side, appearance));
+        TextureProfile[] copy = _sides.clone();
+        copy[side.ordinal()] = appearance;
+        return new WorldSectorEtherData(_material, copy);
     }
 
     /** @return A copy of this ether with a different whole-sector {@code material}. */
     public WorldSectorEtherData withMaterial( MaterialId material ) {
-        return new WorldSectorEtherData(material, sides);
+        return new WorldSectorEtherData(material, _sides); // the faces array is immutable-by-encapsulation, so it is shared.
     }
 
     /**
@@ -72,8 +85,8 @@ public record WorldSectorEtherData(
      *          inset algorithm uses to peel off empty layers.
      */
     public boolean isInvisible() {
-        for ( Side side : Side.values() )
-            if ( !sideOf(side).isInvisible() )
+        for ( TextureProfile side : _sides )
+            if ( !side.isInvisible() )
                 return false;
         return true;
     }
@@ -85,8 +98,8 @@ public record WorldSectorEtherData(
      *          {@link WorldSector#isSolidOpaque()}).
      */
     public boolean isFullyOpaque() {
-        for ( Side side : Side.values() )
-            if ( sideOf(side).intensityOf(Texture.OPACITY) < 1.0 )
+        for ( TextureProfile side : _sides )
+            if ( side.intensityOf(Texture.OPACITY) < 1.0 )
                 return false;
         return true;
     }
@@ -97,9 +110,23 @@ public record WorldSectorEtherData(
      *          appearance for the sector rather than one per face.
      */
     public TextureProfile combined() {
-        List<TextureProfile> all = new ArrayList<>(Side.values().length);
-        for ( Side side : Side.values() )
-            all.add(sideOf(side));
-        return TextureProfile.average(all);
+        return TextureProfile.average(Arrays.asList(_sides));
+    }
+
+    @Override
+    public boolean equals( Object obj ) {
+        if ( this == obj ) return true;
+        if ( !(obj instanceof WorldSectorEtherData other) ) return false;
+        return _material.equals(other._material) && Arrays.equals(_sides, other._sides);
+    }
+
+    @Override
+    public int hashCode() {
+        return 31 * _material.hashCode() + Arrays.hashCode(_sides);
+    }
+
+    @Override
+    public String toString() {
+        return "WorldSectorEtherData[material=" + _material + ", sides=" + Arrays.toString(_sides) + ']';
     }
 }

@@ -47,12 +47,11 @@ class TextureProfile_Spec extends Specification
             TextureProfile.none().with(Texture.ROUGH, -2.0).intensityOf(Texture.ROUGH) == 0.0
     }
 
-    def "Constructing a profile with an out-of-range intensity is rejected."()
+    def "Out-of-range intensities are clamped, so a profile is never invalid."()
     {
-        when:
-            new TextureProfile(sprouts.Association.between(Texture, Double).put(Texture.WET, 1.5))
-        then:
-            thrown(IllegalArgumentException)
+        expect: 'There is no way to construct an out-of-range intensity; it is clamped to [0, 1].'
+            TextureProfile.of(Texture.WET, 1.5).intensityOf(Texture.WET) == 1.0
+            TextureProfile.none().with(Texture.WET, -0.5).intensityOf(Texture.WET) == 0.0
     }
 
     def "Averaging profiles is the core of level-of-detail aggregation."()
@@ -79,5 +78,17 @@ class TextureProfile_Spec extends Specification
             var soaked = TextureProfile.of(Texture.WET, 1.0)
         expect:
             Math.abs(dry.blend(soaked, 0.25).intensityOf(Texture.WET) - 0.25) < 1e-12
+    }
+
+    def "A profile is a value: same intensities means equal (and equal hash codes)."()
+    {
+        expect: 'Built two different ways, same content => equal, regardless of representation.'
+            TextureProfile.of(Texture.GRAINY, 0.5) == TextureProfile.none().with(Texture.GRAINY, 0.5)
+            TextureProfile.of(Texture.GRAINY, 0.5).hashCode() == TextureProfile.none().with(Texture.GRAINY, 0.5).hashCode()
+        and: 'Empty == averaged-nothing == a stored zero.'
+            TextureProfile.none() == TextureProfile.average([])
+            TextureProfile.none() == TextureProfile.none().with(Texture.WET, 0.0)
+        and: 'Different intensities are not equal.'
+            TextureProfile.of(Texture.GRAINY, 0.5) != TextureProfile.of(Texture.GRAINY, 0.6)
     }
 }

@@ -63,4 +63,17 @@ class WorldSectorEtherData_Spec extends Specification
         and: 'Replacing the material leaves the per-side appearance untouched.'
             diverse.sideOf(Side.POS_X) == ether.sideOf(Side.POS_X)
     }
+
+    def "Ether is a value: equal material and per-side appearance means equal (and equal hash codes)."()
+    {
+        given:
+            var a = WorldSectorEtherData.of(Material.ROCK).withSide(Side.POS_Y, TextureProfile.of(Texture.MOSSY, 1.0))
+            var b = WorldSectorEtherData.of(Material.ROCK).withSide(Side.POS_Y, TextureProfile.of(Texture.MOSSY, 1.0))
+        expect:
+            a == b
+            a.hashCode() == b.hashCode()
+        and: 'Differing in a face, or in the material, breaks equality.'
+            a != WorldSectorEtherData.of(Material.ROCK)
+            a != b.withMaterial(MaterialId.diverse())
+    }
 }

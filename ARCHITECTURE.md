@@ -236,12 +236,15 @@ of**. The old "material percentages summing to 1" model is gone; in its place:
   LIQUID, WET, MOLTEN, FIBROUS, HAIRY, MOSSY, LEAFY, SPIKY, SHATTERED, POROUS,
   LAYERED, VEINED`. These are *hints*, not a composition: they are the intended
   inputs to a future procedural noise shader (see §7 / §10).
-- **`TextureProfile`** — a set of `Texture` intensities in `[0, 1]`, stored in an
-  `Association<Texture, Double>`. Crucially they are **independent** and need
-  **not sum to anything** — a surface can be a "grainy liquid" with both at full
-  strength. `none()` (every quality 0) is the null object: invisible empty space.
-  Provides `intensityOf`, `with` (clamped), `isInvisible`, `blend`, and the static
-  **`average(samples)`** used for level-of-detail aggregation.
+- **`TextureProfile`** — a set of `Texture` intensities in `[0, 1]`. Crucially they
+  are **independent** and need **not sum to anything** — a surface can be a "grainy
+  liquid" with both at full strength. `none()` (every quality 0) is the null object:
+  invisible empty space. Provides `intensityOf`, `with` (clamped), `isInvisible`,
+  `blend`, and the static **`average(samples)`** used for level-of-detail aggregation.
+  It is an immutable **value class** over a flat `double[]` indexed by `Texture.ordinal()`
+  (not a map): the key space is a small fixed enum, so a plain array makes the hot
+  operations (`intensityOf`, `average`) tight, allocation-/hash-free loops. The array is
+  encapsulated (owned, never exposed); `equals`/`hashCode` compare it element-wise.
 - **`MaterialId`** — *what a cube is made of*, as a sum type:
   `Specific(int id)` | `Diverse`. A leaf "block" is always one `Specific` material;
   a coarse aggregate of disagreeing children is the `Diverse` null object. The
@@ -256,7 +259,9 @@ of**. The old "material percentages summing to 1" model is gone; in its place:
 - **`WorldSectorEtherData`** — a sector's "ether": **one `MaterialId` for the whole
   cube** (the gameplay substance) plus **one `TextureProfile` per `Side`** (the
   appearance). Provides `material()`/`withMaterial`, `sideOf(side)`/`withSide`, and
-  `combined()` (the average of all six side profiles).
+  `combined()` (the average of all six side profiles). Also a value class over a flat
+  `TextureProfile[]` indexed by `Side.ordinal()`, so `sideOf` is a direct array read —
+  it sits on the hot aggregation path and must not pay map-lookup costs.
 
   Appearance is stored *per face* because only the outer faces of a cube are ever
   seen — so a super-sector can summarize each of its faces from only the matching
@@ -624,6 +629,13 @@ mouse**, at which point control passes to you — but the actual fly logic now l
 the engine (`CameraFlight`, exercised by `World.update`), not in the demo. It is
 intentionally isolated from the main Tribalism application.
 
+Because a `World` is a **deeply immutable value, it crosses threads with no locking**: the
+demo runs `World.update` (input + terrain generation — the expensive part) on a background
+**`world-updater`** thread, publishing each new world through an `AtomicReference`, while the
+Swing EDT just renders the latest published world. So the next frame's world is computed
+while the current one is being drawn, keeping the UI responsive. Input events flow EDT →
+updater through a `ConcurrentLinkedQueue`; nothing else is shared.
+
 ---
 
 ## 9. Testing
@@ -639,10 +651,10 @@ structure:
 | `primitives/CameraF64_Spec` | forward/view matrix, frustum validation, value equality, matrix memoization |
 | `primitives/Frustum_Spec`   | plane extraction, conservative box culling, point containment |
 | `util/Lazy_Spec`            | compute-once memoization, concurrent first-access safety |
-| `world/TextureProfile_Spec` | independent qualities, clamping, averaging, blend, invisibility |
+| `world/TextureProfile_Spec` | independent qualities, clamping, averaging, blend, invisibility, value equality |
 | `world/MaterialId_Spec`     | Specific vs Diverse, merge of agreeing/disagreeing ids |
 | `world/Material_Spec`       | starter registry, unique ids, air = invisible null substance |
-| `world/WorldSectorEtherData_Spec` | one material per cube + per-side appearance, combined |
+| `world/WorldSectorEtherData_Spec` | one material per cube + per-side appearance, combined, value equality |
 | `world/SideInsets_Spec`     | clamping, per-face lookup, box shrink, collapse on cross |
 | `world/SectorInsets_Spec`   | inward-layer inset algorithm, recursive refinement, appearance derived from sub-sectors |
 | `world/LightSource_Spec`    | sum-type variants, bounds, exhaustive matching |
@@ -686,7 +698,10 @@ they fly; first-draft Graphics2D rendering with distance LoD,
 frustum culling, inset-fitted LoD boxes, cached face-culled voxel meshes **and
 near→far software occlusion culling** (a coverage grid that skips sub-trees hidden
 behind solid geometry); a free-fly **and** auto-orbit demo, driven end-to-end through
-`World.update`, with a live face-count / cull-count HUD.
+`World.update` on a **background thread** (the immutable world is rendered by the EDT
+while the next one is computed), with a live face-count / cull-count HUD. The hot
+aggregation path was made allocation-/hash-free by backing `TextureProfile` and
+`WorldSectorEtherData` with flat ordinal-indexed arrays instead of maps.
 
 ### The long-term rendering vision
 
