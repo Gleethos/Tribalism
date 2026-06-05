@@ -65,6 +65,8 @@ public record SideInsets(
      *  @return The content-fitting sub-box.
      */
     public BoundsF64 shrink( BoundsF64 bounds ) {
+        if ( this.equals(_NONE) )
+            return bounds;
         VecF64 min = bounds.min();
         VecF64 max = bounds.max();
         VecF64 size = bounds.size();

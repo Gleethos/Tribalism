@@ -144,7 +144,7 @@ public final class WorldRenderer
             if ( sector.isSolidOpaque() ) {
                 // A perfect occluder: draw it as a single box (its mesh would just be the
                 // shell anyway) and record its silhouette so it blocks what is behind.
-                emitBox(sector.bounds(), sector.ether());
+                emitBox(sector);
                 if ( corners != null )
                     coverage.markOccluder(corners);
                 return;
@@ -155,12 +155,12 @@ public final class WorldRenderer
 
             if ( !wantsDetail ) {
                 if ( isMajorityOpaque(sector.ether()) )
-                    emitBox(sector.insets().shrink(sector.bounds()), sector.ether());
+                    emitBox(sector);
                 return;
             }
             if ( sector.isLeaf() ) {
                 if ( isMajorityOpaque(sector.ether()) )
-                    emitBox(sector.bounds(), sector.ether());
+                    emitBox(sector);
                 return;
             }
             if ( hasOnlyLeafChildren(sector) ) {
@@ -182,7 +182,9 @@ public final class WorldRenderer
                 collect(node.sector(i));
         }
 
-        private void emitBox( BoundsF64 bounds, WorldSectorEtherData ether ) {
+        private void emitBox( WorldSector sector ) {
+            BoundsF64 bounds = sector.insets().shrink(sector.bounds());
+            WorldSectorEtherData ether = sector.ether();
             for ( Side side : Side.values() ) {
                 TextureProfile profile = faceProfile(ether, side);
                 if ( !profile.isInvisible() )
