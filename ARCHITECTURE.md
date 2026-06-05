@@ -75,11 +75,11 @@ app.engine
     ├── ViewInfo                A frame's camera + frustum + projection (and how to project a point)
     ├── SectorDrawCollector     Sink a visibility walk hands each drawable sector to
     ├── CoverageGrid            Screen "already-blocked" buffer for occlusion culling
-    ├── World                   Value class: tree + entities + screens + generator + update
+    ├── World                   Value class: tree + entities + screens + generator; infinite, updatable
     │
     ├── gen              Procedural generation (owned by World)
     │   ├── PerlinNoise         Deterministic, seeded 3D gradient noise + fbm
-    │   └── WorldGenerator      Adaptive noise → sector tree (+ generationDistance/detailDepth)
+    │   └── WorldGenerator      Adaptive noise → sector tree (+ generationDistance/chunkSize/detailDepth)
     │
     ├── render           First-draft Graphics2D rendering
     │   ├── TexturePalette      TextureProfile → AWT Color (keeps AWT out of the model)
@@ -354,12 +354,12 @@ sealed interface Entity permits Entity.CameraEntity, Entity.VoxelEntity {
 a record can hold and needs to encapsulate some state) tying together four things:
 
 ```text
-WorldSector                       root          // spatial tree (positional queries)
+WorldSector                       root          // spatial tree; grows outward (infinite)
 Association<Long, Entity>         entities       // id → actual entity (cameras included)
 Association<ScreenId, Screen>     screens        // render targets the world knows about
 WorldGenerator?                   generator      // optional: how the world builds itself
 (private) per-screen input state                 // currently-held keys, between updates
-(private) generated-chunk set                    // which chunks the generator has filled
+(private) generated-chunk coords                 // which grid chunks the generator has filled
 ```
 
 The `root` holds only `WorldTreeEntityId`s; the `entities` association is the
@@ -386,15 +386,25 @@ keys + accumulated cursor delta into **camera mutations** on each screen's bound
 via the pure `CameraFlight` controls (the free-fly logic, lifted out of the demo into
 the engine). Keys are the engine-neutral `Key` enum, so the world model never sees AWT.
 
-**Generation around cameras.** A world can own a `WorldGenerator` (`World.of(region,
-generator)`); `update` then **builds the world around every camera**. The root is a grid
-of top-level cells ("chunks"); after the camera mutations, each chunk whose nearest point
-lies within the generator's `generationDistance` of *any* camera is generated (once) and
-spliced in, its index remembered so it is never regenerated. So terrain streams in as a
-camera moves, and a camera always has something to look at — while distant, unvisited
-chunks cost nothing. A world built without a generator (`World.of(root)`) simply skips
-this step. (Today the root is a fixed cube, so generation is bounded by it; growing the
-root to follow a camera beyond it — an infinite world — is a future step.)
+**Generation around cameras — the infinite world.** A world can own a `WorldGenerator`
+(`World.of(generator)`); `update` then **builds the world around every camera**, and the
+world is effectively **unbounded**. Chunks live on a fixed global grid of
+`generator.chunkSize()` cubes. After the camera mutations, for each camera every chunk
+whose nearest point lies within `generationDistance` and that hasn't been generated yet is
+generated (once), then spliced into the tree by:
+
+- **growing the root outward** (`growToContain`) — re-rooting it 8× larger whenever a chunk
+  falls outside the current root: the old root becomes one cell of a new, larger root,
+  positioned in the corner *furthest from* the target so the new root extends toward it, so
+  all existing content keeps its world coordinates (the upward half of the octree); and
+- **descending to the chunk's slot** (`placeChunk`) — subdividing empty cells on the way
+  down to the chunk-sized cell, which it replaces (the downward half).
+
+So the root starts as a single empty chunk at the origin and grows without bound as cameras
+roam; terrain streams in around them while distant, unvisited chunks cost nothing, and a
+generated chunk coordinate is remembered so it is never rebuilt. A world built without a
+generator (`World.of(root)`) skips this step. Two point queries support all this: `isGenerated(p)`
+(has the chunk at `p` been built?) and `sectorAt(p)` (the deepest sector at a world point).
 
 `World` is also the **query API** for everything that interrogates the world rather than
 mutating it — most importantly the per-frame visibility walk `collectSectorsForRendering`
@@ -437,13 +447,15 @@ Its ether is uniform (the material's appearance on all six faces); per-side
 appearance only becomes meaningful higher up, once `aggregated()` summarizes each
 face from the children on it. The result is returned already `aggregated()`.
 
-The generator carries two pieces of config the world uses to drive itself:
-`generationDistance` (how close a camera must be for `World.update` to build a region)
-and `detailDepth` (how deep `generate(bounds)` subdivides a chunk by default). It is
-**owned by the `World`** (see §5) rather than called from outside; the standalone
-`generate(bounds, maxDepth)` remains for tests and one-off builds. Making generation
-*pluggable* (an interface the world depends on, with `WorldGenerator` as one impl) is a
-natural future step — and would also dissolve the current `world ↔ world.gen` coupling.
+The generator carries three pieces of config the world uses to drive itself:
+`generationDistance` (how close a camera must be for `World.update` to build a region),
+`chunkSize` (the world-space edge of one streamed chunk — the granularity of the global
+chunk grid), and `detailDepth` (how deep `generate(bounds)` subdivides a chunk by default;
+the finest voxel is `chunkSize / 8^detailDepth`). It is **owned by the `World`** (see §5)
+rather than called from outside; the standalone `generate(bounds, maxDepth)` remains for
+tests and one-off builds. Making generation *pluggable* (an interface the world depends on,
+with `WorldGenerator` as one impl) is a natural future step — and would also dissolve the
+current `world ↔ world.gen` coupling.
 
 ---
 
@@ -597,13 +609,12 @@ the LoD selection.
 java -cp <classpath> app.engine.world.demo.WorldEngineDemo
 ```
 
-It builds a generator-backed world over a 128-unit region (seed `1337`), then drives
-everything through the **real engine pipeline**: it `createCamera`s a camera entity,
-`createScreen`s a screen bound to it, and runs a ~60 FPS Swing timer. The terrain is no
-longer generated up front — the world owns the `WorldGenerator` and streams chunks in via
-`World.update` around the camera (the demo uses a generation distance spanning the whole
-region so the orbit always sees a full landscape; shrink it to watch terrain stream in
-around a free-flying camera). Each frame the
+It builds an **infinite** generator-backed world (`World.of(generator)`, seed `1337`,
+64-unit chunks), then drives everything through the **real engine pipeline**: it
+`createCamera`s a camera entity, `createScreen`s a screen bound to it, and runs a ~60 FPS
+Swing timer. There is no fixed region — the world owns the `WorldGenerator` and streams
+chunks in via `World.update` around the camera (generation distance `160`), growing its tree
+as you fly so you can keep going in any direction. Each frame the
 demo only *translates* raw Swing input into `ScreenInputEvent`s, calls
 `world.update(EngineInputs(dt, {screen: events}))`, and asks the renderer to draw the
 screen (`renderer.render(g, world, screenId)`); the panel's size is mirrored onto the
@@ -640,7 +651,7 @@ structure:
 | `world/World_Spec`          | add/remove/move keeping tree + lookup in sync |
 | `world/WorldScreens_Spec`   | screen/camera lifecycle, one-way binding, resize, cameras stay out of the tree |
 | `world/WorldUpdate_Spec`    | inputs → camera mutations, held keys remembered between updates, unbound no-op |
-| `world/WorldGeneration_Spec`| generator owned by World, chunks built around cameras within reach, idempotent, no-generator skip |
+| `world/WorldGeneration_Spec`| infinite generation: chunks built around cameras, root grows to follow a far camera, reach, idempotent, no-generator skip |
 | `world/CameraFlight_Spec`   | pure free-fly math: move/strafe/sprint/look, dt scaling, no-input identity |
 | `world/CollectSectorsForRendering_Spec` | the visibility walk (frustum + occlusion + LoD) tested with no renderer |
 | `world/CoverageGrid_Spec`   | conservative mark/test, off-screen handling, occlusion of covered rects |
@@ -669,8 +680,9 @@ camera entities by id), an event-based input model (`EngineInputs` → per-scree
 `ScreenInputs` event logs) and a `World.update` step that folds input into **camera
 mutations** via the pure `CameraFlight` controls (held state remembered between
 updates); a **`WorldGenerator` owned by the world** that `update` uses to build/stream
-terrain in chunks around cameras within a configured `generationDistance`; first-draft
-Graphics2D rendering with distance LoD,
+terrain in chunks around cameras within a configured `generationDistance` — an effectively
+**infinite world** whose octree root grows outward (re-roots) to follow cameras wherever
+they fly; first-draft Graphics2D rendering with distance LoD,
 frustum culling, inset-fitted LoD boxes, cached face-culled voxel meshes **and
 near→far software occlusion culling** (a coverage grid that skips sub-trees hidden
 behind solid geometry); a free-fly **and** auto-orbit demo, driven end-to-end through
@@ -698,11 +710,11 @@ the real renderer to come:
 
 - Extending `World.update` beyond camera control: **entity behaviour** and
   **light-trace propagation/radiation** as part of the same per-tick step.
-- **Growing the world beyond its root** to follow a camera that flies out of it (an
-  unbounded/infinite world). Chunk streaming around cameras *within* the root already
-  exists; re-rooting to extend past it does not.
 - Making **generation pluggable** (an interface the world depends on), which would also
   break the current `world ↔ world.gen` package coupling.
+- **Bounding/evicting generated chunks** far behind the camera (and re-aggregating only the
+  changed paths instead of the whole tree) so a long flight doesn't grow memory without limit
+  — the infinite world currently keeps every chunk it has ever generated.
 - Recursive sub-entities inside `VoxelEntity`.
 - The **procedural noise shader** that consumes `TextureProfile` hints (replacing
   the first-draft `Graphics2D`/`TexturePalette` path), plus dynamic 64→32-bit

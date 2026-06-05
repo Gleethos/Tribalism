@@ -21,7 +21,7 @@ class WorldGenerator_Spec extends Specification
 {
     // A generator with caves disabled (caveThreshold > 1) for predictable structure.
     private static WorldGenerator solidGenerator() {
-        return new WorldGenerator(new PerlinNoise(42L), -1000d, 0d, 24d, 0.015d, 6d, 1.5d, 2.0d, 96d, 1)
+        return new WorldGenerator(new PerlinNoise(42L), -1000d, 0d, 24d, 0.015d, 6d, 1.5d, 2.0d, 96d, 1, 64d)
     }
 
     private static BoundsF64 cubeAround( VecF64 center, double edge ) {

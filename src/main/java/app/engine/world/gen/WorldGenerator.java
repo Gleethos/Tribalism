@@ -35,6 +35,8 @@ import java.util.Map;
  *  @param generationDistance How close (in world units) a camera must be to a region for
  *                            {@link app.engine.world.World} to generate it around the camera.
  *  @param detailDepth  How many levels {@link #generate(BoundsF64)} subdivides a region by default.
+ *  @param chunkSize    The world-space edge length of one generated chunk &mdash; the unit
+ *                      the {@link app.engine.world.World} streams terrain in and out by.
  */
 public record WorldGenerator(
     PerlinNoise noise,
@@ -46,7 +48,8 @@ public record WorldGenerator(
     double grassDepth,
     double caveThreshold,
     double generationDistance,
-    int detailDepth
+    int detailDepth,
+    double chunkSize
 ) {
     /** @return A generator with sensible defaults for the given {@code seed}. */
     public static WorldGenerator withSeed( long seed ) {
@@ -60,18 +63,24 @@ public record WorldGenerator(
                 /* grassDepth         */  1.5,
                 /* caveThreshold      */  0.65,
                 /* generationDistance */ 96,
-                /* detailDepth        */  1
+                /* detailDepth        */  2,
+                /* chunkSize          */ 64
             );
     }
 
     /** @return This generator configured to build the world {@code distance} units around cameras. */
     public WorldGenerator withGenerationDistance( double distance ) {
-        return new WorldGenerator(noise, seaLevel, surfaceLevel, amplitude, frequency, soilDepth, grassDepth, caveThreshold, distance, detailDepth);
+        return new WorldGenerator(noise, seaLevel, surfaceLevel, amplitude, frequency, soilDepth, grassDepth, caveThreshold, distance, detailDepth, chunkSize);
     }
 
     /** @return This generator configured to subdivide a region {@code depth} levels by default. */
     public WorldGenerator withDetailDepth( int depth ) {
-        return new WorldGenerator(noise, seaLevel, surfaceLevel, amplitude, frequency, soilDepth, grassDepth, caveThreshold, generationDistance, depth);
+        return new WorldGenerator(noise, seaLevel, surfaceLevel, amplitude, frequency, soilDepth, grassDepth, caveThreshold, generationDistance, depth, chunkSize);
+    }
+
+    /** @return This generator configured to stream the world in {@code size}-unit chunks. */
+    public WorldGenerator withChunkSize( double size ) {
+        return new WorldGenerator(noise, seaLevel, surfaceLevel, amplitude, frequency, soilDepth, grassDepth, caveThreshold, generationDistance, detailDepth, size);
     }
 
     /** @return The sector covering {@code bounds}, generated to this generator's {@link #detailDepth()}. */

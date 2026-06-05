@@ -1,6 +1,5 @@
 package app.engine.world.demo;
 
-import app.engine.primitives.BoundsF64;
 import app.engine.primitives.CameraF64;
 import app.engine.primitives.VecF64;
 import app.engine.world.EngineInputs;
@@ -49,25 +48,24 @@ import java.util.List;
  */
 public final class WorldEngineDemo
 {
-    private static final int REGION_EDGE = 128;
-
     private static final long     CAMERA_ID = 1L;
     private static final ScreenId SCREEN_ID = ScreenId.of(1L);
     private static final int      INITIAL_W = 960, INITIAL_H = 600;
+    private static final double   ORBIT_RADIUS = 96, ORBIT_HEIGHT = 40;
 
     public static void main( String[] args ) {
         System.out.println("Generating world...");
         long start = System.currentTimeMillis();
 
-        BoundsF64 region = BoundsF64.cube(VecF64.zero(), REGION_EDGE);
-        // The generator now lives inside the World; a generation distance spanning the whole
-        // region means the orbiting camera always sees a full landscape (shrink it to watch
-        // the world stream in around a free-flying camera instead).
+        // The world is infinite: it owns the generator and streams 64-unit chunks in around
+        // cameras within the generation distance, growing its tree outward as you fly. There is
+        // no fixed region; grow/shrink the generation distance to trade view range for cost.
         WorldGenerator generator = WorldGenerator.withSeed(1337L)
-                                                 .withDetailDepth(1)
-                                                 .withGenerationDistance(REGION_EDGE * 2.0);
+                                                 .withChunkSize(64)
+                                                 .withDetailDepth(2)
+                                                 .withGenerationDistance(160);
 
-        World world = World.of(region, generator)
+        World world = World.of(generator)
                            .createCamera(CAMERA_ID, orbitingCamera(0, (double) INITIAL_W / INITIAL_H))
                            .createScreen(SCREEN_ID, INITIAL_W, INITIAL_H)
                            .bindScreenToCamera(SCREEN_ID, CAMERA_ID)
@@ -79,9 +77,7 @@ public final class WorldEngineDemo
     }
 
     private static CameraF64 orbitingCamera( double angleRadians, double aspect ) {
-        double radius = REGION_EDGE * 0.75;
-        double height = REGION_EDGE * 0.30;
-        VecF64 position = VecF64.of(Math.cos(angleRadians) * radius, height, Math.sin(angleRadians) * radius);
+        VecF64 position = VecF64.of(Math.cos(angleRadians) * ORBIT_RADIUS, ORBIT_HEIGHT, Math.sin(angleRadians) * ORBIT_RADIUS);
         return new CameraF64(position, VecF64.zero(), VecF64.of(0, 1, 0), Math.toRadians(60), aspect, 0.5, 2000);
     }
 

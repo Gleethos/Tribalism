@@ -50,8 +50,8 @@ public final class World
     private final Association<ScreenId, Screen> _screens;
     private final Association<ScreenId, ScreenInputState> _inputStates;
     private final @Nullable WorldGenerator _generator;
-    /** Indices of the root's top-level cells already generated, so they are not regenerated. */
-    private final ValueSet<Integer> _generatedChunks;
+    /** Grid coordinates of the chunks already generated, so they are never regenerated. */
+    private final ValueSet<ChunkCoord> _generatedChunks;
 
     private World(
         WorldSector root,
@@ -59,7 +59,7 @@ public final class World
         Association<ScreenId, Screen> screens,
         Association<ScreenId, ScreenInputState> inputStates,
         @Nullable WorldGenerator generator,
-        ValueSet<Integer> generatedChunks
+        ValueSet<ChunkCoord> generatedChunks
     ) {
         _root            = Objects.requireNonNull(root);
         _entities        = Objects.requireNonNull(entities);
@@ -92,24 +92,27 @@ public final class World
                 Association.between(ScreenId.class, Screen.class),
                 Association.between(ScreenId.class, ScreenInputState.class),
                 null,
-                ValueSet.of(Integer.class)
+                ValueSet.of(ChunkCoord.class)
         );
     }
 
     /**
-     *  @return A world over {@code region} that generates itself on demand with {@code generator}.
-     *          The root is pre-divided into a grid of empty top-level cells (the "chunks");
-     *          {@link #update} fills the cells near cameras, within the generator's
-     *          {@link WorldGenerator#generationDistance() reach}, as cameras come and go.
+     *  @return An <b>infinite</b> world that generates itself on demand with {@code generator}.
+     *          It starts as a single empty chunk at the origin; {@link #update} streams terrain
+     *          in around cameras (within the generator's
+     *          {@link WorldGenerator#generationDistance() reach}), growing the spatial tree's
+     *          root outward as cameras roam, with no fixed bounds &mdash; see
+     *          {@link #generateAroundCameras()}.
      */
-    public static World of( BoundsF64 region, WorldGenerator generator ) {
+    public static World of( WorldGenerator generator ) {
+        Objects.requireNonNull(generator);
         return new World(
-                WorldSector.empty(region).subdivide(),
+                WorldSector.empty(chunkBounds(0, 0, 0, generator.chunkSize())),
                 Association.between(Long.class, Entity.class),
                 Association.between(ScreenId.class, Screen.class),
                 Association.between(ScreenId.class, ScreenInputState.class),
-                Objects.requireNonNull(generator),
-                ValueSet.of(Integer.class)
+                generator,
+                ValueSet.of(ChunkCoord.class)
         );
     }
 
@@ -147,6 +150,34 @@ public final class World
     /** @return The world's generator, if it has one (worlds can also be purely hand-built). */
     public Optional<WorldGenerator> generator() {
         return Optional.ofNullable(_generator);
+    }
+
+    /**
+     *  @return {@code true} if the chunk containing {@code point} has been generated. A
+     *          hand-built world (no generator) reports {@code false} everywhere &mdash; it has
+     *          no notion of streamed chunks.
+     */
+    public boolean isGenerated( VecF64 point ) {
+        if ( _generator == null )
+            return false;
+        double c = _generator.chunkSize();
+        ChunkCoord coord = new ChunkCoord(
+                (int) Math.floor(point.x() / c), (int) Math.floor(point.y() / c), (int) Math.floor(point.z() / c));
+        return _generatedChunks.contains(coord);
+    }
+
+    /**
+     *  @return The deepest existing sector containing {@code point} (a leaf voxel, a generated
+     *          chunk, or an empty cell), or empty if {@code point} lies outside the current root.
+     *          A spatial point query into the tree.
+     */
+    public Optional<WorldSector> sectorAt( VecF64 point ) {
+        if ( !_root.bounds().contains(point) )
+            return Optional.empty();
+        WorldSector sector = _root;
+        while ( !sector.isLeaf() )
+            sector = sector.children().sector(cellContaining(sector.bounds(), point));
+        return Optional.of(sector);
     }
 
     // ---- Entity transforms (tree + lookup kept in sync) -------------------------
@@ -273,50 +304,126 @@ public final class World
     }
 
     /**
-     *  Generates, around every camera, any region within the generator's reach that has
-     *  not been generated yet &mdash; the lazy "stream the world in as you move" step.
+     *  Streams terrain in around every camera &mdash; the lazy "build the world as you move"
+     *  step that makes the world effectively <b>infinite</b>.
      *  <p>
-     *  The root is a grid of top-level cells (created by {@link #of(BoundsF64, WorldGenerator)});
-     *  each is a "chunk". For every camera, each chunk whose nearest point lies within
-     *  {@link WorldGenerator#generationDistance()} of the camera is generated (once) and
-     *  spliced in, and its index remembered so it is never regenerated. A world with no
-     *  generator, or whose root is not a chunk grid, is returned unchanged.
+     *  Chunks live on a fixed global grid of {@link WorldGenerator#chunkSize()} cubes. For each
+     *  camera, every chunk whose nearest point lies within
+     *  {@link WorldGenerator#generationDistance() reach} and that has not been generated yet is
+     *  generated once, then spliced into the tree &mdash; {@link #growToContain growing the root
+     *  outward} (re-rooting) whenever a chunk falls outside the current root, and
+     *  {@link #placeChunk descending} to the chunk's slot. There is no fixed region; only the
+     *  chunks near where cameras have been exist. Generated chunk coordinates are remembered so
+     *  a chunk is never rebuilt. A world with no generator is returned unchanged.
      */
     private World generateAroundCameras() {
         if ( _generator == null )
             return this;
-        WorldTreeNode node = _root.children();
-        if ( node == null )
-            return this; // not a chunk-grid root (e.g. a hand-built world): nothing to stream.
 
+        double chunk = _generator.chunkSize();
         double reach = _generator.generationDistance();
-        ValueSet<Integer> generated = _generatedChunks;
+        WorldSector root = _root;
+        ValueSet<ChunkCoord> generated = _generatedChunks;
         boolean changed = false;
+
         for ( Entity entity : _entities.values() ) {
             if ( !(entity instanceof Entity.CameraEntity cameraEntity) )
                 continue;
             VecF64 eye = cameraEntity.camera().position();
-            for ( int i = 0; i < WorldTreeNode.SECTOR_COUNT; i++ ) {
-                if ( generated.contains(i) )
-                    continue;
-                BoundsF64 cell = node.sector(i).bounds();
-                if ( distanceToBounds(eye, cell) <= reach ) {
-                    node = node.withSector(i, _generator.generate(cell));
-                    generated = generated.add(i);
-                    changed = true;
-                }
-            }
+            int minX = (int) Math.floor((eye.x() - reach) / chunk), maxX = (int) Math.floor((eye.x() + reach) / chunk);
+            int minY = (int) Math.floor((eye.y() - reach) / chunk), maxY = (int) Math.floor((eye.y() + reach) / chunk);
+            int minZ = (int) Math.floor((eye.z() - reach) / chunk), maxZ = (int) Math.floor((eye.z() + reach) / chunk);
+            for ( int cz = minZ; cz <= maxZ; cz++ )
+                for ( int cy = minY; cy <= maxY; cy++ )
+                    for ( int cx = minX; cx <= maxX; cx++ ) {
+                        ChunkCoord coord = new ChunkCoord(cx, cy, cz);
+                        if ( generated.contains(coord) )
+                            continue;
+                        BoundsF64 bounds = chunkBounds(cx, cy, cz, chunk);
+                        if ( distanceToBounds(eye, bounds) > reach )
+                            continue;
+                        root = growToContain(root, bounds);
+                        root = placeChunk(root, bounds, _generator.generate(bounds), chunk);
+                        generated = generated.add(coord);
+                        changed = true;
+                    }
         }
         if ( !changed )
             return this;
-        WorldSector newRoot = _root.withChildren(node).aggregated();
-        return new World(newRoot, _entities, _screens, _inputStates, _generator, generated);
+        return new World(root.aggregated(), _entities, _screens, _inputStates, _generator, generated);
     }
 
     /** @return The distance from {@code point} to the nearest point of {@code bounds} (0 if inside). */
     private static double distanceToBounds( VecF64 point, BoundsF64 bounds ) {
         return point.distance(point.clamp(bounds.min(), bounds.max()));
     }
+
+    /** @return The world-space bounds of chunk {@code (cx, cy, cz)} on the global {@code size}-grid. */
+    private static BoundsF64 chunkBounds( int cx, int cy, int cz, double size ) {
+        VecF64 min = VecF64.of(cx * size, cy * size, cz * size);
+        return BoundsF64.of(min, VecF64.of(min.x() + size, min.y() + size, min.z() + size));
+    }
+
+    /**
+     *  Grows {@code root} until it contains {@code target}, re-rooting it
+     *  {@value WorldTreeNode#RESOLUTION}&times; larger (and grid-aligned) at each step. The old
+     *  root becomes exactly one cell of the new, larger root, so all existing content keeps its
+     *  world coordinates &mdash; this is the upward half of an unbounded octree.
+     */
+    private static WorldSector growToContain( WorldSector root, BoundsF64 target ) {
+        int res = WorldTreeNode.RESOLUTION;
+        while ( !root.bounds().contains(target) ) {
+            double size = root.bounds().width();
+            VecF64 oldMin = root.bounds().min();
+            // Place the old root in the corner of the (8x larger) new root that is FURTHEST from
+            // the target, so the new root extends toward it. Each axis grows toward the target by
+            // up to (res-1) old-root widths, while the old root stays at one of the new cells and
+            // keeps its world coordinates. (Anchoring to a fixed grid instead would never reach
+            // negative coordinates from a root at the origin.)
+            double newMinX = target.min().x() < oldMin.x() ? oldMin.x() - (res - 1) * size : oldMin.x();
+            double newMinY = target.min().y() < oldMin.y() ? oldMin.y() - (res - 1) * size : oldMin.y();
+            double newMinZ = target.min().z() < oldMin.z() ? oldMin.z() - (res - 1) * size : oldMin.z();
+            double bigger = size * res;
+            BoundsF64 newBounds = BoundsF64.of(VecF64.of(newMinX, newMinY, newMinZ),
+                                               VecF64.of(newMinX + bigger, newMinY + bigger, newMinZ + bigger));
+            WorldSector grown = WorldSector.empty(newBounds).subdivide();
+            int cell = cellContaining(newBounds, root.bounds().center());
+            root = grown.withChildren(grown.children().withSector(cell, root));
+        }
+        return root;
+    }
+
+    /**
+     *  Places a generated {@code chunk} into the tree at {@code bounds}, descending from
+     *  {@code sector} (which must already contain {@code bounds}) and subdividing empty cells on
+     *  the way until it reaches the chunk-sized slot, which it replaces &mdash; the downward half
+     *  of the octree.
+     */
+    private static WorldSector placeChunk( WorldSector sector, BoundsF64 bounds, WorldSector chunk, double chunkSize ) {
+        if ( sector.bounds().width() <= chunkSize * 1.5 )
+            return chunk; // this cell is the chunk slot.
+        WorldSector branched = sector.isLeaf() ? sector.subdivide() : sector;
+        WorldTreeNode node = branched.children();
+        int cell = cellContaining(branched.bounds(), bounds.center());
+        return branched.withChildren(node.withSector(cell, placeChunk(node.sector(cell), bounds, chunk, chunkSize)));
+    }
+
+    /** @return The linear index of the {@value WorldTreeNode#RESOLUTION}-cubed sub-cell of {@code bounds} that contains {@code point}. */
+    private static int cellContaining( BoundsF64 bounds, VecF64 point ) {
+        int res = WorldTreeNode.RESOLUTION;
+        VecF64 size = bounds.size();
+        int x = clampCell((int) Math.floor((point.x() - bounds.min().x()) / (size.x() / res)), res);
+        int y = clampCell((int) Math.floor((point.y() - bounds.min().y()) / (size.y() / res)), res);
+        int z = clampCell((int) Math.floor((point.z() - bounds.min().z()) / (size.z() / res)), res);
+        return WorldTreeNode.indexOf(x, y, z);
+    }
+
+    private static int clampCell( int value, int res ) {
+        return value < 0 ? 0 : Math.min(value, res - 1);
+    }
+
+    /** A chunk's integer coordinate on the global generation grid. */
+    private record ChunkCoord(int x, int y, int z) {}
 
     private World applyScreenInputs( ScreenId screenId, ScreenInputs screenInputs, double dtSeconds ) {
         ScreenInputState state = _inputStates.get(screenId).orElse(ScreenInputState.empty());
@@ -340,7 +447,10 @@ public final class World
             long cameraId = screen.get().camera().getAsLong();
             Optional<Entity.CameraEntity> cam = camera(cameraId);
             if ( cam.isPresent() ) {
-                CameraF64 moved = CameraFlight.fly(cam.get().camera(), held, lookDx, lookDy, maxEdge(_root.bounds()), dtSeconds);
+                // Movement scale: a stable reference (the generator's reach for an infinite world,
+                // whose root grows without bound; otherwise the fixed root's size).
+                double speedScale = _generator != null ? _generator.generationDistance() : maxEdge(_root.bounds());
+                CameraF64 moved = CameraFlight.fly(cam.get().camera(), held, lookDx, lookDy, speedScale, dtSeconds);
                 newEntities = _entities.put(cameraId, Entity.CameraEntity.of(cameraId, moved));
             }
         }
