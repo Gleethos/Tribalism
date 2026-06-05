@@ -171,27 +171,27 @@ public final class WorldRenderer
 
         private void emitSector( WorldSector sector, boolean wantsDetail, ViewInfo viewInfo ) {
             if ( sector.isSolidOpaque() ) {
-                emitBox(sector, viewInfo);
+                emitBox(sector, viewInfo, _lightDirection);
             } else if ( !wantsDetail || sector.isLeaf() ) {
                 if ( isMajorityOpaque(sector.ether()) )
-                    emitBox(sector, viewInfo);
+                    emitBox(sector, viewInfo, _lightDirection);
             } else if ( hasOnlyLeafChildren(sector) ) {
                 for ( Quad quad : _meshCache.meshOf(sector).quads() )
-                    emitQuad(quad, viewInfo);
+                    emitQuad(quad, viewInfo, _lightDirection);
             }
         }
 
-        private void emitBox( WorldSector sector, ViewInfo viewInfo ) {
+        private void emitBox( WorldSector sector, ViewInfo viewInfo, VecF64 lightDirection ) {
             BoundsF64 bounds = sector.insets().shrink(sector.bounds());
             WorldSectorEtherData ether = sector.ether();
             for ( Side side : Side.values() ) {
                 TextureProfile profile = faceProfile(ether, side);
                 if ( !profile.isInvisible() )
-                    emitQuad(Cubes.faceQuad(bounds, side, profile), viewInfo);
+                    emitQuad(Cubes.faceQuad(bounds, side, profile), viewInfo, lightDirection);
             }
         }
 
-        private void emitQuad( Quad quad, ViewInfo viewInfo ) {
+        private void emitQuad( Quad quad, ViewInfo viewInfo, VecF64 lightDirection ) {
             VecF64 center = quad.centroid();
             if ( quad.normal().dot(viewInfo.camera().position().sub(center)) <= 0 )
                 return; // back-face
@@ -206,7 +206,7 @@ public final class WorldRenderer
             Polygon polygon = new Polygon();
             for ( double[] s : new double[][]{ s0, s1, s2, s3 } )
                 polygon.addPoint((int) Math.round(s[0]), (int) Math.round(s[1]));
-            Color color = shade(TexturePalette.colorOf(quad.profile()), quad.normal());
+            Color color = shade(TexturePalette.colorOf(quad.profile()), quad.normal(), lightDirection);
             faces.add(new ScreenFace(polygon, color, viewInfo.camera().position().distance(center)));
         }
 
@@ -267,8 +267,8 @@ public final class WorldRenderer
     }
 
     /** Flat directional shading with an ambient floor, clamped to valid colour values. */
-    private Color shade( Color base, VecF64 normal ) {
-        double diffuse = Math.max(0, normal.dot(_lightDirection.negate()));
+    private static Color shade( Color base, VecF64 normal, VecF64 lightDirection ) {
+        double diffuse = Math.max(0, normal.dot(lightDirection.negate()));
         double brightness = 0.45 + 0.55 * diffuse;
         int r = clampColor((int) Math.round(base.getRed()   * brightness));
         int gr = clampColor((int) Math.round(base.getGreen() * brightness));
