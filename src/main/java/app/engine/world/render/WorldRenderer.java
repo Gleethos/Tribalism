@@ -91,18 +91,32 @@ public final class WorldRenderer
         _facesDrawn = 0;
         _occlusionCulled = 0;
 
-        Walk walk = new Walk(new ViewInfo(camera, camera.frustum(), camera.viewProjectionMatrix(),
-                             focalLengthPx(camera, height), width, height),
-                             new CoverageGrid(width, height, COVERAGE_TILE));
+        List<ScreenFace> faces = new ArrayList<>();
+        Walk walk = new Walk(
+                new ViewInfo(camera, camera.frustum(), camera.viewProjectionMatrix(),
+                focalLengthPx(camera, height), width, height),
+                new CoverageGrid(width, height, COVERAGE_TILE),
+                (sector, wantsDetail, viewInfo)->{
+                    if ( sector.isSolidOpaque() ) {
+                        emitBox(sector, viewInfo, _lightDirection, faces);
+                    } else if ( !wantsDetail || sector.isLeaf() ) {
+                        if ( isMajorityOpaque(sector.ether()) )
+                            emitBox(sector, viewInfo, _lightDirection, faces);
+                    } else if ( hasOnlyLeafChildren(sector) ) {
+                        for ( Quad quad : _meshCache.meshOf(sector).quads() )
+                            emitQuad(quad, viewInfo, _lightDirection, faces);
+                    }
+                }
+        );
         walk.collect(world.root());
 
         // Painter's algorithm: draw far faces first so near ones cover them.
-        walk.faces.sort(Comparator.comparingDouble((ScreenFace f) -> f.distance).reversed());
-        for ( ScreenFace f : walk.faces ) {
+        faces.sort(Comparator.comparingDouble((ScreenFace f) -> f.distance).reversed());
+        for ( ScreenFace f : faces ) {
             g.setColor(f.color);
             g.fillPolygon(f.polygon);
         }
-        _facesDrawn = walk.faces.size();
+        _facesDrawn = faces.size();
     }
 
     record ViewInfo(
@@ -114,15 +128,19 @@ public final class WorldRenderer
         int h
     ) {}
 
+    interface SectorDrawCollector {
+        void collect(WorldSector sector, boolean wantsDetail, ViewInfo viewInfo);
+    }
+
     /** Holds the per-frame walk state so the recursion stays a set of small methods. */
     private final class Walk {
         final ViewInfo viewInfo;
         final CoverageGrid coverage;
-        final List<ScreenFace> faces = new ArrayList<>();
+        final SectorDrawCollector collector;
 
-        Walk( ViewInfo viewInfo, CoverageGrid coverage ) {
+        Walk(ViewInfo viewInfo, CoverageGrid coverage, SectorDrawCollector collector) {
             this.viewInfo = viewInfo;
-            this.coverage = coverage;
+            this.coverage = coverage;this.collector = collector;
         }
 
         void collect( WorldSector sector ) {
@@ -170,15 +188,7 @@ public final class WorldRenderer
         }
 
         private void emitSector( WorldSector sector, boolean wantsDetail, ViewInfo viewInfo ) {
-            if ( sector.isSolidOpaque() ) {
-                emitBox(sector, viewInfo, _lightDirection, faces);
-            } else if ( !wantsDetail || sector.isLeaf() ) {
-                if ( isMajorityOpaque(sector.ether()) )
-                    emitBox(sector, viewInfo, _lightDirection, faces);
-            } else if ( hasOnlyLeafChildren(sector) ) {
-                for ( Quad quad : _meshCache.meshOf(sector).quads() )
-                    emitQuad(quad, viewInfo, _lightDirection, faces);
-            }
+            collector.collect(sector, wantsDetail, viewInfo);
         }
 
         /** @return The 8 corners of {@code bounds} projected to screen, or {@code null} if any is behind the camera. */
