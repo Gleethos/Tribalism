@@ -171,43 +171,14 @@ public final class WorldRenderer
 
         private void emitSector( WorldSector sector, boolean wantsDetail, ViewInfo viewInfo ) {
             if ( sector.isSolidOpaque() ) {
-                emitBox(sector, viewInfo, _lightDirection);
+                emitBox(sector, viewInfo, _lightDirection, faces);
             } else if ( !wantsDetail || sector.isLeaf() ) {
                 if ( isMajorityOpaque(sector.ether()) )
-                    emitBox(sector, viewInfo, _lightDirection);
+                    emitBox(sector, viewInfo, _lightDirection, faces);
             } else if ( hasOnlyLeafChildren(sector) ) {
                 for ( Quad quad : _meshCache.meshOf(sector).quads() )
-                    emitQuad(quad, viewInfo, _lightDirection);
+                    emitQuad(quad, viewInfo, _lightDirection, faces);
             }
-        }
-
-        private void emitBox( WorldSector sector, ViewInfo viewInfo, VecF64 lightDirection ) {
-            BoundsF64 bounds = sector.insets().shrink(sector.bounds());
-            WorldSectorEtherData ether = sector.ether();
-            for ( Side side : Side.values() ) {
-                TextureProfile profile = faceProfile(ether, side);
-                if ( !profile.isInvisible() )
-                    emitQuad(Cubes.faceQuad(bounds, side, profile), viewInfo, lightDirection);
-            }
-        }
-
-        private void emitQuad( Quad quad, ViewInfo viewInfo, VecF64 lightDirection ) {
-            VecF64 center = quad.centroid();
-            if ( quad.normal().dot(viewInfo.camera().position().sub(center)) <= 0 )
-                return; // back-face
-
-            double[] s0 = project(quad.c0(), viewInfo.vp(), viewInfo.w(), viewInfo.h());
-            double[] s1 = project(quad.c1(), viewInfo.vp(), viewInfo.w(), viewInfo.h());
-            double[] s2 = project(quad.c2(), viewInfo.vp(), viewInfo.w(), viewInfo.h());
-            double[] s3 = project(quad.c3(), viewInfo.vp(), viewInfo.w(), viewInfo.h());
-            if ( s0 == null || s1 == null || s2 == null || s3 == null )
-                return; // a corner is at/behind the camera: skip this face for the first draft.
-
-            Polygon polygon = new Polygon();
-            for ( double[] s : new double[][]{ s0, s1, s2, s3 } )
-                polygon.addPoint((int) Math.round(s[0]), (int) Math.round(s[1]));
-            Color color = shade(TexturePalette.colorOf(quad.profile()), quad.normal(), lightDirection);
-            faces.add(new ScreenFace(polygon, color, viewInfo.camera().position().distance(center)));
         }
 
         /** @return The 8 corners of {@code bounds} projected to screen, or {@code null} if any is behind the camera. */
@@ -221,6 +192,35 @@ public final class WorldRenderer
             }
             return screen;
         }
+    }
+
+    private static void emitBox( WorldSector sector, ViewInfo viewInfo, VecF64 lightDirection, List<ScreenFace> out ) {
+        BoundsF64 bounds = sector.insets().shrink(sector.bounds());
+        WorldSectorEtherData ether = sector.ether();
+        for ( Side side : Side.values() ) {
+            TextureProfile profile = faceProfile(ether, side);
+            if ( !profile.isInvisible() )
+                emitQuad(Cubes.faceQuad(bounds, side, profile), viewInfo, lightDirection, out);
+        }
+    }
+
+    private static void emitQuad( Quad quad, ViewInfo viewInfo, VecF64 lightDirection, List<ScreenFace> out ) {
+        VecF64 center = quad.centroid();
+        if ( quad.normal().dot(viewInfo.camera().position().sub(center)) <= 0 )
+            return; // back-face
+
+        double[] s0 = project(quad.c0(), viewInfo.vp(), viewInfo.w(), viewInfo.h());
+        double[] s1 = project(quad.c1(), viewInfo.vp(), viewInfo.w(), viewInfo.h());
+        double[] s2 = project(quad.c2(), viewInfo.vp(), viewInfo.w(), viewInfo.h());
+        double[] s3 = project(quad.c3(), viewInfo.vp(), viewInfo.w(), viewInfo.h());
+        if ( s0 == null || s1 == null || s2 == null || s3 == null )
+            return; // a corner is at/behind the camera: skip this face for the first draft.
+
+        Polygon polygon = new Polygon();
+        for ( double[] s : new double[][]{ s0, s1, s2, s3 } )
+            polygon.addPoint((int) Math.round(s[0]), (int) Math.round(s[1]));
+        Color color = shade(TexturePalette.colorOf(quad.profile()), quad.normal(), lightDirection);
+        out.add(new ScreenFace(polygon, color, viewInfo.camera().position().distance(center)));
     }
 
     private static double minOf( double[][] pts, int axis ) {
