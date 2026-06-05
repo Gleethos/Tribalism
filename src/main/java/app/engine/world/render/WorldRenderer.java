@@ -144,7 +144,7 @@ public final class WorldRenderer
             if ( sector.isSolidOpaque() ) {
                 // A perfect occluder: draw it as a single box (its mesh would just be the
                 // shell anyway) and record its silhouette so it blocks what is behind.
-                emitSector(sector, false);
+                emitSector(sector, false, camera);
                 if ( corners != null )
                     coverage.markOccluder(corners);
                 return;
@@ -153,7 +153,7 @@ public final class WorldRenderer
             double distance = camera.position().distance(sector.bounds().center());
             boolean wantsDetail = projectedEdgePixels(maxEdge(sector.bounds()), distance, focal) > _refineThresholdPx;
 
-            emitSector(sector, wantsDetail);
+            emitSector(sector, wantsDetail, camera);
 
             if ( sector.isLeaf() )
                 return;
@@ -174,29 +174,29 @@ public final class WorldRenderer
                 collect(node.sector(i));
         }
 
-        private void emitSector( WorldSector sector, boolean wantsDetail ) {
+        private void emitSector( WorldSector sector, boolean wantsDetail, CameraF64 camera ) {
             if ( sector.isSolidOpaque() ) {
-                emitBox(sector);
+                emitBox(sector, camera);
             } else if ( !wantsDetail || sector.isLeaf() ) {
                 if ( isMajorityOpaque(sector.ether()) )
-                    emitBox(sector);
+                    emitBox(sector, camera);
             } else if ( hasOnlyLeafChildren(sector) ) {
                 for ( Quad quad : _meshCache.meshOf(sector).quads() )
-                    emitQuad(quad);
+                    emitQuad(quad, camera);
             }
         }
 
-        private void emitBox( WorldSector sector ) {
+        private void emitBox( WorldSector sector, CameraF64 camera ) {
             BoundsF64 bounds = sector.insets().shrink(sector.bounds());
             WorldSectorEtherData ether = sector.ether();
             for ( Side side : Side.values() ) {
                 TextureProfile profile = faceProfile(ether, side);
                 if ( !profile.isInvisible() )
-                    emitQuad(Cubes.faceQuad(bounds, side, profile));
+                    emitQuad(Cubes.faceQuad(bounds, side, profile), camera);
             }
         }
 
-        private void emitQuad( Quad quad ) {
+        private void emitQuad( Quad quad, CameraF64 camera ) {
             VecF64 center = quad.centroid();
             if ( quad.normal().dot(camera.position().sub(center)) <= 0 )
                 return; // back-face
