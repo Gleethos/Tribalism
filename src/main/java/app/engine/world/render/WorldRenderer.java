@@ -153,12 +153,7 @@ public final class WorldRenderer
             double distance = camera.position().distance(sector.bounds().center());
             boolean wantsDetail = projectedEdgePixels(maxEdge(sector.bounds()), distance, focal) > _refineThresholdPx;
 
-            if ( !wantsDetail ) {
-                if ( isMajorityOpaque(sector.ether()) )
-                    emitBox(sector);
-                return;
-            }
-            if ( sector.isLeaf() ) {
+            if ( !wantsDetail || sector.isLeaf() ) {
                 if ( isMajorityOpaque(sector.ether()) )
                     emitBox(sector);
                 return;
