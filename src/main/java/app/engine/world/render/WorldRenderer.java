@@ -1,17 +1,7 @@
 package app.engine.world.render;
 
-import app.engine.primitives.BoundsF64;
-import app.engine.primitives.CameraF64;
-import app.engine.primitives.Frustum;
-import app.engine.primitives.Mat4F64;
-import app.engine.primitives.VecF64;
-import app.engine.world.Side;
-import app.engine.world.Texture;
-import app.engine.world.TextureProfile;
-import app.engine.world.World;
-import app.engine.world.WorldSector;
-import app.engine.world.WorldSectorEtherData;
-import app.engine.world.WorldTreeNode;
+import app.engine.primitives.*;
+import app.engine.world.*;
 
 import java.awt.Color;
 import java.awt.Graphics2D;
@@ -101,8 +91,8 @@ public final class WorldRenderer
         _facesDrawn = 0;
         _occlusionCulled = 0;
 
-        Walk walk = new Walk(camera, camera.frustum(), camera.viewProjectionMatrix(),
-                             focalLengthPx(camera, height), width, height,
+        Walk walk = new Walk(new ViewInfo(camera, camera.frustum(), camera.viewProjectionMatrix(),
+                             focalLengthPx(camera, height), width, height),
                              new CoverageGrid(width, height, COVERAGE_TILE));
         walk.collect(world.root());
 
@@ -115,23 +105,28 @@ public final class WorldRenderer
         _facesDrawn = walk.faces.size();
     }
 
+    record ViewInfo(
+        CameraF64 camera,
+        Frustum frustum,
+        Mat4F64 vp,
+        double focal,
+        int w,
+        int h
+    ) {}
+
     /** Holds the per-frame walk state so the recursion stays a set of small methods. */
     private final class Walk {
-        final CameraF64 camera;
-        final Frustum frustum;
-        final Mat4F64 vp;
-        final double focal;
-        final int w, h;
+        final ViewInfo viewInfo;
         final CoverageGrid coverage;
         final List<ScreenFace> faces = new ArrayList<>();
 
-        Walk( CameraF64 camera, Frustum frustum, Mat4F64 vp, double focal, int w, int h, CoverageGrid coverage ) {
-            this.camera = camera; this.frustum = frustum; this.vp = vp;
-            this.focal = focal; this.w = w; this.h = h; this.coverage = coverage;
+        Walk( ViewInfo viewInfo, CoverageGrid coverage ) {
+            this.viewInfo = viewInfo;
+            this.coverage = coverage;
         }
 
         void collect( WorldSector sector ) {
-            if ( !frustum.intersects(sector.bounds()) )
+            if ( !viewInfo.frustum().intersects(sector.bounds()) )
                 return; // outside the view: prune this sector and its whole sub-tree.
 
             double[][] corners = project8(sector.bounds());
@@ -144,16 +139,16 @@ public final class WorldRenderer
             if ( sector.isSolidOpaque() ) {
                 // A perfect occluder: draw it as a single box (its mesh would just be the
                 // shell anyway) and record its silhouette so it blocks what is behind.
-                emitSector(sector, false, camera);
+                emitSector(sector, false, viewInfo);
                 if ( corners != null )
                     coverage.markOccluder(corners);
                 return;
             }
 
-            double distance = camera.position().distance(sector.bounds().center());
-            boolean wantsDetail = projectedEdgePixels(maxEdge(sector.bounds()), distance, focal) > _refineThresholdPx;
+            double distance = viewInfo.camera().position().distance(sector.bounds().center());
+            boolean wantsDetail = projectedEdgePixels(maxEdge(sector.bounds()), distance, viewInfo.focal()) > _refineThresholdPx;
 
-            emitSector(sector, wantsDetail, camera);
+            emitSector(sector, wantsDetail, viewInfo);
 
             if ( sector.isLeaf() )
                 return;
@@ -167,44 +162,44 @@ public final class WorldRenderer
             double[] dist = new double[WorldTreeNode.SECTOR_COUNT];
             for ( int i = 0; i < WorldTreeNode.SECTOR_COUNT; i++ ) {
                 order[i] = i;
-                dist[i] = camera.position().distance(node.sector(i).bounds().center());
+                dist[i] = viewInfo.camera().position().distance(node.sector(i).bounds().center());
             }
             Arrays.sort(order, Comparator.comparingDouble(i -> dist[i]));
             for ( int i : order )
                 collect(node.sector(i));
         }
 
-        private void emitSector( WorldSector sector, boolean wantsDetail, CameraF64 camera ) {
+        private void emitSector( WorldSector sector, boolean wantsDetail, ViewInfo viewInfo ) {
             if ( sector.isSolidOpaque() ) {
-                emitBox(sector, camera);
+                emitBox(sector, viewInfo);
             } else if ( !wantsDetail || sector.isLeaf() ) {
                 if ( isMajorityOpaque(sector.ether()) )
-                    emitBox(sector, camera);
+                    emitBox(sector, viewInfo);
             } else if ( hasOnlyLeafChildren(sector) ) {
                 for ( Quad quad : _meshCache.meshOf(sector).quads() )
-                    emitQuad(quad, camera);
+                    emitQuad(quad, viewInfo);
             }
         }
 
-        private void emitBox( WorldSector sector, CameraF64 camera ) {
+        private void emitBox( WorldSector sector, ViewInfo viewInfo ) {
             BoundsF64 bounds = sector.insets().shrink(sector.bounds());
             WorldSectorEtherData ether = sector.ether();
             for ( Side side : Side.values() ) {
                 TextureProfile profile = faceProfile(ether, side);
                 if ( !profile.isInvisible() )
-                    emitQuad(Cubes.faceQuad(bounds, side, profile), camera);
+                    emitQuad(Cubes.faceQuad(bounds, side, profile), viewInfo);
             }
         }
 
-        private void emitQuad( Quad quad, CameraF64 camera ) {
+        private void emitQuad( Quad quad, ViewInfo viewInfo ) {
             VecF64 center = quad.centroid();
-            if ( quad.normal().dot(camera.position().sub(center)) <= 0 )
+            if ( quad.normal().dot(viewInfo.camera().position().sub(center)) <= 0 )
                 return; // back-face
 
-            double[] s0 = project(quad.c0(), vp, w, h);
-            double[] s1 = project(quad.c1(), vp, w, h);
-            double[] s2 = project(quad.c2(), vp, w, h);
-            double[] s3 = project(quad.c3(), vp, w, h);
+            double[] s0 = project(quad.c0(), viewInfo.vp(), viewInfo.w(), viewInfo.h());
+            double[] s1 = project(quad.c1(), viewInfo.vp(), viewInfo.w(), viewInfo.h());
+            double[] s2 = project(quad.c2(), viewInfo.vp(), viewInfo.w(), viewInfo.h());
+            double[] s3 = project(quad.c3(), viewInfo.vp(), viewInfo.w(), viewInfo.h());
             if ( s0 == null || s1 == null || s2 == null || s3 == null )
                 return; // a corner is at/behind the camera: skip this face for the first draft.
 
@@ -212,7 +207,7 @@ public final class WorldRenderer
             for ( double[] s : new double[][]{ s0, s1, s2, s3 } )
                 polygon.addPoint((int) Math.round(s[0]), (int) Math.round(s[1]));
             Color color = shade(TexturePalette.colorOf(quad.profile()), quad.normal());
-            faces.add(new ScreenFace(polygon, color, camera.position().distance(center)));
+            faces.add(new ScreenFace(polygon, color, viewInfo.camera().position().distance(center)));
         }
 
         /** @return The 8 corners of {@code bounds} projected to screen, or {@code null} if any is behind the camera. */
@@ -220,7 +215,7 @@ public final class WorldRenderer
             VecF64[] world = worldCorners(bounds);
             double[][] screen = new double[8][];
             for ( int i = 0; i < 8; i++ ) {
-                screen[i] = project(world[i], vp, w, h);
+                screen[i] = project(world[i], viewInfo.vp(), viewInfo.w(), viewInfo.h());
                 if ( screen[i] == null )
                     return null;
             }
