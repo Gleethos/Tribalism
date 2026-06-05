@@ -1,6 +1,6 @@
-package engine.world.render
+package engine.world
 
-import app.engine.world.render.CoverageGrid
+import app.engine.world.CoverageGrid
 import spock.lang.Narrative
 import spock.lang.Specification
 import spock.lang.Title

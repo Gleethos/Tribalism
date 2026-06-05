@@ -36,24 +36,24 @@ class WorldRenderer_Spec extends Specification
             var camera = new CameraF64(VecF64.of(0, 0, 10), VecF64.zero(), VecF64.of(0, 1, 0),
                                        Math.toRadians(90), 1.0, 0.1, 100)
         expect: 'focal = (height/2) / tan(fov/2) = 50 / tan(45) = 50.'
-            Math.abs(WorldRenderer.focalLengthPx(camera, 100) - 50) < 1e-9
+            Math.abs(World.focalLengthPx(camera, 100) - 50) < 1e-9
     }
 
     def "Projected size shrinks with distance and grows with edge length."()
     {
         expect:
-            WorldRenderer.projectedEdgePixels(10, 100, 50) == 5
+            World.projectedEdgePixels(10, 100, 50) == 5
         and: 'Twice as far away appears half as big.'
-            WorldRenderer.projectedEdgePixels(10, 200, 50) == 2.5
+            World.projectedEdgePixels(10, 200, 50) == 2.5
         and: 'Twice as large appears twice as big.'
-            WorldRenderer.projectedEdgePixels(20, 100, 50) == 10
+            World.projectedEdgePixels(20, 100, 50) == 10
     }
 
     def "A sector at or behind the camera is treated as infinitely large (always refine)."()
     {
         expect:
-            WorldRenderer.projectedEdgePixels(10, 0, 50) == Double.POSITIVE_INFINITY
-            WorldRenderer.projectedEdgePixels(10, -5, 50) == Double.POSITIVE_INFINITY
+            World.projectedEdgePixels(10, 0, 50) == Double.POSITIVE_INFINITY
+            World.projectedEdgePixels(10, -5, 50) == Double.POSITIVE_INFINITY
     }
 
     def "Rendering a generated world actually draws terrain, not just sky."()

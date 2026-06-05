@@ -1,4 +1,4 @@
-package app.engine.world.render;
+package app.engine.world;
 
 import java.util.Arrays;
 import java.util.Comparator;

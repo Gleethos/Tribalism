@@ -99,6 +99,22 @@ public final class WorldSector {
         return _children == null;
     }
 
+    /**
+     *  @return {@code true} if this is a branch whose every child is a {@link #isLeaf()
+     *          leaf} &mdash; i.e. a solid {@value WorldTreeNode#RESOLUTION}-cubed block of
+     *          voxels with no deeper structure. A leaf itself returns {@code false}
+     *          (it has no children). The renderer treats such a block as the unit it
+     *          meshes and the traversal treats it as a place to stop descending.
+     */
+    public boolean hasOnlyLeafChildren() {
+        if ( _children == null )
+            return false;
+        for ( int i = 0; i < WorldTreeNode.SECTOR_COUNT; i++ )
+            if ( !_children.sector(i).isLeaf() )
+                return false;
+        return true;
+    }
+
     /** @return {@code true} if this sector is empty space &mdash; invisible on every face. */
     public boolean isFullyTransparent() {
         return _ether.isInvisible();

@@ -63,7 +63,10 @@ app.engine
     ├── WorldTreeNode           A node = Tuple of exactly 512 sectors (8×8×8)
     ├── WorldSector             The recursive cell of the world (the heart)
     ├── Entity                  Sealed entity sum type (CameraEntity | VoxelEntity)
-    ├── World                   The whole world as one value (root + entity lookup)
+    ├── ViewInfo                A frame's camera + frustum + projection (and how to project a point)
+    ├── SectorDrawCollector     Sink a visibility walk hands each drawable sector to
+    ├── CoverageGrid            Screen "already-blocked" buffer for occlusion culling
+    ├── World                   The whole world as one value (root + entity lookup + visibility walk)
     │
     ├── gen              Procedural generation
     │   ├── PerlinNoise         Deterministic, seeded 3D gradient noise + fbm
@@ -75,8 +78,7 @@ app.engine
     │   ├── Cubes               Bounds + Side → face Quad (shared box/mesh geometry)
     │   ├── SectorMesh          A sector's face-culled set of visible faces (within a block)
     │   ├── SectorMeshCache     Builds + memoizes meshes, keyed by the (immutable) sector
-    │   ├── CoverageGrid        Screen "already-blocked" buffer for occlusion culling
-    │   └── WorldRenderer       Walks near→far: frustum + occlusion + LoD culling → quads
+    │   └── WorldRenderer       Turns the sectors World hands it into shaded 2D polygons
     │
     └── demo
         └── WorldEngineDemo     Self-contained, runnable demo window
@@ -351,6 +353,12 @@ actual entities. `withEntity` / `withoutEntity` / `withMovedEntity` keep the two
 in sync — inserting/removing the positional handle in the tree *and* updating the
 lookup. `World` is the value an update loop transforms tick to tick.
 
+`World` is also the **query API** for everything that needs to interrogate the
+world rather than mutate it. Most importantly it owns the per-frame visibility walk
+`collectSectorsForRendering` (frustum + occlusion + LoD culling), so a renderer
+consumes a clean stream of visible sectors instead of coupling itself to the tree
+structure — see §7.
+
 ---
 
 ## 6. Procedural generation (`app.engine.world.gen`)
@@ -394,12 +402,37 @@ face from the children on it. The result is returned already `aggregated()`.
 The renderer is a **pure function of world state**; it does not own any
 simulation state.
 
+### What is visible vs. how it looks (`World.collectSectorsForRendering`)
+
+Deciding *what* is visible is a world concern, not a renderer concern. The whole
+per-frame visibility walk therefore lives on **`World`**, not on any renderer:
+
+```java
+World.RenderStats collectSectorsForRendering(
+        CameraF64 camera, int width, int height, double refineThresholdPx,
+        SectorDrawCollector collector)
+```
+
+It walks the sector tree from the camera's viewpoint applying **frustum culling**,
+**occlusion culling** and the **level-of-detail decision** (all described below),
+and hands every sector worth drawing to the `collector` together with a
+`ViewInfo` (the frame's camera + frustum + projection) and a `wantsDetail` flag.
+It returns a small `RenderStats` (sectors collected, sectors occlusion-culled). A
+`SectorDrawCollector` decides *how* a collected sector becomes pixels — a box, a
+mesh — but never has to traverse the tree itself.
+
+This is the clean seam between the world and any renderer (or test): the same walk
+serves every renderer, and frustum/occlusion/LoD behaviour can be unit-tested by
+collecting sectors into a list, with **no rendering surface and no renderer
+instantiated** (`CollectSectorsForRendering_Spec`). `WorldRenderer` below is just
+*one* `SectorDrawCollector` that targets `Graphics2D`.
+
 ### Frustum culling (deciding *whether* to descend)
 
 Before anything else, the tree walk is gated by the camera's `frustum()`. As it
 recurses, each sector is first tested with `frustum.intersects(sector.bounds())`;
 if the sector's bounds fall entirely outside the view volume it is skipped — and
-with it its **entire sub-tree**. So the renderer only ever descends into the
+with it its **entire sub-tree**. So the walk only ever descends into the
 fraction of the world the camera can actually see, instead of traversing the whole
 tree every frame. The frustum is built once per frame (cached on the camera) and
 threaded down the recursion.
@@ -414,9 +447,10 @@ a `CoverageGrid` — a coarse grid of screen tiles flagged "already blocked":
   rectangle. If **every tile that rectangle touches is already covered**, the sector
   (and its whole sub-tree) is hidden behind nearer solid geometry, so it is skipped.
 - A sector that is `isSolidOpaque()` (every voxel inside fully opaque — a perfect
-  occluder, detected lazily bottom-up like the insets) is drawn as a single box and
-  **marks the tiles inside its silhouette** (the convex hull of its projected
-  corners). Front-to-back order guarantees those marks come from *closer* geometry.
+  occluder, detected lazily bottom-up like the insets) is collected as a single box
+  (the renderer draws it) and the walk **marks the tiles inside its silhouette** (the
+  convex hull of its projected corners). Front-to-back order guarantees those marks
+  come from *closer* geometry.
 
 The two rules are deliberately conservative so culling never hides something
 visible: marking is *inner* (only tiles fully inside an occluder), testing is
@@ -427,7 +461,7 @@ anyway — so this also saves those meshes.)
 
 ### Level-of-detail selection (deciding *how deep* to descend)
 
-For sectors that survive culling, `WorldRenderer` estimates how big each would
+For sectors that survive culling, the walk estimates how big each would
 appear on screen:
 
 ```java
@@ -435,18 +469,20 @@ projectedEdgePixels(edgeLength, distance, focalLengthPx) = edgeLength · focal /
 focalLengthPx(camera, viewportHeight)                    = (height/2) / tan(fovY/2)
 ```
 
-If a sector's projected edge is *below* the threshold it is drawn as a single
-coarse "super-voxel" (one inset-fitted box); otherwise it needs detail and the
-renderer descends. Thus distant geometry is drawn coarsely (high in the tree) and
-nearby geometry finely. These functions are pure and unit-tested.
+If a sector's projected edge is *below* the threshold it is collected as a single
+coarse "super-voxel" (`wantsDetail == false`, one inset-fitted box); otherwise it
+needs detail and the walk descends. Thus distant geometry is drawn coarsely (high in
+the tree) and nearby geometry finely. These functions (`World.projectedEdgePixels` /
+`World.focalLengthPx`) are pure and unit-tested.
 
 ### Face culling within a block (deciding *which faces*)
 
 Descending all the way to individual leaf voxels and drawing each as a cube is
 wasteful: a solid region draws the faces *between* adjacent voxels, only to overdraw
 them. So when the walk reaches a **full-detail block** — a branch whose children are
-all leaves (an 8×8×8 grid of voxels) — it does not recurse into 512 cubes. Instead
-it draws the block's **`SectorMesh`**: the set of *exposed* voxel faces, where a face
+all leaves (an 8×8×8 grid of voxels) — the walk stops descending (it does not recurse
+into 512 cubes) and the renderer draws the block's **`SectorMesh`**: the set of
+*exposed* voxel faces, where a face
 is kept only if the neighbouring voxel in that direction is empty (or lies outside
 the block). Faces buried between two opaque voxels are dropped, collapsing a solid
 block from up to `512·6 = 3072` faces to its outer shell (e.g. `384`).
@@ -463,7 +499,7 @@ future win on top of this.)
 
 ### Drawing
 
-The walk produces a flat list of world-space **`Quad`s** from two sources:
+The renderer turns each collected sector into world-space **`Quad`s** from two sources:
 
 - **Coarse boxes** (distant sectors / lone big leaves). A box is emitted only if its
   sector is **majority opaque** — `combined()` `OPACITY` ≥
@@ -542,11 +578,12 @@ structure:
 | `world/WorldTree_Spec`      | 512-node layout, fall-down, per-side LoD + material merge |
 | `world/Entity_Spec`         | camera/voxel entities, sum-type matching |
 | `world/World_Spec`          | add/remove/move keeping tree + lookup in sync |
+| `world/CollectSectorsForRendering_Spec` | the visibility walk (frustum + occlusion + LoD) tested with no renderer |
+| `world/CoverageGrid_Spec`   | conservative mark/test, off-screen handling, occlusion of covered rects |
 | `world/gen/PerlinNoise_Spec`| determinism, range, lattice zeros |
 | `world/gen/WorldGenerator_Spec` | material classification, adaptive subdivision, reproducibility |
 | `world/render/WorldRenderer_Spec` | LoD maths, frustum culling, majority-opaque, texture→colour, occlusion culling behind solids, render smoke test |
 | `world/render/SectorMeshCache_Spec` | within-block face culling (interior faces dropped), shared-face culling, mesh memoization |
-| `world/render/CoverageGrid_Spec` | conservative mark/test, off-screen handling, occlusion of covered rects |
 
 Run them with:
 
