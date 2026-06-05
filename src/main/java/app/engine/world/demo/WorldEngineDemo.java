@@ -12,7 +12,6 @@ import app.engine.world.ScreenId;
 import app.engine.world.ScreenInputEvent;
 import app.engine.world.ScreenInputs;
 import app.engine.world.World;
-import app.engine.world.WorldSector;
 import app.engine.world.gen.WorldGenerator;
 import app.engine.world.render.WorldRenderer;
 import org.jspecify.annotations.Nullable;
@@ -51,7 +50,6 @@ import java.util.List;
 public final class WorldEngineDemo
 {
     private static final int REGION_EDGE = 128;
-    private static final int GENERATION_DEPTH = 2;
 
     private static final long     CAMERA_ID = 1L;
     private static final ScreenId SCREEN_ID = ScreenId.of(1L);
@@ -62,12 +60,19 @@ public final class WorldEngineDemo
         long start = System.currentTimeMillis();
 
         BoundsF64 region = BoundsF64.cube(VecF64.zero(), REGION_EDGE);
-        WorldSector root = WorldGenerator.withSeed(1337L).generate(region, GENERATION_DEPTH);
+        // The generator now lives inside the World; a generation distance spanning the whole
+        // region means the orbiting camera always sees a full landscape (shrink it to watch
+        // the world stream in around a free-flying camera instead).
+        WorldGenerator generator = WorldGenerator.withSeed(1337L)
+                                                 .withDetailDepth(1)
+                                                 .withGenerationDistance(REGION_EDGE * 2.0);
 
-        World world = World.of(root)
+        World world = World.of(region, generator)
                            .createCamera(CAMERA_ID, orbitingCamera(0, (double) INITIAL_W / INITIAL_H))
                            .createScreen(SCREEN_ID, INITIAL_W, INITIAL_H)
-                           .bindScreenToCamera(SCREEN_ID, CAMERA_ID);
+                           .bindScreenToCamera(SCREEN_ID, CAMERA_ID)
+                           // Build the world around the initial camera up front, so the first frame isn't empty.
+                           .update(EngineInputs.of(0.0));
 
         System.out.println("World generated in " + (System.currentTimeMillis() - start) + " ms.");
         SwingUtilities.invokeLater(() -> showWindow(world));
@@ -177,7 +182,8 @@ public final class WorldEngineDemo
             } else {
                 pending.clear(); // ignore stray events while orbiting
                 double angle = (now - orbitStart) / 4_000_000_000.0;
-                world = world.createCamera(CAMERA_ID, orbitingCamera(angle, (double) w / h));
+                world = world.createCamera(CAMERA_ID, orbitingCamera(angle, (double) w / h))
+                             .update(EngineInputs.of(dt)); // empty inputs: just stream terrain in around the camera
             }
 
             worldRef[0] = world;

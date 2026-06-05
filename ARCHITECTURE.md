@@ -75,11 +75,11 @@ app.engine
     ├── ViewInfo                A frame's camera + frustum + projection (and how to project a point)
     ├── SectorDrawCollector     Sink a visibility walk hands each drawable sector to
     ├── CoverageGrid            Screen "already-blocked" buffer for occlusion culling
-    ├── World                   The whole world as one value class (tree + entities + screens + update)
+    ├── World                   Value class: tree + entities + screens + generator + update
     │
-    ├── gen              Procedural generation
+    ├── gen              Procedural generation (owned by World)
     │   ├── PerlinNoise         Deterministic, seeded 3D gradient noise + fbm
-    │   └── WorldGenerator      Adaptive noise → sector tree
+    │   └── WorldGenerator      Adaptive noise → sector tree (+ generationDistance/detailDepth)
     │
     ├── render           First-draft Graphics2D rendering
     │   ├── TexturePalette      TextureProfile → AWT Color (keeps AWT out of the model)
@@ -357,7 +357,9 @@ a record can hold and needs to encapsulate some state) tying together four thing
 WorldSector                       root          // spatial tree (positional queries)
 Association<Long, Entity>         entities       // id → actual entity (cameras included)
 Association<ScreenId, Screen>     screens        // render targets the world knows about
+WorldGenerator?                   generator      // optional: how the world builds itself
 (private) per-screen input state                 // currently-held keys, between updates
+(private) generated-chunk set                    // which chunks the generator has filled
 ```
 
 The `root` holds only `WorldTreeEntityId`s; the `entities` association is the
@@ -383,6 +385,16 @@ encapsulated per-screen state); update folds the events into that state and turn
 keys + accumulated cursor delta into **camera mutations** on each screen's bound camera
 via the pure `CameraFlight` controls (the free-fly logic, lifted out of the demo into
 the engine). Keys are the engine-neutral `Key` enum, so the world model never sees AWT.
+
+**Generation around cameras.** A world can own a `WorldGenerator` (`World.of(region,
+generator)`); `update` then **builds the world around every camera**. The root is a grid
+of top-level cells ("chunks"); after the camera mutations, each chunk whose nearest point
+lies within the generator's `generationDistance` of *any* camera is generated (once) and
+spliced in, its index remembered so it is never regenerated. So terrain streams in as a
+camera moves, and a camera always has something to look at — while distant, unvisited
+chunks cost nothing. A world built without a generator (`World.of(root)`) simply skips
+this step. (Today the root is a fixed cube, so generation is bounded by it; growing the
+root to follow a camera beyond it — an infinite world — is a future step.)
 
 `World` is also the **query API** for everything that interrogates the world rather than
 mutating it — most importantly the per-frame visibility walk `collectSectorsForRendering`
@@ -424,6 +436,14 @@ bottomed-out mixed region takes its *dominant* sampled material — no percentag
 Its ether is uniform (the material's appearance on all six faces); per-side
 appearance only becomes meaningful higher up, once `aggregated()` summarizes each
 face from the children on it. The result is returned already `aggregated()`.
+
+The generator carries two pieces of config the world uses to drive itself:
+`generationDistance` (how close a camera must be for `World.update` to build a region)
+and `detailDepth` (how deep `generate(bounds)` subdivides a chunk by default). It is
+**owned by the `World`** (see §5) rather than called from outside; the standalone
+`generate(bounds, maxDepth)` remains for tests and one-off builds. Making generation
+*pluggable* (an interface the world depends on, with `WorldGenerator` as one impl) is a
+natural future step — and would also dissolve the current `world ↔ world.gen` coupling.
 
 ---
 
@@ -577,9 +597,13 @@ the LoD selection.
 java -cp <classpath> app.engine.world.demo.WorldEngineDemo
 ```
 
-It procedurally generates a 128-unit landscape (seed `1337`, depth 2), then drives
+It builds a generator-backed world over a 128-unit region (seed `1337`), then drives
 everything through the **real engine pipeline**: it `createCamera`s a camera entity,
-`createScreen`s a screen bound to it, and runs a ~60 FPS Swing timer. Each frame the
+`createScreen`s a screen bound to it, and runs a ~60 FPS Swing timer. The terrain is no
+longer generated up front — the world owns the `WorldGenerator` and streams chunks in via
+`World.update` around the camera (the demo uses a generation distance spanning the whole
+region so the orbit always sees a full landscape; shrink it to watch terrain stream in
+around a free-flying camera). Each frame the
 demo only *translates* raw Swing input into `ScreenInputEvent`s, calls
 `world.update(EngineInputs(dt, {screen: events}))`, and asks the renderer to draw the
 screen (`renderer.render(g, world, screenId)`); the panel's size is mirrored onto the
@@ -616,6 +640,7 @@ structure:
 | `world/World_Spec`          | add/remove/move keeping tree + lookup in sync |
 | `world/WorldScreens_Spec`   | screen/camera lifecycle, one-way binding, resize, cameras stay out of the tree |
 | `world/WorldUpdate_Spec`    | inputs → camera mutations, held keys remembered between updates, unbound no-op |
+| `world/WorldGeneration_Spec`| generator owned by World, chunks built around cameras within reach, idempotent, no-generator skip |
 | `world/CameraFlight_Spec`   | pure free-fly math: move/strafe/sprint/look, dt scaling, no-input identity |
 | `world/CollectSectorsForRendering_Spec` | the visibility walk (frustum + occlusion + LoD) tested with no renderer |
 | `world/CoverageGrid_Spec`   | conservative mark/test, off-screen handling, occlusion of covered rects |
@@ -643,7 +668,9 @@ the `World` **value class** with multi-**screen** support (screens bound one-way
 camera entities by id), an event-based input model (`EngineInputs` → per-screen
 `ScreenInputs` event logs) and a `World.update` step that folds input into **camera
 mutations** via the pure `CameraFlight` controls (held state remembered between
-updates); procedural generation; first-draft Graphics2D rendering with distance LoD,
+updates); a **`WorldGenerator` owned by the world** that `update` uses to build/stream
+terrain in chunks around cameras within a configured `generationDistance`; first-draft
+Graphics2D rendering with distance LoD,
 frustum culling, inset-fitted LoD boxes, cached face-culled voxel meshes **and
 near→far software occlusion culling** (a coverage grid that skips sub-trees hidden
 behind solid geometry); a free-fly **and** auto-orbit demo, driven end-to-end through
@@ -671,8 +698,11 @@ the real renderer to come:
 
 - Extending `World.update` beyond camera control: **entity behaviour** and
   **light-trace propagation/radiation** as part of the same per-tick step.
-- **Generation around camera entities** within a radius (streaming the world as
-  the camera moves), rather than a single fixed region.
+- **Growing the world beyond its root** to follow a camera that flies out of it (an
+  unbounded/infinite world). Chunk streaming around cameras *within* the root already
+  exists; re-rooting to extend past it does not.
+- Making **generation pluggable** (an interface the world depends on), which would also
+  break the current `world ↔ world.gen` package coupling.
 - Recursive sub-entities inside `VoxelEntity`.
 - The **procedural noise shader** that consumes `TextureProfile` hints (replacing
   the first-draft `Graphics2D`/`TexturePalette` path), plus dynamic 64→32-bit

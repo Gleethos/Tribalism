@@ -3,6 +3,7 @@ package app.engine.world;
 import app.engine.primitives.BoundsF64;
 import app.engine.primitives.CameraF64;
 import app.engine.primitives.VecF64;
+import app.engine.world.gen.WorldGenerator;
 import org.jspecify.annotations.Nullable;
 import sprouts.Association;
 import sprouts.Pair;
@@ -17,24 +18,27 @@ import java.util.Optional;
 /**
  *  The whole world as a single immutable value.
  *  <p>
- *  A world ties together four things:
+ *  A world ties together:
  *  <ul>
  *      <li>the {@code root} of the spatial {@link WorldSector} tree (positional
  *          queries; it holds only {@link WorldTreeEntityId}s),</li>
  *      <li>an {@code entities} lookup from id to {@link Entity} (the authoritative
  *          store of actual entities, cameras included),</li>
- *      <li>the {@link Screen}s it renders to, each referencing a camera by id, and</li>
+ *      <li>the {@link Screen}s it renders to, each referencing a camera by id,</li>
  *      <li>the accumulated per-screen input state (which keys are currently held),
- *          which is encapsulated &mdash; events only report <i>changes</i>, so the
- *          world must remember held state between {@link #update updates}.</li>
+ *          encapsulated &mdash; events only report <i>changes</i>, so the world must
+ *          remember held state between {@link #update updates}, and</li>
+ *      <li>(optionally) its own {@link WorldGenerator}, which {@link #update} uses to
+ *          build terrain around cameras on demand.</li>
  *  </ul>
- *  It is a {@code class} rather than a {@code record} precisely so this last piece can
+ *  It is a {@code class} rather than a {@code record} precisely so these last pieces can
  *  be encapsulated and so the type has room to grow; it nonetheless remains a
  *  <b>value</b>: immutable, every operation returns a new world, and
  *  {@code equals}/{@code hashCode} are defined purely by its fields.
  *  <p>
  *  {@link #update(EngineInputs)} is the function an engine loop applies each tick to
- *  fold input into world state (today: free-fly camera control via {@link CameraFlight}).
+ *  fold input into world state: free-fly camera control via {@link CameraFlight}, then
+ *  generating the world around every camera within the generator's reach.
  */
 public final class World
 {
@@ -45,31 +49,67 @@ public final class World
     private final Association<Long, Entity> _entities;
     private final Association<ScreenId, Screen> _screens;
     private final Association<ScreenId, ScreenInputState> _inputStates;
+    private final @Nullable WorldGenerator _generator;
+    /** Indices of the root's top-level cells already generated, so they are not regenerated. */
+    private final ValueSet<Integer> _generatedChunks;
 
     private World(
         WorldSector root,
         Association<Long, Entity> entities,
         Association<ScreenId, Screen> screens,
-        Association<ScreenId, ScreenInputState> inputStates
+        Association<ScreenId, ScreenInputState> inputStates,
+        @Nullable WorldGenerator generator,
+        ValueSet<Integer> generatedChunks
     ) {
-        _root        = Objects.requireNonNull(root);
-        _entities    = Objects.requireNonNull(entities);
-        _screens     = Objects.requireNonNull(screens);
-        _inputStates = Objects.requireNonNull(inputStates);
+        _root            = Objects.requireNonNull(root);
+        _entities        = Objects.requireNonNull(entities);
+        _screens         = Objects.requireNonNull(screens);
+        _inputStates     = Objects.requireNonNull(inputStates);
+        _generator       = generator;
+        _generatedChunks = Objects.requireNonNull(generatedChunks);
     }
 
-    /** @return An empty world whose root covers {@code bounds}, made of nothing. */
+    /** @return A copy of this world with the given core state, preserving its generator and generated-chunk set. */
+    private World copy(
+        WorldSector root,
+        Association<Long, Entity> entities,
+        Association<ScreenId, Screen> screens,
+        Association<ScreenId, ScreenInputState> inputStates
+    ) {
+        return new World(root, entities, screens, inputStates, _generator, _generatedChunks);
+    }
+
+    /** @return An empty world whose root covers {@code bounds}, made of nothing, with no generator. */
     public static World of( BoundsF64 bounds ) {
         return of(WorldSector.empty(bounds));
     }
 
-    /** @return A world over the given {@code root} with no entities or screens yet. */
+    /** @return A world over the given {@code root} with no entities, screens or generator yet. */
     public static World of( WorldSector root ) {
         return new World(
                 root,
                 Association.between(Long.class, Entity.class),
                 Association.between(ScreenId.class, Screen.class),
-                Association.between(ScreenId.class, ScreenInputState.class)
+                Association.between(ScreenId.class, ScreenInputState.class),
+                null,
+                ValueSet.of(Integer.class)
+        );
+    }
+
+    /**
+     *  @return A world over {@code region} that generates itself on demand with {@code generator}.
+     *          The root is pre-divided into a grid of empty top-level cells (the "chunks");
+     *          {@link #update} fills the cells near cameras, within the generator's
+     *          {@link WorldGenerator#generationDistance() reach}, as cameras come and go.
+     */
+    public static World of( BoundsF64 region, WorldGenerator generator ) {
+        return new World(
+                WorldSector.empty(region).subdivide(),
+                Association.between(Long.class, Entity.class),
+                Association.between(ScreenId.class, Screen.class),
+                Association.between(ScreenId.class, ScreenInputState.class),
+                Objects.requireNonNull(generator),
+                ValueSet.of(Integer.class)
         );
     }
 
@@ -104,10 +144,15 @@ public final class World
         return _screens.values();
     }
 
+    /** @return The world's generator, if it has one (worlds can also be purely hand-built). */
+    public Optional<WorldGenerator> generator() {
+        return Optional.ofNullable(_generator);
+    }
+
     // ---- Entity transforms (tree + lookup kept in sync) -------------------------
 
     public World withRoot( WorldSector newRoot ) {
-        return new World(newRoot, _entities, _screens, _inputStates);
+        return copy(newRoot, _entities, _screens, _inputStates);
     }
 
     /**
@@ -117,7 +162,7 @@ public final class World
      */
     public World withEntity( Entity entity, int maxDepth ) {
         WorldSector newRoot = _root.insert(entity.treeId(), maxDepth);
-        return new World(newRoot, _entities.put(entity.id(), entity), _screens, _inputStates);
+        return copy(newRoot, _entities.put(entity.id(), entity), _screens, _inputStates);
     }
 
     public World withEntity( Entity entity ) {
@@ -127,7 +172,7 @@ public final class World
     /** Removes an entity from both the tree and the lookup. */
     public World withoutEntity( Entity entity, int maxDepth ) {
         WorldSector newRoot = _root.remove(entity.treeId(), maxDepth);
-        return new World(newRoot, _entities.remove(entity.id()), _screens, _inputStates);
+        return copy(newRoot, _entities.remove(entity.id()), _screens, _inputStates);
     }
 
     public World withoutEntity( Entity entity ) {
@@ -144,7 +189,7 @@ public final class World
      */
     public World withMovedEntity( Entity previous, Entity updated, int maxDepth ) {
         WorldSector newRoot = _root.remove(previous.treeId(), maxDepth).insert(updated.treeId(), maxDepth);
-        return new World(newRoot, _entities.put(updated.id(), updated), _screens, _inputStates);
+        return copy(newRoot, _entities.put(updated.id(), updated), _screens, _inputStates);
     }
 
     // ---- Cameras ----------------------------------------------------------------
@@ -158,19 +203,19 @@ public final class World
      *  churning it as the camera flies around every frame.
      */
     public World createCamera( long id, CameraF64 camera ) {
-        return new World(_root, _entities.put(id, Entity.CameraEntity.of(id, camera)), _screens, _inputStates);
+        return copy(_root, _entities.put(id, Entity.CameraEntity.of(id, camera)), _screens, _inputStates);
     }
 
     /** Removes the camera entity with the given id (screens bound to it then render nothing). */
     public World destroyCamera( long id ) {
-        return new World(_root, _entities.remove(id), _screens, _inputStates);
+        return copy(_root, _entities.remove(id), _screens, _inputStates);
     }
 
     // ---- Screens ----------------------------------------------------------------
 
     /** Adds (or replaces) a screen. */
     public World withScreen( Screen screen ) {
-        return new World(_root, _entities, _screens.put(screen.id(), screen), _inputStates);
+        return copy(_root, _entities, _screens.put(screen.id(), screen), _inputStates);
     }
 
     /** Creates a new, unbound screen of the given id and pixel size. */
@@ -180,7 +225,7 @@ public final class World
 
     /** Removes a screen and any input state accumulated for it. */
     public World destroyScreen( ScreenId id ) {
-        return new World(_root, _entities, _screens.remove(id), _inputStates.remove(id));
+        return copy(_root, _entities, _screens.remove(id), _inputStates.remove(id));
     }
 
     /** @return This world with the screen resized (its bound camera, if any, is kept). */
@@ -211,6 +256,11 @@ public final class World
      *  plus accumulated cursor movement are turned into <b>camera mutations</b> on the
      *  screen's bound camera via {@link CameraFlight}. Screens not mentioned in the
      *  inputs are left untouched.
+     *  <p>
+     *  Then, if the world has a {@link WorldGenerator}, it <b>builds itself around every
+     *  camera</b>: any not-yet-generated region within the generator's
+     *  {@link WorldGenerator#generationDistance() reach} of a camera is generated, so a
+     *  camera always has something to look at as it moves (see {@link #generateAroundCameras}).
      *
      *  @param inputs What happened on each screen, and how much time elapsed.
      *  @return The world advanced by one step.
@@ -219,7 +269,53 @@ public final class World
         World result = this;
         for ( Pair<ScreenId, ScreenInputs> entry : inputs.screens() )
             result = result.applyScreenInputs(entry.first(), entry.second(), inputs.dtSeconds());
-        return result;
+        return result.generateAroundCameras();
+    }
+
+    /**
+     *  Generates, around every camera, any region within the generator's reach that has
+     *  not been generated yet &mdash; the lazy "stream the world in as you move" step.
+     *  <p>
+     *  The root is a grid of top-level cells (created by {@link #of(BoundsF64, WorldGenerator)});
+     *  each is a "chunk". For every camera, each chunk whose nearest point lies within
+     *  {@link WorldGenerator#generationDistance()} of the camera is generated (once) and
+     *  spliced in, and its index remembered so it is never regenerated. A world with no
+     *  generator, or whose root is not a chunk grid, is returned unchanged.
+     */
+    private World generateAroundCameras() {
+        if ( _generator == null )
+            return this;
+        WorldTreeNode node = _root.children();
+        if ( node == null )
+            return this; // not a chunk-grid root (e.g. a hand-built world): nothing to stream.
+
+        double reach = _generator.generationDistance();
+        ValueSet<Integer> generated = _generatedChunks;
+        boolean changed = false;
+        for ( Entity entity : _entities.values() ) {
+            if ( !(entity instanceof Entity.CameraEntity cameraEntity) )
+                continue;
+            VecF64 eye = cameraEntity.camera().position();
+            for ( int i = 0; i < WorldTreeNode.SECTOR_COUNT; i++ ) {
+                if ( generated.contains(i) )
+                    continue;
+                BoundsF64 cell = node.sector(i).bounds();
+                if ( distanceToBounds(eye, cell) <= reach ) {
+                    node = node.withSector(i, _generator.generate(cell));
+                    generated = generated.add(i);
+                    changed = true;
+                }
+            }
+        }
+        if ( !changed )
+            return this;
+        WorldSector newRoot = _root.withChildren(node).aggregated();
+        return new World(newRoot, _entities, _screens, _inputStates, _generator, generated);
+    }
+
+    /** @return The distance from {@code point} to the nearest point of {@code bounds} (0 if inside). */
+    private static double distanceToBounds( VecF64 point, BoundsF64 bounds ) {
+        return point.distance(point.clamp(bounds.min(), bounds.max()));
     }
 
     private World applyScreenInputs( ScreenId screenId, ScreenInputs screenInputs, double dtSeconds ) {
@@ -248,7 +344,7 @@ public final class World
                 newEntities = _entities.put(cameraId, Entity.CameraEntity.of(cameraId, moved));
             }
         }
-        return new World(_root, newEntities, _screens, newStates);
+        return copy(_root, newEntities, _screens, newStates);
     }
 
     /** The currently-held keys for one screen; remembered between updates since events report only changes. */
@@ -442,12 +538,14 @@ public final class World
         return _root.equals(other._root)
             && _entities.equals(other._entities)
             && _screens.equals(other._screens)
-            && _inputStates.equals(other._inputStates);
+            && _inputStates.equals(other._inputStates)
+            && Objects.equals(_generator, other._generator)
+            && _generatedChunks.equals(other._generatedChunks);
     }
 
     @Override
     public int hashCode() {
-        return Objects.hash(_root, _entities, _screens, _inputStates);
+        return Objects.hash(_root, _entities, _screens, _inputStates, _generator, _generatedChunks);
     }
 
     @Override

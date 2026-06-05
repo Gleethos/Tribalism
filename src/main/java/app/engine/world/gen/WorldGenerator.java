@@ -32,6 +32,9 @@ import java.util.Map;
  *  @param soilDepth    How far below the surface remains soil before turning to rock.
  *  @param grassDepth   The thickness of the grass band at the very surface.
  *  @param caveThreshold Cave noise above this carves out air; {@code >= 1} disables caves.
+ *  @param generationDistance How close (in world units) a camera must be to a region for
+ *                            {@link app.engine.world.World} to generate it around the camera.
+ *  @param detailDepth  How many levels {@link #generate(BoundsF64)} subdivides a region by default.
  */
 public record WorldGenerator(
     PerlinNoise noise,
@@ -41,20 +44,39 @@ public record WorldGenerator(
     double frequency,
     double soilDepth,
     double grassDepth,
-    double caveThreshold
+    double caveThreshold,
+    double generationDistance,
+    int detailDepth
 ) {
     /** @return A generator with sensible defaults for the given {@code seed}. */
     public static WorldGenerator withSeed( long seed ) {
         return new WorldGenerator(
                 new PerlinNoise(seed),
-                /* seaLevel      */ -8,
-                /* surfaceLevel  */  0,
-                /* amplitude     */ 24,
-                /* frequency     */ 0.015,
-                /* soilDepth     */  6,
-                /* grassDepth    */  1.5,
-                /* caveThreshold */  0.65
+                /* seaLevel           */ -8,
+                /* surfaceLevel       */  0,
+                /* amplitude          */ 24,
+                /* frequency          */  0.015,
+                /* soilDepth          */  6,
+                /* grassDepth         */  1.5,
+                /* caveThreshold      */  0.65,
+                /* generationDistance */ 96,
+                /* detailDepth        */  1
             );
+    }
+
+    /** @return This generator configured to build the world {@code distance} units around cameras. */
+    public WorldGenerator withGenerationDistance( double distance ) {
+        return new WorldGenerator(noise, seaLevel, surfaceLevel, amplitude, frequency, soilDepth, grassDepth, caveThreshold, distance, detailDepth);
+    }
+
+    /** @return This generator configured to subdivide a region {@code depth} levels by default. */
+    public WorldGenerator withDetailDepth( int depth ) {
+        return new WorldGenerator(noise, seaLevel, surfaceLevel, amplitude, frequency, soilDepth, grassDepth, caveThreshold, generationDistance, depth);
+    }
+
+    /** @return The sector covering {@code bounds}, generated to this generator's {@link #detailDepth()}. */
+    public WorldSector generate( BoundsF64 bounds ) {
+        return generate(bounds, detailDepth);
     }
 
     /** @return The terrain surface height at world coordinates {@code (x, z)}. */
