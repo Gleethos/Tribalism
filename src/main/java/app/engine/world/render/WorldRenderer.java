@@ -144,7 +144,7 @@ public final class WorldRenderer
             if ( sector.isSolidOpaque() ) {
                 // A perfect occluder: draw it as a single box (its mesh would just be the
                 // shell anyway) and record its silhouette so it blocks what is behind.
-                emitBox(sector);
+                emitSector(sector, false);
                 if ( corners != null )
                     coverage.markOccluder(corners);
                 return;
@@ -153,16 +153,13 @@ public final class WorldRenderer
             double distance = camera.position().distance(sector.bounds().center());
             boolean wantsDetail = projectedEdgePixels(maxEdge(sector.bounds()), distance, focal) > _refineThresholdPx;
 
-            if ( !wantsDetail || sector.isLeaf() ) {
-                if ( isMajorityOpaque(sector.ether()) )
-                    emitBox(sector);
+            emitSector(sector, wantsDetail);
+
+            if ( sector.isLeaf() )
                 return;
-            }
-            if ( hasOnlyLeafChildren(sector) ) {
-                for ( Quad quad : _meshCache.meshOf(sector).quads() )
-                    emitQuad(quad);
+            if ( hasOnlyLeafChildren(sector) )
                 return;
-            }
+
             // Recurse, nearest child first, so nearer occluders are marked before farther
             // siblings are tested.
             WorldTreeNode node = sector.children();
@@ -175,6 +172,18 @@ public final class WorldRenderer
             Arrays.sort(order, Comparator.comparingDouble(i -> dist[i]));
             for ( int i : order )
                 collect(node.sector(i));
+        }
+
+        private void emitSector( WorldSector sector, boolean wantsDetail ) {
+            if ( sector.isSolidOpaque() ) {
+                emitBox(sector);
+            } else if ( !wantsDetail || sector.isLeaf() ) {
+                if ( isMajorityOpaque(sector.ether()) )
+                    emitBox(sector);
+            } else if ( hasOnlyLeafChildren(sector) ) {
+                for ( Quad quad : _meshCache.meshOf(sector).quads() )
+                    emitQuad(quad);
+            }
         }
 
         private void emitBox( WorldSector sector ) {
