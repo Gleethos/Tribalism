@@ -12,18 +12,16 @@ import app.engine.world.ScreenInputEvent;
 import app.engine.world.ScreenInputs;
 import app.engine.world.World;
 import app.engine.world.gen.WorldGenerator;
-import app.engine.world.render.WorldRenderer;
+import app.engine.world.render.FrameStats;
+import app.engine.world.render.Graphics2DRenderer;
+import app.engine.world.render.Renderer;
 import org.jspecify.annotations.Nullable;
 
+import javax.swing.JComponent;
 import javax.swing.JFrame;
-import javax.swing.JPanel;
 import javax.swing.SwingUtilities;
 import javax.swing.Timer;
-import java.awt.Color;
 import java.awt.Dimension;
-import java.awt.Font;
-import java.awt.Graphics;
-import java.awt.Graphics2D;
 import java.awt.Point;
 import java.awt.event.ComponentAdapter;
 import java.awt.event.ComponentEvent;
@@ -87,33 +85,23 @@ public final class WorldEngineDemo
     }
 
     private static void showWindow( World initialWorld ) {
-        WorldRenderer renderer = new WorldRenderer();
+        // The renderer is a swappable backend behind the Renderer SPI: it owns its viewport
+        // component and its own render loop; the demo just publishes the latest world to it.
+        // Swap Graphics2DRenderer for the GL backend here once it lands.
+        Renderer renderer = new Graphics2DRenderer();
+        renderer.setWorld(initialWorld);
 
         // A World is a deeply immutable value, so it can cross threads with no locking: the
-        // background updater writes the latest world, the EDT only reads it for rendering. Input
-        // events are produced on the EDT (listeners) and consumed on the updater.
+        // background updater writes the latest world, the renderer reads the most recent one.
+        // Input events are produced on the EDT (listeners) and consumed on the updater.
         AtomicReference<World> worldRef = new AtomicReference<>(initialWorld);
         AtomicBoolean underControl = new AtomicBoolean(false);
         ConcurrentLinkedQueue<ScreenInputEvent> events = new ConcurrentLinkedQueue<>();
         AtomicReference<Dimension> sizeRef = new AtomicReference<>(new Dimension(INITIAL_W, INITIAL_H));
         Point[] lastCursor = { null }; // EDT-only: cursor deltas are computed before enqueueing.
 
-        JPanel canvas = new JPanel() {
-            @Override
-            protected void paintComponent( Graphics g ) {
-                super.paintComponent(g);
-                renderer.render((Graphics2D) g, worldRef.get(), SCREEN_ID);
-
-                String mode = underControl.get()
-                        ? "free-fly  -  W/A/S/D move, Q/E or Space up/down, Shift sprint, mouse look"
-                        : "auto-orbit  -  press W/A/S/D or move the mouse to take control";
-                g.setColor(Color.WHITE);
-                g.setFont(new Font(Font.MONOSPACED, Font.PLAIN, 12));
-                g.drawString("World Engine demo  -  " + mode, 12, 20);
-                g.drawString("faces drawn: " + renderer.facesDrawn()
-                           + "   occlusion-culled sectors: " + renderer.occlusionCulledSectors(), 12, 38);
-            }
-        };
+        // The renderer draws only the world (overlays are deferred); diagnostics go to the title bar.
+        JComponent canvas = renderer.viewportFor(SCREEN_ID);
         canvas.setPreferredSize(new Dimension(INITIAL_W, INITIAL_H));
         canvas.setFocusable(true);
         canvas.addComponentListener(new ComponentAdapter() {
@@ -200,6 +188,7 @@ public final class WorldEngineDemo
                                  .update(EngineInputs.of(dt).withScreen(SCREEN_ID, inputs));
                 }
                 worldRef.set(world);
+                renderer.setWorld(world); // publish to the backend, which paints on its own loop
 
                 try { Thread.sleep(6); } // pace updates; cheap once nearby chunks are generated.
                 catch ( InterruptedException ie ) { Thread.currentThread().interrupt(); }
@@ -208,8 +197,15 @@ public final class WorldEngineDemo
         updater.setDaemon(true);
         updater.start();
 
-        // EDT: simply repaint the latest published world at ~60 FPS.
-        new Timer(16, e -> canvas.repaint()).start();
+        // EDT: the backend drives painting itself; here we only refresh the diagnostics title.
+        new Timer(250, e -> {
+            FrameStats s = renderer.stats(SCREEN_ID);
+            String mode = underControl.get()
+                    ? "free-fly  -  W/A/S/D, Q/E or Space, Shift sprint, mouse look"
+                    : "auto-orbit  -  press W/A/S/D or move the mouse to take control";
+            frame.setTitle("Tribalism - World Engine Demo  |  " + mode
+                         + "  |  faces: " + s.facesDrawn() + "  occlusion-culled: " + s.occlusionCulledSectors());
+        }).start();
     }
 
     /** Maps the AWT key codes the demo cares about onto engine-neutral {@link Key}s. */
