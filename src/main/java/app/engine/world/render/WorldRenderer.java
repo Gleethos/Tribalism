@@ -5,7 +5,6 @@ import app.engine.world.*;
 
 import java.awt.Color;
 import java.awt.Graphics2D;
-import java.awt.Polygon;
 import java.awt.RenderingHints;
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -86,7 +85,7 @@ public final class WorldRenderer
         faces.sort(Comparator.comparingDouble((ScreenFace f) -> f.distance).reversed());
         for ( ScreenFace f : faces ) {
             g.setColor(f.color);
-            g.fillPolygon(f.polygon);
+            g.fillPolygon(f.xs, f.ys, 4);
         }
         _facesDrawn = faces.size();
     }
@@ -113,11 +112,22 @@ public final class WorldRenderer
         if ( s0 == null || s1 == null || s2 == null || s3 == null )
             return; // a corner is at/behind the camera: skip this face for the first draft.
 
-        Polygon polygon = new Polygon();
-        for ( double[] s : new double[][]{ s0, s1, s2, s3 } )
-            polygon.addPoint((int) Math.round(s[0]), (int) Math.round(s[1]));
+        int[] xs = { (int) Math.round(s0[0]), (int) Math.round(s1[0]), (int) Math.round(s2[0]), (int) Math.round(s3[0]) };
+        int[] ys = { (int) Math.round(s0[1]), (int) Math.round(s1[1]), (int) Math.round(s2[1]), (int) Math.round(s3[1]) };
+        if ( offScreen(xs, ys, view.width(), view.height()) )
+            return; // the whole face is outside the viewport: nothing to draw.
+
         Color color = shade(TexturePalette.colorOf(quad.profile()), quad.normal(), lightDirection);
-        out.add(new ScreenFace(polygon, color, view.camera().position().distance(center)));
+        out.add(new ScreenFace(xs, ys, color, view.camera().position().distance(center)));
+    }
+
+    /** @return {@code true} if the polygon's screen bounding box lies entirely outside {@code [0,w] x [0,h]}. */
+    private static boolean offScreen( int[] xs, int[] ys, int w, int h ) {
+        int minX = Math.min(Math.min(xs[0], xs[1]), Math.min(xs[2], xs[3]));
+        int maxX = Math.max(Math.max(xs[0], xs[1]), Math.max(xs[2], xs[3]));
+        int minY = Math.min(Math.min(ys[0], ys[1]), Math.min(ys[2], ys[3]));
+        int maxY = Math.max(Math.max(ys[0], ys[1]), Math.max(ys[2], ys[3]));
+        return maxX < 0 || minX > w || maxY < 0 || minY > h;
     }
 
     /**
@@ -157,6 +167,6 @@ public final class WorldRenderer
         return v < 0 ? 0 : Math.min(v, 255);
     }
 
-    /** A face ready to draw: its screen polygon, colour, and distance for painter's ordering. */
-    private record ScreenFace(Polygon polygon, Color color, double distance) {}
+    /** A face ready to draw: its screen polygon (4 points), colour, and distance for painter's ordering. */
+    private record ScreenFace(int[] xs, int[] ys, Color color, double distance) {}
 }

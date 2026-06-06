@@ -1,6 +1,9 @@
 package app.engine.world.render;
 
+import app.engine.primitives.BoundsF64;
+import app.engine.primitives.VecF64;
 import app.engine.world.Side;
+import app.engine.world.TextureProfile;
 import app.engine.world.WorldSector;
 import app.engine.world.WorldTreeNode;
 import sprouts.Tuple;
@@ -11,7 +14,8 @@ import java.util.Map;
 import java.util.WeakHashMap;
 
 /**
- *  Builds and memoizes the occlusion-culled {@link SectorMesh} of a sector.
+ *  Builds and memoizes the occlusion-culled, <b>greedy-meshed</b> {@link SectorMesh}
+ *  of a sector.
  *  <p>
  *  Meshing a block of voxels is relatively expensive, but a {@link WorldSector} is
  *  an immutable value, so it makes a perfect cache key: the same (structurally
@@ -21,8 +25,14 @@ import java.util.WeakHashMap;
  *  its (otherwise deep) hash code, and {@code equals} short-circuits on identity for
  *  the common "same instance again" hit.
  *  <p>
- *  This deliberately lives in the demo renderer; the data model knows nothing of
- *  meshes.
+ *  <b>Greedy meshing.</b> Within each face direction and layer, adjacent <i>exposed</i>
+ *  voxel faces that share the same appearance are merged into the largest possible
+ *  rectangles. A flat 8&times;8 grass top becomes a single quad instead of 64, which
+ *  directly cuts the renderer's per-frame {@code fillPolygon} count &mdash; with no
+ *  visual change, since a merged rectangle is coplanar and uniformly coloured. A solid
+ *  block collapses from {@code 6*64 = 384} shell faces to just {@code 6}.
+ *  <p>
+ *  This deliberately lives in the demo renderer; the data model knows nothing of meshes.
  */
 public final class SectorMeshCache
 {
@@ -30,7 +40,7 @@ public final class SectorMeshCache
 
     /**
      *  @param block A branch sector whose children are leaf voxels (an 8&times;8&times;8 block).
-     *  @return Its occlusion-culled mesh, built on first request and cached thereafter.
+     *  @return Its occlusion-culled, greedy-meshed faces, built on first request and cached thereafter.
      */
     public SectorMesh meshOf( WorldSector block ) {
         SectorMesh mesh = _cache.get(block);
@@ -44,38 +54,100 @@ public final class SectorMeshCache
     private static SectorMesh build( WorldSector block ) {
         WorldTreeNode node = block.children();
         int res = WorldTreeNode.RESOLUTION;
+        BoundsF64 bounds = block.bounds();
+        double[] origin = { bounds.min().x(), bounds.min().y(), bounds.min().z() };
+        double cell = bounds.size().x() / res; // the block is a cube of uniform voxels
+
         List<Quad> quads = new ArrayList<>();
+        TextureProfile[][] mask = new TextureProfile[res][res];
+        boolean[][] used = new boolean[res][res];
 
-        for ( int z = 0; z < res; z++ ) {
-            for ( int y = 0; y < res; y++ ) {
-                for ( int x = 0; x < res; x++ ) {
-                    WorldSector voxel = node.sector(WorldTreeNode.indexOf(x, y, z));
-                    if ( !WorldRenderer.isMajorityOpaque(voxel.ether()) )
-                        continue; // empty voxel contributes no faces
+        for ( Side side : Side.values() ) {
+            int a = side.axis();
+            int u = otherAxis(a, 0), v = otherAxis(a, 1);
+            int step = side.isPositive() ? 1 : -1;
 
-                    for ( Side side : Side.values() ) {
-                        if ( !isExposed(node, x, y, z, side, res) )
-                            continue; // the neighbour is opaque and hides this face: cull it
-                        quads.add(Cubes.faceQuad(voxel.bounds(), side, voxel.ether().sideOf(side)));
+            for ( int la = 0; la < res; la++ ) {
+                // Mask of exposed, opaque faces in this layer, keyed by appearance.
+                for ( int vv = 0; vv < res; vv++ )
+                    for ( int uu = 0; uu < res; uu++ ) {
+                        mask[uu][vv] = faceAt(node, side, a, la, u, uu, v, vv, step, res);
+                        used[uu][vv] = false;
                     }
-                }
+                // Merge equal, adjacent faces into maximal rectangles (greedy).
+                for ( int vv = 0; vv < res; vv++ )
+                    for ( int uu = 0; uu < res; uu++ ) {
+                        TextureProfile p = mask[uu][vv];
+                        if ( p == null || used[uu][vv] )
+                            continue;
+                        int w = 1;
+                        while ( uu + w < res && !used[uu + w][vv] && p.equals(mask[uu + w][vv]) )
+                            w++;
+                        int h = 1;
+                        grow:
+                        while ( vv + h < res ) {
+                            for ( int k = 0; k < w; k++ )
+                                if ( used[uu + k][vv + h] || !p.equals(mask[uu + k][vv + h]) )
+                                    break grow;
+                            h++;
+                        }
+                        for ( int dv = 0; dv < h; dv++ )
+                            for ( int du = 0; du < w; du++ )
+                                used[uu + du][vv + dv] = true;
+                        quads.add(rectQuad(origin, cell, side, a, u, v, la, uu, vv, w, h, p));
+                    }
             }
         }
         return new SectorMesh(Tuple.of(Quad.class, quads.toArray(new Quad[0])));
     }
 
-    /** @return {@code true} if the face of voxel {@code (x,y,z)} on {@code side} is visible. */
-    private static boolean isExposed( WorldTreeNode node, int x, int y, int z, Side side, int res ) {
-        int step = side.isPositive() ? 1 : -1;
-        int nx = x, ny = y, nz = z;
-        switch ( side.axis() ) {
-            case 0  -> nx += step;
-            case 1  -> ny += step;
-            default -> nz += step;
+    /**
+     *  @return The appearance of voxel ({@code la} along axis {@code a}, {@code uu}/{@code vv}
+     *          on the free axes) on {@code side} if that face is opaque <i>and</i> exposed
+     *          (the neighbour in that direction is empty or outside the block), else {@code null}.
+     */
+    private static TextureProfile faceAt(
+        WorldTreeNode node, Side side, int a, int la, int u, int uu, int v, int vv, int step, int res
+    ) {
+        WorldSector voxel = node.sector(WorldTreeNode.indexOf(coord(0, a, la, u, uu, v, vv),
+                                                              coord(1, a, la, u, uu, v, vv),
+                                                              coord(2, a, la, u, uu, v, vv)));
+        if ( !WorldRenderer.isMajorityOpaque(voxel.ether()) )
+            return null;
+        int nla = la + step;
+        if ( nla >= 0 && nla < res ) {
+            WorldSector neighbour = node.sector(WorldTreeNode.indexOf(coord(0, a, nla, u, uu, v, vv),
+                                                                      coord(1, a, nla, u, uu, v, vv),
+                                                                      coord(2, a, nla, u, uu, v, vv)));
+            if ( WorldRenderer.isMajorityOpaque(neighbour.ether()) )
+                return null; // buried between two opaque voxels: cull this face
         }
-        if ( nx < 0 || ny < 0 || nz < 0 || nx >= res || ny >= res || nz >= res )
-            return true; // block boundary: we cannot see the neighbouring block, so draw it
-        WorldSector neighbour = node.sector(WorldTreeNode.indexOf(nx, ny, nz));
-        return !WorldRenderer.isMajorityOpaque(neighbour.ether());
+        return voxel.ether().sideOf(side);
+    }
+
+    /** Builds the world-space quad for a merged rectangle, reusing {@link Cubes} for winding/normal. */
+    private static Quad rectQuad(
+        double[] origin, double cell, Side side, int a, int u, int v, int la, int u0, int v0, int w, int h, TextureProfile p
+    ) {
+        double[] lo = new double[3];
+        double[] hi = new double[3];
+        lo[a] = origin[a] + la * cell;       hi[a] = lo[a] + cell;
+        lo[u] = origin[u] + u0 * cell;       hi[u] = lo[u] + w * cell;
+        lo[v] = origin[v] + v0 * cell;       hi[v] = lo[v] + h * cell;
+        BoundsF64 box = BoundsF64.of(VecF64.of(lo[0], lo[1], lo[2]), VecF64.of(hi[0], hi[1], hi[2]));
+        return Cubes.faceQuad(box, side, p);
+    }
+
+    /** @return The {@code which}-th (0 or 1) axis other than {@code a}, in ascending order. */
+    private static int otherAxis( int a, int which ) {
+        int[] others = a == 0 ? new int[]{ 1, 2 } : a == 1 ? new int[]{ 0, 2 } : new int[]{ 0, 1 };
+        return others[which];
+    }
+
+    /** @return The grid coordinate on {@code axis} for a voxel at ({@code la} on {@code a}, {@code uu} on {@code u}, {@code vv} on {@code v}). */
+    private static int coord( int axis, int a, int la, int u, int uu, int v, int vv ) {
+        if ( axis == a ) return la;
+        if ( axis == u ) return uu;
+        return vv;
     }
 }

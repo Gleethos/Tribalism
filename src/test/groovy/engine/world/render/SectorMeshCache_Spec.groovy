@@ -47,36 +47,46 @@ class SectorMeshCache_Spec extends Specification
             new SectorMeshCache().meshOf(block { int x, int y, int z -> Material.AIR }).faceCount() == 0
     }
 
-    def "A fully solid block keeps only its outer shell - every interior face is culled."()
+    def "A fully solid block greedy-meshes its outer shell into one quad per face."()
     {
         when:
             var mesh = new SectorMeshCache().meshOf(block { int x, int y, int z -> Material.ROCK })
-        then: 'Only the 6 outer 8x8 faces survive (6*64 = 384)...'
-            mesh.faceCount() == 6 * 64
-        and: '...far fewer than the 512*6 = 3072 a naive per-voxel renderer would draw.'
+        then: 'Each of the 6 faces is one merged 8x8 rectangle: 6 quads...'
+            mesh.faceCount() == 6
+        and: '...vastly fewer than the 512*6 = 3072 a naive per-voxel renderer would draw.'
             mesh.faceCount() < 512 * 6
     }
 
-    def "A column of stacked voxels culls the shared faces between consecutive blocks."()
+    def "A column of stacked voxels greedy-merges each side into a single strip, regardless of height."()
     {
         when: 'A single 1x(height)x1 column of rock along Y at the corner.'
             var mesh = new SectorMeshCache().meshOf(block { int x, int y, int z ->
                 (x == 0 && z == 0 && y < height) ? Material.ROCK : Material.AIR
             })
-        then: 'Four side faces per voxel + one cap at each end = 4*height + 2 (internal interfaces culled).'
-            mesh.faceCount() == 4 * height + 2
+        then: 'The 4 sides each merge into one strip + a cap at each end = 6, however tall the column.'
+            mesh.faceCount() == 6
         where:
             height << [1, 2, 3, 5, 8]
     }
 
-    def "Two adjacent opaque voxels hide the single face between them."()
+    def "Two adjacent opaque voxels hide the shared face and merge their coplanar faces."()
     {
         when: 'Two rock voxels side by side along X.'
             var mesh = new SectorMeshCache().meshOf(block { int x, int y, int z ->
                 (y == 0 && z == 0 && x < 2) ? Material.ROCK : Material.AIR
             })
-        then: '2 voxels * 6 faces - 2 (the shared interface, one from each side) = 10.'
-            mesh.faceCount() == 10
+        then: 'The two X end-caps stay separate; the 2x1 faces on Y and Z each merge into one => 6.'
+            mesh.faceCount() == 6
+    }
+
+    def "Greedy meshing merges within an appearance but not across appearances."()
+    {
+        when: 'A solid floor (y==0): grass on one half (x<4), sand on the other.'
+            var mesh = new SectorMeshCache().meshOf(block { int x, int y, int z ->
+                y == 0 ? (x < 4 ? Material.GRASS : Material.SAND) : Material.AIR
+            })
+        then: 'The top (+Y) merges into exactly two quads (one per material region), not one and not 64.'
+            mesh.quads().count { Quad q -> q.normal().y() > 0.5 } == 2
     }
 
     def "Every emitted face is a visible, non-invisible surface."()

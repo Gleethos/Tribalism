@@ -549,17 +549,23 @@ needs detail and the walk descends. Thus distant geometry is drawn coarsely (hig
 the tree) and nearby geometry finely. These functions (`World.projectedEdgePixels` /
 `World.focalLengthPx`) are pure and unit-tested.
 
-### Face culling within a block (deciding *which faces*)
+### Face culling + greedy meshing within a block (deciding *which faces*)
 
 Descending all the way to individual leaf voxels and drawing each as a cube is
 wasteful: a solid region draws the faces *between* adjacent voxels, only to overdraw
 them. So when the walk reaches a **full-detail block** — a branch whose children are
 all leaves (an 8×8×8 grid of voxels) — the walk stops descending (it does not recurse
 into 512 cubes) and the renderer draws the block's **`SectorMesh`**: the set of
-*exposed* voxel faces, where a face
-is kept only if the neighbouring voxel in that direction is empty (or lies outside
-the block). Faces buried between two opaque voxels are dropped, collapsing a solid
-block from up to `512·6 = 3072` faces to its outer shell (e.g. `384`).
+*exposed* voxel faces, where a face is kept only if the neighbouring voxel in that
+direction is empty (or lies outside the block). Faces buried between two opaque voxels
+are dropped.
+
+On top of that, the mesh is **greedy-meshed**: within each face direction and layer,
+adjacent exposed faces that share the same appearance (`TextureProfile`) are merged into
+the largest possible rectangles (a flat 8×8 grass top becomes **one** quad, not 64; a
+solid block's whole shell becomes **6** quads, not 384). A merged rectangle is coplanar
+and uniformly coloured, so this is a pure `fillPolygon`-count win with **no visual
+change**. Merging stops at appearance boundaries (grass next to sand stays two quads).
 
 Meshing a block is relatively expensive — but a `WorldSector` is an **immutable
 value**, so it is the perfect cache key. `SectorMeshCache` is a `WeakHashMap<WorldSector,
@@ -568,8 +574,7 @@ for blocks the world no longer references are garbage-collected. Lookups stay ch
 because `WorldSector` **memoizes its (otherwise deep) hash code**, and `equals`
 short-circuits on identity for the common "same instance again" hit. (Block-boundary
 faces are drawn conservatively — we don't peek into the neighbouring block — a small,
-correct over-draw. *Greedy meshing* of coplanar same-appearance faces is a natural
-future win on top of this.)
+correct over-draw.)
 
 ### Drawing
 
@@ -590,10 +595,11 @@ All quads are then handled uniformly:
 
 1. **back-face culling** (only faces whose outward normal points toward the camera),
 2. projecting the 4 corners to screen via the camera's view-projection matrix
-   (skipping a quad if any corner is at/behind the camera),
+   (skipping a quad if any corner is at/behind the camera, or if its screen bounding box
+   falls entirely outside the viewport),
 3. flat directional shading (ambient floor + diffuse against a fixed light),
-4. depth-sorting far-to-near (painter's algorithm, per quad) and filling the polygon
-   via `Graphics2D`.
+4. depth-sorting far-to-near (painter's algorithm, per quad) and filling it via
+   `Graphics2D.fillPolygon(int[], int[], 4)` (raw point arrays, no per-face `Polygon`).
 
 `TexturePalette` derives a face's colour from its appearance qualities — an
 intensity-weighted blend of a tint per `Texture` (grainy→tan, liquid→blue,
@@ -677,7 +683,7 @@ structure:
 | `world/gen/PerlinNoise_Spec`| determinism, range, lattice zeros |
 | `world/gen/WorldGenerator_Spec` | material classification, adaptive subdivision, reproducibility |
 | `world/render/WorldRenderer_Spec` | LoD maths, frustum culling, majority-opaque, texture→colour, occlusion culling behind solids, render smoke test |
-| `world/render/SectorMeshCache_Spec` | within-block face culling (interior faces dropped), shared-face culling, mesh memoization |
+| `world/render/SectorMeshCache_Spec` | within-block face culling, greedy merge (per-appearance, height-independent), mesh memoization |
 
 Run them with:
 
@@ -702,7 +708,7 @@ updates); a **`WorldGenerator` owned by the world** that `update` uses to build/
 terrain in chunks around cameras within a configured `generationDistance` — an effectively
 **infinite world** whose octree root grows outward (re-roots) to follow cameras wherever
 they fly; first-draft Graphics2D rendering with distance LoD,
-frustum culling, inset-fitted LoD boxes, cached face-culled voxel meshes **and
+frustum culling, inset-fitted LoD boxes, cached **greedy-meshed** voxel surfaces **and
 near→far software occlusion culling** (a coverage grid that skips sub-trees hidden
 behind solid geometry); a free-fly **and** auto-orbit demo, driven end-to-end through
 `World.update` on a **background thread** (the immutable world is rendered by the EDT
@@ -738,11 +744,12 @@ the real renderer to come:
   changed paths instead of the whole tree) so a long flight doesn't grow memory without limit
   — the infinite world currently keeps every chunk it has ever generated.
 - Recursive sub-entities inside `VoxelEntity`.
-- The **procedural noise shader** that consumes `TextureProfile` hints (replacing
-  the first-draft `Graphics2D`/`TexturePalette` path), plus dynamic 64→32-bit
-  scaling for GPU rendering.
-- **Greedy meshing** (merging coplanar same-appearance quads) and content-keyed,
-  position-independent meshes on top of the current `SectorMeshCache`.
+- A **GPU renderer** (LWJGL/OpenGL): per-chunk vertex buffers and a real z-buffer (no
+  painter's sort, early-z kills overdraw), feeding the **procedural noise shader** that
+  consumes `TextureProfile` hints — replacing the first-draft, software `Graphics2D`/
+  `TexturePalette` path (whose `fillPolygon` throughput is the current ceiling), plus
+  dynamic 64→32-bit scaling for the GPU. Content-keyed, position-independent meshes on top
+  of `SectorMeshCache` are a smaller related win. (*Greedy meshing* itself is now done.)
 - A richer, registry-backed material system (resolving `MaterialId` to gameplay
   substances) as the world gains items and interactions.
 - Integration of a world view into the main Tribalism application.
