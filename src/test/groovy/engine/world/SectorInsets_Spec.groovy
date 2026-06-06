@@ -40,7 +40,7 @@ class SectorInsets_Spec extends Specification
                     int i = WorldTreeNode.indexOf(x, y, z)
                     kids[i] = WorldSector.leaf(cells.get(i), WorldSectorEtherData.of(materialAt(x, y, z) as Material))
                 }
-        var node = new WorldTreeNode(Tuple.of(WorldSector, kids))
+        var node = new WorldTreeNode(kids)
         return WorldSector.empty(bounds).withChildren(node).aggregated()
     }
 
@@ -117,7 +117,7 @@ class SectorInsets_Spec extends Specification
                                 : WorldSector.leaf(cells.get(i), WorldSectorEtherData.empty())
                     }
             var root = WorldSector.empty(rootBounds)
-                                  .withChildren(new WorldTreeNode(Tuple.of(WorldSector, kids)))
+                                  .withChildren(new WorldTreeNode(kids))
                                   .aggregated()
         expect: '7 empty top layers + half of the 8th (the sub-branches are half-empty) = 7.5/8.'
             Math.abs(root.insets().forSide(Side.POS_Y) - 7.5 / 8.0) < 1e-12

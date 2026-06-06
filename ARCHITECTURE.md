@@ -60,7 +60,7 @@ app.engine
     ├── WorldTreeEntityId       Positional handle: long id + bounds
     ├── LightSource             Sealed light sum type (Sphere | Cube | Plane)
     ├── LightTrace              A ray of light radiating from a source
-    ├── WorldTreeNode           A node = Tuple of exactly 512 sectors (8×8×8)
+    ├── WorldTreeNode           A node = array of exactly 512 sectors (8×8×8), encapsulated
     ├── WorldSector             The recursive cell of the world (the heart)
     ├── Entity                  Sealed entity sum type (CameraEntity | VoxelEntity)
     ├── ScreenId                Typed id of a Screen
@@ -183,7 +183,11 @@ WorldTreeNode.SECTOR_COUNT == 512
 ```
 
 Sectors are stored linearly in `x + y·8 + z·64` order. `WorldTreeNode.indexOf(x, y, z)`
-maps grid coordinates to that index.
+maps grid coordinates to that index. The 512 children are a plain encapsulated
+`WorldSector[]` (an immutable value class, not a persistent `Tuple`): `sector(i)` is the
+single hottest read in the engine — every render walk and aggregation touches all 512 —
+so it must be a bare array access. `withSector` copies the array (writes are far rarer
+than reads); `equals`/`hashCode` compare children element-wise.
 
 ### `WorldSector` — the recursive cell
 
@@ -320,7 +324,8 @@ Per-side appearance fixes the *colour* of a coarse LoD box, but not its *shape*:
 out into empty air or, if skipped, leave a hole. **`SideInsets`** fixes the shape.
 Each face carries an inset in `[0, 1]` — the fraction of the sector's extent by
 which its content is recessed from that face — and the renderer shrinks the drawn
-box accordingly.
+box accordingly. (`SideInsets` is the same kind of value class as `TextureProfile`: a
+flat `double[]` indexed by `Side.ordinal()`, so `forSide` is a hash-free array read.)
 
 Insets are derived bottom-up and **memoized as a single `Lazy<SideInsets>`** on the
 sector (a leaf has none — all zero). For each face a branch runs an *inward-moving*
@@ -592,8 +597,10 @@ All quads are then handled uniformly:
 
 `TexturePalette` derives a face's colour from its appearance qualities — an
 intensity-weighted blend of a tint per `Texture` (grainy→tan, liquid→blue,
-hairy/mossy→green, molten→orange, …). This is a **crude stand-in for a future
-procedural noise shader** (§10) and keeps AWT out of the data model. Note the
+hairy/mossy→green, molten→orange, …), **memoized per `TextureProfile`** (the same few
+profiles recur across thousands of faces, so `colorOf` is a cache lookup after the first
+sighting). This is a **crude stand-in for a future procedural noise shader** (§10) and
+keeps AWT out of the data model. Note the
 renderer never looks at `MaterialId`: the *appearance* drives the picture, while
 the material is reserved for gameplay.
 

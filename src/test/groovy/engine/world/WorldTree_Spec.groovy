@@ -35,7 +35,7 @@ class WorldTree_Spec extends Specification
         when:
             var node = WorldTreeNode.uniform(cube(0, 8), WorldSectorEtherData.empty())
         then:
-            node.sectors().size() == 512
+            node.size() == 512
             WorldTreeNode.SECTOR_COUNT == 512
             WorldTreeNode.RESOLUTION == 8
         and: 'The linear index follows x + y*8 + z*64.'
@@ -57,9 +57,9 @@ class WorldTree_Spec extends Specification
             var split = sector.subdivide()
         then:
             !split.isLeaf()
-            split.children().sectors().size() == 512
+            split.children().size() == 512
         and: 'Subdividing again is a no-op once children exist.'
-            split.subdivide() === split || split.subdivide().children().sectors().size() == 512
+            split.subdivide() === split || split.subdivide().children().size() == 512
     }
 
     def "A small entity falls down to the deepest sector that still contains it."()

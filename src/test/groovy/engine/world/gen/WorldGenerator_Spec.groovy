@@ -76,7 +76,7 @@ class WorldGenerator_Spec extends Specification
             var sector = gen.generate(cubeAround(VecF64.of(0, 0, 0), 64), 1)
         then:
             !sector.isLeaf()
-            sector.children().sectors().size() == 512
+            sector.children().size() == 512
     }
 
     def "Generation is reproducible for a given seed."()

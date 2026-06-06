@@ -38,7 +38,7 @@ class SectorMeshCache_Spec extends Specification
                     int i = WorldTreeNode.indexOf(x, y, z)
                     kids[i] = WorldSector.leaf(cells.get(i), WorldSectorEtherData.of(materialAt(x, y, z) as Material))
                 }
-        return WorldSector.empty(bounds).withChildren(new WorldTreeNode(Tuple.of(WorldSector, kids)))
+        return WorldSector.empty(bounds).withChildren(new WorldTreeNode(kids))
     }
 
     def "An empty block has no faces."()

@@ -134,7 +134,7 @@ class WorldRenderer_Spec extends Specification
             kids[near] = WorldSector.leaf(cells.get(near), WorldSectorEtherData.of(Material.ROCK)).subdivide().aggregated()
             kids[far]  = WorldSector.leaf(cells.get(far),  WorldSectorEtherData.of(Material.ROCK)).subdivide().aggregated()
             var world = World.of(WorldSector.empty(bounds)
-                                            .withChildren(new WorldTreeNode(Tuple.of(WorldSector, kids))))
+                                            .withChildren(new WorldTreeNode(kids)))
             var renderer = new WorldRenderer()
             int w = 200, h = 200
             var image = new BufferedImage(w, h, BufferedImage.TYPE_INT_RGB)

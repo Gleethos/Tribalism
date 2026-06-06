@@ -134,7 +134,7 @@ public record WorldGenerator(
         for ( int i = 0; i < WorldTreeNode.SECTOR_COUNT; i++ )
             children[i] = build(cells.get(i), depth - 1);
         return WorldSector.empty(bounds)
-                           .withChildren(new WorldTreeNode(Tuple.of(WorldSector.class, children)));
+                           .withChildren(new WorldTreeNode(children));
     }
 
     /**

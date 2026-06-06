@@ -6,6 +6,7 @@ import app.engine.world.TextureProfile;
 import java.awt.Color;
 import java.util.EnumMap;
 import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 
 /**
  *  Turns a {@link TextureProfile} into a representative {@link Color} for the
@@ -53,6 +54,13 @@ public final class TexturePalette
         TINTS.put(Texture.SPIKY,       new Color(120, 120, 125)); // grey
     }
 
+    // colorOf is called per drawn face every frame, but the same few appearance profiles
+    // (materials, and the LoD aggregates of them) recur across thousands of faces. Since a
+    // TextureProfile is an immutable value with a proper equals/hashCode, memoizing its colour
+    // turns the per-face cost into a single map lookup after the first sighting. (Concurrent
+    // because the colour could be requested from more than one render thread later.)
+    private static final Map<TextureProfile, Color> _COLOR_CACHE = new ConcurrentHashMap<>();
+
     private TexturePalette() {}
 
     /** @return {@code true} if a surface this opaque (on average) should be drawn. */
@@ -63,8 +71,13 @@ public final class TexturePalette
     /**
      *  @return The intensity-weighted blend of the tints of {@code profile}'s
      *          qualities, or a neutral grey if it carries no hue-bearing quality.
+     *          Memoized per profile.
      */
     public static Color colorOf( TextureProfile profile ) {
+        return _COLOR_CACHE.computeIfAbsent(profile, TexturePalette::computeColorOf);
+    }
+
+    private static Color computeColorOf( TextureProfile profile ) {
         double r = 0, g = 0, b = 0, weight = 0;
         for ( Map.Entry<Texture, Color> entry : TINTS.entrySet() ) {
             double intensity = profile.intensityOf(entry.getKey());

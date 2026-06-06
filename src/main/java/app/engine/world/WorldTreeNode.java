@@ -3,9 +3,11 @@ package app.engine.world;
 import app.engine.primitives.BoundsF64;
 import sprouts.Tuple;
 
+import java.util.Arrays;
+
 /**
- *  A node in the world tree: a CPU-cache-friendly, immutable {@link Tuple} of
- *  exactly {@link #SECTOR_COUNT} {@link WorldSector}s arranged as a perfect
+ *  A node in the world tree: a CPU-cache-friendly, immutable array of exactly
+ *  {@link #SECTOR_COUNT} {@link WorldSector}s arranged as a perfect
  *  {@link #RESOLUTION}&times;{@link #RESOLUTION}&times;{@link #RESOLUTION} cube.
  *  <p>
  *  The data structure is inspired by Hash Array Mapped Tries rather than a
@@ -14,26 +16,39 @@ import sprouts.Tuple;
  *  array contiguous and cache-friendly. Sectors are stored in
  *  {@code x + y*RESOLUTION + z*RESOLUTION^2} order.
  *  <p>
- *  Because the node is built on a persistent tuple, replacing a single sector
- *  ({@link #withSector(int, WorldSector)}) shares all untouched structure with
- *  the original node.
- *
- *  @param sectors The {@link #SECTOR_COUNT} child sectors, in linear order.
+ *  <b>Representation.</b> The children are a plain {@code WorldSector[]}, not a
+ *  persistent {@code Tuple}: {@link #sector(int)} is the single hottest read in the
+ *  engine (every render walk and every aggregation touches all 512 children), so it
+ *  must be a bare array access with no wrapper overhead. It is a {@code class} rather
+ *  than a {@code record} purely to <i>encapsulate</i> that array (owned, never exposed)
+ *  while staying an immutable <b>value</b>: {@link #withSector} returns a new node and
+ *  {@code equals}/{@code hashCode} compare the children element-wise. Replacing one
+ *  sector copies the 512-element array &mdash; cheaper than it sounds, and writes are
+ *  far rarer than reads.
  */
-public record WorldTreeNode(
-    Tuple<WorldSector> sectors
-) {
+public final class WorldTreeNode
+{
     /** The number of sub-divisions along each axis of a node. */
     public static final int RESOLUTION = 8;
 
     /** The total number of sectors in a node, i.e. {@code RESOLUTION^3 == 512}. */
     public static final int SECTOR_COUNT = RESOLUTION * RESOLUTION * RESOLUTION;
 
-    public WorldTreeNode {
-        if ( sectors.size() != SECTOR_COUNT )
+    /** The {@link #SECTOR_COUNT} child sectors in linear order. Owned, never exposed. */
+    private final WorldSector[] _sectors;
+
+    /**
+     *  Wraps the given child array as a node. <b>Takes ownership</b> of {@code sectors}:
+     *  callers must hand over a freshly built array and not retain or mutate it afterwards.
+     *
+     *  @param sectors Exactly {@link #SECTOR_COUNT} child sectors, in linear order.
+     */
+    public WorldTreeNode( WorldSector[] sectors ) {
+        if ( sectors.length != SECTOR_COUNT )
             throw new IllegalArgumentException(
-                    "A world tree node must contain exactly " + SECTOR_COUNT + " sectors, but got " + sectors.size() + "."
+                    "A world tree node must contain exactly " + SECTOR_COUNT + " sectors, but got " + sectors.length + "."
                 );
+        _sectors = sectors;
     }
 
     /**
@@ -49,7 +64,12 @@ public record WorldTreeNode(
         WorldSector[] sectors = new WorldSector[SECTOR_COUNT];
         for ( int i = 0; i < SECTOR_COUNT; i++ )
             sectors[i] = WorldSector.leaf(cells.get(i), ether);
-        return new WorldTreeNode(Tuple.of(WorldSector.class, sectors));
+        return new WorldTreeNode(sectors);
+    }
+
+    /** @return The number of child sectors (always {@link #SECTOR_COUNT}). */
+    public int size() {
+        return _sectors.length;
     }
 
     /**
@@ -99,19 +119,38 @@ public record WorldTreeNode(
     }
 
     public WorldSector sector( int index ) {
-        return sectors.get(index);
+        return _sectors[index];
     }
 
     public WorldSector sector( int x, int y, int z ) {
-        return sectors.get(indexOf(x, y, z));
+        return _sectors[indexOf(x, y, z)];
     }
 
     /** @return A copy of this node with the sector at {@code index} replaced. */
     public WorldTreeNode withSector( int index, WorldSector sector ) {
-        return new WorldTreeNode(sectors.setAt(index, sector));
+        WorldSector[] copy = _sectors.clone();
+        copy[index] = sector;
+        return new WorldTreeNode(copy);
     }
 
     public WorldTreeNode withSector( int x, int y, int z, WorldSector sector ) {
         return withSector(indexOf(x, y, z), sector);
+    }
+
+    @Override
+    public boolean equals( Object obj ) {
+        if ( this == obj ) return true;
+        if ( !(obj instanceof WorldTreeNode other) ) return false;
+        return Arrays.equals(_sectors, other._sectors);
+    }
+
+    @Override
+    public int hashCode() {
+        return Arrays.hashCode(_sectors);
+    }
+
+    @Override
+    public String toString() {
+        return "WorldTreeNode[" + SECTOR_COUNT + " sectors]";
     }
 }

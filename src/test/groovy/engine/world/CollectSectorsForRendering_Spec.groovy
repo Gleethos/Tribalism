@@ -80,7 +80,7 @@ class CollectSectorsForRendering_Spec extends Specification
             kids[near] = WorldSector.leaf(cells.get(near), WorldSectorEtherData.of(Material.ROCK)).subdivide().aggregated()
             kids[far]  = WorldSector.leaf(cells.get(far),  WorldSectorEtherData.of(Material.ROCK)).subdivide().aggregated()
             var world = World.of(WorldSector.empty(bounds)
-                                            .withChildren(new WorldTreeNode(Tuple.of(WorldSector, kids))))
+                                            .withChildren(new WorldTreeNode(kids)))
         and: 'A camera up close, looking straight through the near block at the far one.'
             var facing = new CameraF64(VecF64.of(-100, 8, 8), VecF64.of(0, 8, 8), VecF64.of(0, 1, 0), Math.toRadians(60), 1.0, 0.5, 2000)
             var away   = new CameraF64(VecF64.of(-100, 8, 8), VecF64.of(-200, 8, 8), VecF64.of(0, 1, 0), Math.toRadians(60), 1.0, 0.5, 2000)
@@ -123,6 +123,6 @@ class CollectSectorsForRendering_Spec extends Specification
                     int i = WorldTreeNode.indexOf(x, y, z)
                     kids[i] = WorldSector.leaf(cells.get(i), WorldSectorEtherData.of(materialAt(x, y, z) as Material))
                 }
-        return WorldSector.empty(bounds).withChildren(new WorldTreeNode(Tuple.of(WorldSector, kids))).aggregated()
+        return WorldSector.empty(bounds).withChildren(new WorldTreeNode(kids)).aggregated()
     }
 }

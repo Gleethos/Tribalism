@@ -85,9 +85,11 @@ class World_Spec extends Specification
 
     private static int countTreeEntities( WorldSector sector ) {
         int count = sector.entities().size()
-        if ( !sector.isLeaf() )
-            for ( var child : sector.children().sectors() )
-                count += countTreeEntities(child)
+        if ( !sector.isLeaf() ) {
+            var node = sector.children()
+            for ( int i = 0; i < node.size(); i++ )
+                count += countTreeEntities(node.sector(i))
+        }
         return count
     }
 }

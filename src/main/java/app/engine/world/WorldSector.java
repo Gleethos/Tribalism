@@ -279,7 +279,7 @@ public final class WorldSector {
             aggregatedChildren[i] = child;
             childMaterials.add(child.ether().material());
         }
-        WorldTreeNode aggregatedNode = new WorldTreeNode(Tuple.of(WorldSector.class, aggregatedChildren));
+        WorldTreeNode aggregatedNode = new WorldTreeNode(aggregatedChildren);
 
         WorldSectorEtherData ether = WorldSectorEtherData.empty().withMaterial(MaterialId.merge(childMaterials));
         for ( Side side : Side.values() ) {
