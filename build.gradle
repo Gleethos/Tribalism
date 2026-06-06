@@ -36,6 +36,24 @@ dependencies {
     implementation group: 'org.xerial', name: 'sqlite-jdbc', version: '3.50.3.0'
     implementation group: 'io.github.globaltcad', name: 'swing-tree', version:'0.23.1'
 
+    // --- World engine GPU renderer (OpenGL backend behind the Renderer SPI) ---
+    // LWJGL core + OpenGL, version-aligned via the BOM. Natives ship per OS/arch (the
+    // packaging dimension of going GPU); add more 'runtimeOnly ...:natives-<platform>'
+    // lines to support more targets. lwjgl3-awt provides the AWTGLCanvas; we exclude its
+    // transitive LWJGL so our BOM-pinned 3.3.6 wins.
+    implementation platform('org.lwjgl:lwjgl-bom:3.3.6')
+    implementation 'org.lwjgl:lwjgl'
+    implementation 'org.lwjgl:lwjgl-opengl'
+    runtimeOnly 'org.lwjgl:lwjgl::natives-linux'
+    runtimeOnly 'org.lwjgl:lwjgl-opengl::natives-linux'
+    runtimeOnly 'org.lwjgl:lwjgl::natives-windows'
+    runtimeOnly 'org.lwjgl:lwjgl-opengl::natives-windows'
+    runtimeOnly 'org.lwjgl:lwjgl::natives-macos'
+    runtimeOnly 'org.lwjgl:lwjgl-opengl::natives-macos'
+    runtimeOnly 'org.lwjgl:lwjgl::natives-macos-arm64'
+    runtimeOnly 'org.lwjgl:lwjgl-opengl::natives-macos-arm64'
+    implementation('org.lwjglx:lwjgl3-awt:0.2.3') { exclude group: 'org.lwjgl' }
+
     // Testing with Spock :
     testImplementation 'org.junit.jupiter:junit-jupiter-api:5.8.2'
     testRuntimeOnly 'org.junit.jupiter:junit-jupiter-engine:5.8.2'    // mandatory dependencies for using Spock
@@ -174,6 +192,17 @@ tasks.register('runServer', JavaExec) {
     main = 'Main'
     classpath = sourceSets.main.runtimeClasspath
     args = ['--start-server', 'true', '--port', '8080', '--headless', 'true']
+}
+
+// Runs the world-engine demo. Choose the renderer backend with:
+//   ./gradlew runWorldDemo                       (software Graphics2D, default)
+//   ./gradlew runWorldDemo -Dengine.renderer=gl  (OpenGL backend)
+tasks.register('runWorldDemo', JavaExec) {
+    group = 'application'
+    description = 'Runs the world-engine demo (use -Dengine.renderer=gl for the OpenGL backend).'
+    mainClass = 'app.engine.world.demo.WorldEngineDemo'
+    classpath = sourceSets.main.runtimeClasspath
+    systemProperty 'engine.renderer', System.getProperty('engine.renderer', '')
 }
 
 // A task for executing the react tests:

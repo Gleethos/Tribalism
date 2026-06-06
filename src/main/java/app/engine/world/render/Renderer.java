@@ -3,7 +3,7 @@ package app.engine.world.render;
 import app.engine.world.ScreenId;
 import app.engine.world.World;
 
-import javax.swing.JComponent;
+import java.awt.Component;
 
 /**
  *  A swappable rendering <b>backend</b>: it turns an immutable {@link World} into pixels
@@ -34,15 +34,17 @@ import javax.swing.JComponent;
 public interface Renderer extends AutoCloseable
 {
     /**
-     *  The Swing component that displays {@code screenId}'s view. Each backend integrates
-     *  with Swing differently (a lightweight panel that blits, a heavyweight GL canvas,
-     *  &hellip;), so producing the viewport is part of the backend. Created on first
-     *  request for an id and reused thereafter.
+     *  The AWT/Swing component that displays {@code screenId}'s view. Each backend
+     *  integrates with the UI differently &mdash; the software backend gives a lightweight
+     *  {@link javax.swing.JPanel}, the GL backend a heavyweight {@code AWTGLCanvas} &mdash;
+     *  so the return type is their common supertype {@link Component}, and producing the
+     *  viewport is part of the backend. Created on first request for an id and reused
+     *  thereafter.
      *
      *  @param screenId The screen whose viewport component is wanted.
      *  @return The component to add to the UI; the same instance for the same id.
      */
-    JComponent viewportFor( ScreenId screenId );
+    Component viewportFor( ScreenId screenId );
 
     /**
      *  Publishes the latest immutable world to draw. A {@code World} is a deeply immutable

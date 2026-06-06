@@ -15,12 +15,13 @@ import app.engine.world.gen.WorldGenerator;
 import app.engine.world.render.FrameStats;
 import app.engine.world.render.Graphics2DRenderer;
 import app.engine.world.render.Renderer;
+import app.engine.world.render.gl.GlRenderer;
 import org.jspecify.annotations.Nullable;
 
-import javax.swing.JComponent;
 import javax.swing.JFrame;
 import javax.swing.SwingUtilities;
 import javax.swing.Timer;
+import java.awt.Component;
 import java.awt.Dimension;
 import java.awt.Point;
 import java.awt.event.ComponentAdapter;
@@ -87,8 +88,9 @@ public final class WorldEngineDemo
     private static void showWindow( World initialWorld ) {
         // The renderer is a swappable backend behind the Renderer SPI: it owns its viewport
         // component and its own render loop; the demo just publishes the latest world to it.
-        // Swap Graphics2DRenderer for the GL backend here once it lands.
-        Renderer renderer = new Graphics2DRenderer();
+        // Pick the backend with -Dengine.renderer=gl (OpenGL) or default (software Graphics2D).
+        boolean useGl = "gl".equalsIgnoreCase(System.getProperty("engine.renderer"));
+        Renderer renderer = useGl ? new GlRenderer() : new Graphics2DRenderer();
         renderer.setWorld(initialWorld);
 
         // A World is a deeply immutable value, so it can cross threads with no locking: the
@@ -101,7 +103,7 @@ public final class WorldEngineDemo
         Point[] lastCursor = { null }; // EDT-only: cursor deltas are computed before enqueueing.
 
         // The renderer draws only the world (overlays are deferred); diagnostics go to the title bar.
-        JComponent canvas = renderer.viewportFor(SCREEN_ID);
+        Component canvas = renderer.viewportFor(SCREEN_ID);
         canvas.setPreferredSize(new Dimension(INITIAL_W, INITIAL_H));
         canvas.setFocusable(true);
         canvas.addComponentListener(new ComponentAdapter() {
@@ -148,7 +150,7 @@ public final class WorldEngineDemo
 
         JFrame frame = new JFrame("Tribalism - World Engine Demo");
         frame.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
-        frame.setContentPane(canvas);
+        frame.add(canvas); // works for both a lightweight panel and a heavyweight GL canvas
         frame.pack();
         frame.setLocationRelativeTo(null);
         frame.setVisible(true);

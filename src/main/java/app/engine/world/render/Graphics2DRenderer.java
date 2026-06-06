@@ -4,10 +4,10 @@ import app.engine.world.ScreenId;
 import app.engine.world.World;
 import org.jspecify.annotations.Nullable;
 
-import javax.swing.JComponent;
 import javax.swing.JPanel;
 import javax.swing.Timer;
 import java.awt.Color;
+import java.awt.Component;
 import java.awt.Graphics;
 import java.awt.Graphics2D;
 import java.util.Map;
@@ -31,17 +31,17 @@ public final class Graphics2DRenderer implements Renderer
 
     private final WorldRenderer _painter = new WorldRenderer();
     private final AtomicReference<@Nullable World> _world = new AtomicReference<>();
-    private final Map<ScreenId, JComponent> _viewports = new ConcurrentHashMap<>();
+    private final Map<ScreenId, Component> _viewports = new ConcurrentHashMap<>();
     private final Map<ScreenId, FrameStats> _stats = new ConcurrentHashMap<>();
     private final Timer _loop;
 
     public Graphics2DRenderer() {
-        _loop = new Timer(FRAME_MILLIS, e -> _viewports.values().forEach(JComponent::repaint));
+        _loop = new Timer(FRAME_MILLIS, e -> _viewports.values().forEach(Component::repaint));
         _loop.start();
     }
 
     @Override
-    public JComponent viewportFor( ScreenId screenId ) {
+    public Component viewportFor( ScreenId screenId ) {
         return _viewports.computeIfAbsent(screenId, Viewport::new);
     }
 
