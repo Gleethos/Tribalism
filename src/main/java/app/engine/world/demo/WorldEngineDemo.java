@@ -43,8 +43,9 @@ import java.util.concurrent.atomic.AtomicReference;
  *  This version drives everything through the real engine pipeline. The world owns a
  *  camera entity and a screen bound to it; the demo merely <i>translates</i> raw Swing
  *  input into {@link ScreenInputEvent}s, hands them to {@link World#update} once per
- *  frame, and asks the {@link WorldRenderer} to draw the screen. The free-fly camera
- *  logic itself lives in the engine ({@code CameraFlight}), not here.
+ *  frame, and publishes the latest world to a {@link Renderer} backend (software or
+ *  OpenGL, chosen with {@code -Dengine.renderer=gl}) which draws the screen. The free-fly
+ *  camera logic itself lives in the engine ({@code CameraFlight}), not here.
  *  <p>
  *  The camera slowly orbits on its own until you press a movement key (W/A/S/D, Q/E or
  *  Space, Shift to sprint) or move the mouse, at which point control passes to you.

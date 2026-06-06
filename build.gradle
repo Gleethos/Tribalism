@@ -44,6 +44,7 @@ dependencies {
     implementation platform('org.lwjgl:lwjgl-bom:3.3.6')
     implementation 'org.lwjgl:lwjgl'
     implementation 'org.lwjgl:lwjgl-opengl'
+    implementation 'org.lwjgl:lwjgl-jawt' // JAWT bindings the AWTGLCanvas needs (binds the JDK's own JAWT; no natives)
     runtimeOnly 'org.lwjgl:lwjgl::natives-linux'
     runtimeOnly 'org.lwjgl:lwjgl-opengl::natives-linux'
     runtimeOnly 'org.lwjgl:lwjgl::natives-windows'
