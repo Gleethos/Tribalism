@@ -436,24 +436,30 @@ around every camera** (`refineAroundCameras`), and the world is effectively **un
 - the root is first **grown** (`growToContain`) to cover a `VIEW_DISTANCE` box around each camera
   — re-rooting 8× larger and filling the new cells with coarse leaves (rare: the root already
   spans the view range); then
-- the tree is walked and each sector, by its **distance relative to its own edge**, is **refined**,
-  **kept**, or **collapsed**:
-  - *refine* — a **non-homogeneous** (surface-straddling) sector a camera is within `REFINE_FACTOR ×`
-    its edge of is subdivided into eight finer **coarse-leaf children** (each described top-down,
-    cheaply, by `generator.representativeEtherOf`); at the **chunk level** (`chunkSize`) it is instead
-    `generator.generate`d to full voxel detail. A **homogeneous** region (`generator.isHomogeneous` —
-    solid rock, open air) is *never* refined: it is identical at every level of detail, so its coarse
+- the tree is walked and each sector, by how big it is **on screen** (`detailCells` — see below), is
+  **refined**, **kept**, or **collapsed**:
+  - *refine* — a **non-homogeneous** (surface-straddling) sector wanting more than `REFINE_CELLS` cells
+    of detail across its edge is subdivided into eight finer **coarse-leaf children** (each described
+    top-down, cheaply, by `generator.representativeEtherOf`); at the **chunk level** (`chunkSize`) it is
+    instead `generator.generate`d to full voxel detail. A **homogeneous** region (`generator.isHomogeneous`
+    — solid rock, open air) is *never* refined: it is identical at every level of detail, so its coarse
     leaf already *is* the full detail. This restriction is what keeps refinement on the **2D terrain
-    surface** rather than the 3D solid/empty volume — which both bounds memory and is what makes a
-    `REFINE_FACTOR` large enough to matter affordable;
+    surface** rather than the 3D solid/empty volume, which bounds memory;
   - *keep* — within the hysteresis band, unchanged;
-  - *collapse* — a refined sector no camera is near (past `REFINE_FACTOR × COLLAPSE_HYSTERESIS`)
+  - *collapse* — a refined sector now too small on screen (past `REFINE_CELLS / COLLAPSE_HYSTERESIS`)
     drops its sub-tree back to one coarse leaf, freeing memory.
 
-`REFINE_FACTOR` is deliberately set **larger than the renderer's draw threshold** (§7), so the coarse
-sector the renderer actually *draws* still has children and is therefore **greedy-meshed at res-8
-from its sub-sectors** — showing the terrain's *shape* — instead of as one flat box. (`TARGET_CELL_PX`
-trades cell size against how far that detail reaches.) The materialized sectors form a **cone of
+**One shared, resolution-independent LoD metric.** Both the world (here) and the renderer (§7) measure a
+sector's on-screen size with the *same* function, `detailCells(bounds, eye) = LOD_DETAIL × radius /
+distance` — how many cells of detail it wants across its edge, depending only on its size relative to
+its distance, **never on pixels or viewport height**. (An earlier pixel-based metric scaled with screen
+resolution, so a 4K window descended ~8× deeper than a small one and collapsed distant terrain into giant
+childless boxes; tying both sides to one resolution-independent number is what fixed that.) `LOD_DETAIL`
+is the single knob — bigger means more detail and deeper descent. `REFINE_CELLS` (the refine threshold)
+is the res-1→res-8 boundary of the renderer's mesher, and is **below the renderer's draw threshold**
+(`LOD_COLLAPSE_CELLS`, §7), so the coarse sector the renderer actually *draws* still has children and is
+therefore **greedy-meshed at res-8 from its sub-sectors** — showing the terrain's *shape* — instead of as
+one flat box. The materialized sectors form a **cone of
 detail along the surface** around each camera — full voxels up close, progressively coarser surface
 sectors outward, with uniform interiors left as single coarse boxes — so **memory is bounded by the
 surface cone, not the distance travelled**, and the renderer draws far terrain as shaped surface
@@ -641,9 +647,9 @@ rectangle is covered). One test in front of a wall prunes everything behind it.
 
 ### Level of detail (deciding *how deep* to descend, and *how finely* to mesh)
 
-For each surviving sector the walk estimates its projected screen edge
-(`World.projectedEdgePixels`/`focalLengthPx`) and the grid resolution that would keep each meshed
-cell near `TARGET_CELL_PX`. Then:
+For each surviving sector the walk measures its on-screen size with the **same** `detailCells` metric
+the world refines by (§5) — `LOD_DETAIL × radius / distance`, **resolution-independent**, no pixels —
+so the renderer and the world never disagree about what detail exists where. Then:
 
 - a **leaf**, a **solid occluder**, a sector at or below the **`chunkSize` floor**, or one small
   enough on screen to span only a few cells (`LOD_COLLAPSE_CELLS`) is **collected as one render
@@ -652,10 +658,13 @@ cell near `TARGET_CELL_PX`. Then:
 - a sector still **big on screen above the floor** is **descended into** (nearest child first), so
   its children carry the detail and occlusion can act between them.
 
-So distance picks both *what* to collect and *how finely* to mesh it: near terrain is handed over
+So `detailCells` picks both *what* to collect and *how finely* to mesh it: near terrain is handed over
 as `chunkSize`-sized units at full resolution; distant terrain as a few **big coarse units**. The
 `chunkSize` floor is never descended below, so near terrain stays batched into chunk-sized meshes.
-(This puts the long-idle `projectedEdgePixels`/`focalLengthPx` to work.)
+Because the world's refine threshold (`REFINE_CELLS`) sits below the renderer's descend threshold
+(`LOD_COLLAPSE_CELLS`) on this shared scale, every coarse sector the renderer draws at res-8 is
+guaranteed to have the sub-sectors it meshes from. (`projectedEdgePixels`/`focalLengthPx` remain for the
+actual camera projection in `ViewInfo`, no longer for the LoD decision.)
 
 ### Meshing a unit at a level of detail: face culling + greedy meshing (deciding *which faces*)
 
@@ -876,12 +885,13 @@ the real renderer to come:
   cameras and collapses away (subsuming the old chunk-grid streaming + eviction). `aggregated()` now
   remains only for *edited* sub-trees the generator can't describe — which dovetails with persistence.
   Refinement is restricted to **non-homogeneous (surface) sectors** so the cone follows the 2D terrain
-  surface, not the 3D volume; and `REFINE_FACTOR` is set above the renderer's draw threshold so drawn
-  coarse sectors keep children and are **greedy-meshed at res-8 from their sub-sectors** (surface
-  shape), not flat boxes. *Tuning follow-ups:* the cost of res-8 coarse terrain is the 512-branching
-  (each surface sector drags 512 children, mostly homogeneous) — a compact per-node baked LoD grid
-  would cut that; LoD-pop smoothing (geomorph) is open. `REFINE_FACTOR` / `TARGET_CELL_PX` /
-  `VIEW_DISTANCE` / `REFINE_BUDGET_PER_UPDATE` are the knobs (quality vs memory).
+  surface, not the 3D volume; and the world and renderer share **one resolution-independent LoD metric**
+  (`detailCells`, §5/§7) with the refine threshold below the renderer's draw threshold, so drawn coarse
+  sectors keep children and are **greedy-meshed at res-8 from their sub-sectors** (surface shape), not
+  flat boxes — and the result no longer changes with window size. *Tuning follow-ups:* the cost of res-8
+  coarse terrain is the 512-branching (each surface sector drags 512 children, mostly homogeneous) — a
+  compact per-node baked LoD grid would cut that; LoD-pop smoothing (geomorph) is open. `LOD_DETAIL` is
+  the single quality knob, with `VIEW_DISTANCE` / `REFINE_BUDGET_PER_UPDATE` for reach and streaming rate.
 - **Disk persistence for *edited* sectors (when edits exist).** Refinement + deterministic
   regeneration bound memory today, so pristine terrain needs no disk — regeneration *is* the
   persistence. The remaining step lands once a sector can carry changes **not** reproducible from

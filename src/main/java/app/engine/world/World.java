@@ -315,18 +315,29 @@ public final class World
     private static final double VIEW_DISTANCE = 2048.0;
 
     /**
-     *  How close a camera must be, as a multiple of a sector's own edge, for that sector to be refined
-     *  into finer children. It is set <b>larger than the renderer's draw threshold</b> (a node is drawn
-     *  when it spans ~{@link #LOD_COLLAPSE_CELLS} {@link #TARGET_CELL_PX}-cells, i.e. at
-     *  {@code dist ≈ edge × focal / (LOD_COLLAPSE_CELLS × TARGET_CELL_PX)}) so that the coarse sector the
-     *  renderer actually <b>draws still has children</b> &mdash; and is therefore greedy-meshed at res-8
-     *  <i>from its sub-sectors</i> (showing the surface shape) instead of as a single flat box. Affordable
-     *  at this size only because refinement is restricted to {@link WorldGenerator#isHomogeneous
-     *  non-homogeneous} (surface) sectors, which bounds the cone to the 2D terrain surface.
+     *  The one level-of-detail knob, shared by world refinement and the renderer so they always agree:
+     *  how many cells of detail a sector wants across its edge when a camera is one sector-<i>radius</i>
+     *  away (see {@link #detailCells}). It is <b>resolution-independent</b> &mdash; detail depends only on
+     *  a sector's size relative to its distance, never on pixels or viewport height &mdash; so the world
+     *  looks the same at any window size (a 4K screen just renders the same geometry more sharply, instead
+     *  of descending eight times deeper and collapsing into giant boxes, which was the old pixel-based bug).
+     *  Bigger = more detail and deeper descent. At {@code 40} the renderer descends into a sector within
+     *  ~2.5 of its edges and the world refines surface sectors within ~7 edges &mdash; the well-behaved
+     *  cone the engine was hand-tuned to before pixels crept in.
      */
-    private static final double REFINE_FACTOR = 7.0;
+    private static final double LOD_DETAIL = 40.0;
 
-    /** Collapse hysteresis: a refined sector is only dropped once a camera is this much past {@link #REFINE_FACTOR}. */
+    /**
+     *  The {@link #detailCells} value at and above which a sector must have children: exactly the
+     *  res-1&rarr;res-8 boundary of {@link #meshResolutionFor} ({@code sqrt(RESOLUTION)}), so every sector
+     *  the renderer meshes finer than a single flat box (res-8 <i>from its sub-sectors</i>, showing the
+     *  surface shape) is guaranteed to have sub-sectors to mesh from. Refinement is further restricted to
+     *  {@link WorldGenerator#isHomogeneous non-homogeneous} (surface) sectors, which bounds the cone to the
+     *  2D terrain surface.
+     */
+    private static final double REFINE_CELLS = Math.sqrt(WorldTreeNode.RESOLUTION);
+
+    /** Collapse hysteresis: a refined sector is only dropped once it shrinks this far below {@link #REFINE_CELLS}. */
     private static final double COLLAPSE_HYSTERESIS = 1.5;
 
     /** How many sectors one {@link #update} may materialize (subdivide or generate), so a tick never stalls. */
@@ -348,15 +359,15 @@ public final class World
      *  <b>memory-bounded</b>.
      *  <p>
      *  First the root is {@link #growToContain grown} to cover a {@link #VIEW_DISTANCE} box around each
-     *  camera (so far terrain exists to refine into). Then the tree is walked and each sector, by its
-     *  distance relative to its own size, is:
+     *  camera (so far terrain exists to refine into). Then the tree is walked and each sector, by how many
+     *  {@link #REFINE_CELLS screen cells} it spans on the nearest camera, is:
      *  <ul>
-     *      <li><b>refined</b> &mdash; a coarse sector a camera is within {@link #REFINE_FACTOR}&times;
-     *          its edge of is subdivided into eight finer {@link #coarseLeaf coarse children} (each
+     *      <li><b>refined</b> &mdash; a coarse sector big enough on screen (more than {@link #REFINE_CELLS}
+     *          cells) is subdivided into eight finer {@link #coarseLeaf coarse children} (each
      *          described top-down by {@link WorldGenerator#etherOf}); at the chunk level it is instead
      *          {@link WorldGenerator#generate generated} to full voxel detail;</li>
      *      <li><b>kept</b> as-is; or</li>
-     *      <li><b>collapsed</b> &mdash; a refined sector no camera is near (past the hysteresis band)
+     *      <li><b>collapsed</b> &mdash; a refined sector now small on screen (past the hysteresis band)
      *          drops its sub-tree back to a single coarse leaf, freeing memory. Deterministic terrain
      *          makes this lossless: approaching again re-refines it.</li>
      *  </ul>
@@ -380,8 +391,9 @@ public final class World
         if ( eyes.isEmpty() )
             return this;
 
-        // Settled and no camera has drifted far enough to shift any level-of-detail boundary: skip the
-        // entire walk (returned by identity, so every cache downstream keeps hitting).
+        // Settled, and no camera has drifted far enough to shift a level-of-detail boundary: skip the
+        // entire walk (returned by identity, so every cache downstream keeps hitting). Resize cannot shift
+        // anything because the metric is resolution-independent, so positions alone anchor the gate.
         double reanchor = generator.chunkSize() * REFINE_REANCHOR_FRACTION;
         if ( _settledEyes != null && withinDistance(eyes, _settledEyes, reanchor) )
             return this;
@@ -429,11 +441,18 @@ public final class World
      */
     private static WorldSector refine( WorldGenerator generator, WorldSector node, Tuple<VecF64> eyes, int[] budget ) {
         double edge = maxEdge(node.bounds());
-        double dist = nearestDistance(node.bounds(), eyes);
+        // How many cells of detail this node wants across its edge on the nearest camera - the SAME metric
+        // the renderer uses, so the two never disagree.
+        double cells = detailCells(node.bounds(), eyes);
+        // Only surface-straddling sectors carry detail; a uniform region is identical at every level, so it
+        // is never worth refining (this bounds the cone to the 2D terrain surface, not the 3D volume).
+        boolean wantsDetail = cells > REFINE_CELLS && !generator.isHomogeneous(node.bounds());
 
         if ( edge <= generator.chunkSize() ) {
-            // Chunk level: full voxel detail when close, a single coarse leaf when far.
-            if ( dist < generator.generationDistance() ) {
+            // Finest managed level. Detail here is true voxels from generate() - but only within the
+            // generator's full-detail reach; farther chunks that are still big on screen stay coarse boxes
+            // (the parent above already shows their shape as a res-8 mesh over its coarse-leaf children).
+            if ( wantsDetail && nearestDistance(node.bounds(), eyes) < generator.generationDistance() ) {
                 if ( !node.isLeaf() )
                     return node; // already a generated chunk with sub-tree detail.
                 if ( budget[0] <= 0 )
@@ -444,16 +463,15 @@ public final class World
                 budget[0]--;
                 return generated;
             }
-            if ( !node.isLeaf() && dist > generator.generationDistance() * COLLAPSE_HYSTERESIS )
-                return coarseLeaf(generator, node.bounds()); // far: drop the chunk's voxel detail.
+            if ( !node.isLeaf() && cells < REFINE_CELLS / COLLAPSE_HYSTERESIS )
+                return coarseLeaf(generator, node.bounds()); // far/small: drop the chunk's voxel detail.
             return node;
         }
 
-        // Above the chunk level: refine into coarse children when close — but ONLY a non-homogeneous
-        // (surface-straddling) sector, since a uniform region is identical at every level of detail.
-        // This keeps refinement on the 2D terrain surface, not the 3D solid/empty volume, so the cone
-        // stays bounded even with a large REFINE_FACTOR. Collapse when far.
-        if ( dist < edge * REFINE_FACTOR && !generator.isHomogeneous(node.bounds()) ) {
+        // Above the chunk level: refine into coarse children whenever the renderer would draw this node
+        // finer than a single flat box (res-8 from its sub-sectors, or descend into it). Collapse when it
+        // shrinks well below that on screen.
+        if ( wantsDetail ) {
             if ( node.isLeaf() ) {
                 if ( budget[0] <= 0 )
                     return node; // out of budget; subdivided next tick.
@@ -480,9 +498,32 @@ public final class World
             return changed ? node.withChildren(new WorldTreeNode(newKids)) : node;
         }
 
-        if ( !node.isLeaf() && dist > edge * REFINE_FACTOR * COLLAPSE_HYSTERESIS )
-            return coarseLeaf(generator, node.bounds()); // far: collapse the whole sub-tree to one coarse leaf.
+        if ( !node.isLeaf() && cells < REFINE_CELLS / COLLAPSE_HYSTERESIS )
+            return coarseLeaf(generator, node.bounds()); // small on screen: collapse the whole sub-tree to one coarse leaf.
         return node;
+    }
+
+    /**
+     *  The one "size on screen" metric, shared by world refinement and the renderer.
+     *
+     *  @return How many cells of detail {@code bounds} wants across its edge from {@code eye}: {@link #LOD_DETAIL}
+     *          scaled by the sector's radius over its distance (to the camera's nearest point), or
+     *          {@code +Infinity} if the camera is inside it. It depends only on the sector's size relative to
+     *          its distance &mdash; never on pixels &mdash; so it is identical at any viewport resolution.
+     */
+    private static double detailCells( BoundsF64 bounds, VecF64 eye ) {
+        double distance = distanceToBounds(eye, bounds);
+        if ( distance <= 0 )
+            return Double.POSITIVE_INFINITY;
+        return LOD_DETAIL * ( maxEdge(bounds) / 2.0 ) / distance;
+    }
+
+    /** @return {@link #detailCells(BoundsF64, VecF64)} for the <i>most-demanding</i> (largest) camera in {@code eyes}. */
+    private static double detailCells( BoundsF64 bounds, Tuple<VecF64> eyes ) {
+        double best = 0;
+        for ( VecF64 eye : eyes )
+            best = Math.max(best, detailCells(bounds, eye));
+        return best;
     }
 
     /**
@@ -641,25 +682,17 @@ public final class World
     private static final int COVERAGE_TILE = 16;
 
     /**
-     *  The level-of-detail target: roughly the screen size, in pixels, of one meshed grid cell. The
-     *  walk meshes each collected sector at the resolution that keeps its cells near this size, so a
-     *  sector small on screen is drawn from a few coarse cells and a near one finely. Smaller = more
-     *  detail (and more quads); larger = coarser.
-     */
-    private static final double TARGET_CELL_PX = 12.0;
-
-    /**
      *  The cap on the grid resolution a single render unit is meshed at. A power of
      *  {@link WorldTreeNode#RESOLUTION}; the renderer's mesher caps its grid at the same value.
      */
     private static final int MAX_MESH_RESOLUTION = WorldTreeNode.RESOLUTION * WorldTreeNode.RESOLUTION; // 64
 
     /**
-     *  Above the {@code chunkSize} floor, a sector small enough on screen to span at most this many
-     *  {@link #TARGET_CELL_PX target-sized} cells is collapsed into <i>one</i> coarse render unit
-     *  (meshed from its branch sectors); a bigger one is descended into instead, so its children carry
-     *  the detail and occlusion can act between them. Tied to {@link WorldTreeNode#RESOLUTION} so a
-     *  collapsed unit is meshed at one tree level (its direct children as voxels) or coarser.
+     *  Above the {@code chunkSize} floor, a sector wanting at most this many {@link #detailCells cells} of
+     *  detail across its edge is collapsed into <i>one</i> coarse render unit (meshed from its branch
+     *  sectors); a bigger one is descended into instead, so its children carry the detail and occlusion can
+     *  act between them. Tied to {@link WorldTreeNode#RESOLUTION} so a collapsed unit is meshed at one tree
+     *  level (its direct children as voxels) or coarser.
      */
     private static final double LOD_COLLAPSE_CELLS = WorldTreeNode.RESOLUTION; // 8
 
@@ -684,9 +717,9 @@ public final class World
      *          silhouette into a {@link CoverageGrid} as it is collected, and any later
      *          (farther) sector whose screen rectangle is already fully covered is
      *          skipped, sub-tree and all.</li>
-     *      <li><b>Level of detail</b> &mdash; for each surviving sector the walk estimates its
-     *          projected screen size and the grid resolution that would keep cells near
-     *          {@link #TARGET_CELL_PX}. A leaf, a solid occluder, a sector already {@code chunkSize}
+     *      <li><b>Level of detail</b> &mdash; for each surviving sector the walk estimates how big it is on
+     *          screen ({@link #detailCells}) and the grid resolution that keeps its cells near constant.
+     *          A leaf, a solid occluder, a sector already {@code chunkSize}
      *          or smaller (the floor, meshed at full detail), or one small enough on screen to span
      *          only a few cells ({@link #LOD_COLLAPSE_CELLS}) is handed over as one render unit
      *          together with that resolution &mdash; distant sectors meshed coarsely from big blocks
@@ -740,8 +773,8 @@ public final class World
     }
 
     /**
-     *  @return The grid resolution to mesh a unit at, given how many {@link #TARGET_CELL_PX}-sized
-     *          cells would span its projected edge: the nearest power of {@link WorldTreeNode#RESOLUTION}
+     *  @return The grid resolution to mesh a unit at, given how many {@link #detailCells cells} of detail
+     *          it wants across its edge: the nearest power of {@link WorldTreeNode#RESOLUTION}
      *          ({@code 1, 8, 64}), capped at {@link #MAX_MESH_RESOLUTION}. Nearest (rather than floor)
      *          keeps the cell size centred on the target across the coarse, factor-8 LoD steps.
      */
@@ -806,18 +839,16 @@ public final class World
                 return;
             }
 
-            // Level of detail: how many cells across would keep each grid cell near the target
-            // screen size? A sector that is small on screen is meshed coarsely (few big quads from
-            // branch sectors); a near, big one is descended into so its children carry the detail.
-            double distance = view.camera().position().distance(sector.bounds().center());
-            double projectedPx = projectedEdgePixels(maxEdge(sector.bounds()), distance, view.focalLengthPx());
-            double desiredCells = projectedPx / TARGET_CELL_PX;
+            // Level of detail: how many cells of detail does this sector want across its edge? A sector
+            // small on screen is meshed coarsely (few big quads from branch sectors); a near, big one is
+            // descended into so its children carry the detail. The SAME metric the world refines by.
+            double cells = detailCells(sector.bounds(), view.camera().position());
 
             boolean atFloor = sector.isLeaf() || maxEdge(sector.bounds()) <= chunkSize;
-            if ( atFloor || desiredCells <= LOD_COLLAPSE_CELLS ) {
+            if ( atFloor || cells <= LOD_COLLAPSE_CELLS ) {
                 // At the chunk floor (full detail), or far enough that the whole sector is only a few
                 // cells on screen: hand it over as one unit, meshed at the chosen level of detail.
-                collector.collect(sector, view, meshResolutionFor(desiredCells));
+                collector.collect(sector, view, meshResolutionFor(cells));
                 collected++;
                 return;
             }
