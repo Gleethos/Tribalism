@@ -149,6 +149,18 @@ public record WorldGenerator(
      *  @param bounds The region to summarize.
      *  @return The region's representative material and per-side appearance, derived purely from noise.
      */
+    /**
+     *  @return A cheap, uniform top-down appearance for a whole region: the ether of its single
+     *          {@link #dominantMaterial dominant sampled material}. This is the coarse counterpart to
+     *          {@link #etherOf}: it samples a region only a handful of times (not its full
+     *          {@value WorldTreeNode#RESOLUTION}&sup3; grid) and produces one material on every face,
+     *          so it is cheap enough to use for the <i>many</i> coarse level-of-detail leaves a far
+     *          camera materializes &mdash; where a faithful per-side summary is not worth its cost.
+     */
+    public WorldSectorEtherData representativeEtherOf( BoundsF64 bounds ) {
+        return WorldSectorEtherData.of(dominantMaterial(bounds));
+    }
+
     public WorldSectorEtherData etherOf( BoundsF64 bounds ) {
         Material homogeneous = homogeneousMaterial(bounds);
         if ( homogeneous != null )

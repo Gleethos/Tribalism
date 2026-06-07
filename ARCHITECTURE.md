@@ -401,7 +401,6 @@ Association<Long, Entity>         entities       // id → actual entity (camera
 Association<ScreenId, Screen>     screens        // render targets the world knows about
 WorldGenerator?                   generator      // optional: how the world builds itself
 (private) per-screen input state                 // currently-held keys, between updates
-(private) generated-chunk coords                 // which grid chunks the generator has filled
 ```
 
 The `root` holds only `WorldTreeEntityId`s; the `entities` association is the
@@ -428,48 +427,42 @@ keys + accumulated cursor delta into **camera mutations** on each screen's bound
 via the pure `CameraFlight` controls (the free-fly logic, lifted out of the demo into
 the engine). Keys are the engine-neutral `Key` enum, so the world model never sees AWT.
 
-**Generation around cameras — the infinite world.** A world can own a `WorldGenerator`
-(`World.of(generator)`); `update` then **builds the world around every camera**, and the
-world is effectively **unbounded**. Chunks live on a fixed global grid of
-`generator.chunkSize()` cubes. After the camera mutations, every chunk whose nearest point lies
-within `generationDistance` of a camera and that hasn't been generated yet becomes a *candidate*;
-the candidates are built **nearest-first**, but only **a bounded number per tick**
-(`GENERATION_BUDGET_PER_UPDATE`) — the rest stream in over following ticks. Each built chunk is
-spliced into the tree by:
+**Refinement around cameras — the infinite, level-of-detail world.** A world can own a
+`WorldGenerator` (`World.of(generator)`); `update` then **refines a single continuous LoD octree
+around every camera** (`refineAroundCameras`), and the world is effectively **unbounded** yet
+**memory-bounded**. It starts as one large coarse sector (described top-down by
+`generator.etherOf`, no sub-tree) covering the view range. Each tick, after the camera mutations:
 
-- **growing the root outward** (`growToContain`) — re-rooting it 8× larger whenever a chunk
-  falls outside the current root: the old root becomes one cell of a new, larger root,
-  positioned in the corner *furthest from* the target so the new root extends toward it, so
-  all existing content keeps its world coordinates (the upward half of the octree); and
-- **descending to the chunk's slot** (`placeChunk`) — subdividing empty cells on the way
-  down to the chunk-sized cell, which it replaces (the downward half).
+- the root is first **grown** (`growToContain`) to cover a `VIEW_DISTANCE` box around each camera
+  — re-rooting 8× larger and filling the new cells with coarse leaves (rare: the root already
+  spans the view range); then
+- the tree is walked and each sector, by its **distance relative to its own edge**, is **refined**,
+  **kept**, or **collapsed**:
+  - *refine* — a coarse sector a camera is within `REFINE_FACTOR ×` its edge of is subdivided into
+    eight finer **coarse-leaf children** (each described top-down, cheaply, by
+    `generator.representativeEtherOf`); at the **chunk level** (`chunkSize`) it is instead
+    `generator.generate`d to full voxel detail (a homogeneous region needs no generation — its
+    coarse leaf already *is* the full detail, so it is kept as-is, which is what makes the walk
+    settle);
+  - *keep* — within the hysteresis band, unchanged;
+  - *collapse* — a refined sector no camera is near (past `REFINE_FACTOR × COLLAPSE_HYSTERESIS`)
+    drops its sub-tree back to one coarse leaf, freeing memory.
 
-Both splice steps re-aggregate the LoD ether **only along the path** they touch
-(`withAggregatedChildren`, see §4), reusing every off-path sub-tree by reference; there is no
-whole-tree `aggregated()` pass. The combination — *budget the work per tick* + *touch only the
-splice path* — is what fixed the multi-second freezes when flying into fresh terrain: a single
-update now does a small, bounded amount of work, and previously-loaded chunks keep their identity
-so the renderer's per-chunk GPU cache keeps hitting instead of re-meshing the whole view.
+The materialized sectors form a **cone of detail** around each camera — full voxels up close,
+progressively coarser `etherOf`/`representativeEtherOf` leaves outward — so **memory is bounded by
+the cone, not the distance travelled**, and the renderer (§7) draws far terrain coarsely instead
+of not at all. Materializations are **budgeted** (`REFINE_BUDGET_PER_UPDATE`, nearest-first), so a
+tick never stalls and detail streams in over following ticks; an already-settled world is returned
+by **identity** (so the renderer's caches keep hitting). Because terrain is a deterministic
+function of the seed, collapse is **lossless** — approaching again re-refines it byte-for-byte.
 
-So the root starts as a single empty chunk at the origin and grows without bound as cameras
-roam; terrain streams in around them while distant, unvisited chunks cost nothing, and a
-generated chunk coordinate is remembered so it is not rebuilt while it stays loaded. A world
-built without a generator (`World.of(root)`) skips this step. Two point queries support all
-this: `isGenerated(p)` (is the chunk at `p` currently loaded?) and `sectorAt(p)` (the deepest
-sector at a world point).
-
-**Eviction — bounding memory (`evictDistantChunks`).** The counterpart to generation, and what
-keeps a long flight from growing memory without bound. After generating, `update` drops every
-loaded chunk that has drifted farther than an **unload radius** from *all* cameras (a multiple of
-`generationDistance`, with a minimum gap, so there is a **hysteresis** band and chunks don't
-flip-flop at the boundary): its tree slot becomes empty air again (`removeChunk`, re-aggregating
-the splice path the same incremental way), and its coordinate is forgotten from the generated set.
-Because terrain is a **deterministic** function of the seed, this is **lossless** — fly back and
-the chunk regenerates byte-for-byte. So the working set is bounded to a shell around the cameras,
-and regeneration *is* the persistence for now. (Once chunks can carry **edits** that are not
-reproducible from the seed, `removeChunk` is exactly the seam where they would instead be written
-to disk before being dropped — see §10. The GPU backend independently evicts the VBOs of chunks it
-stops being handed, so VRAM is bounded too.)
+So a generator world is the unified LoD octree: refine toward cameras, collapse away, grow to
+follow. A world built without a generator (`World.of(root)`) skips this step. `sectorAt(p)` (the
+deepest sector at a world point) doubles as a "how refined is here" query — the smaller its
+bounds, the finer the detail materialized there. (Once chunks can carry **edits** not reproducible
+from the seed, the collapse step is the seam where they would instead be persisted to disk before
+being dropped — see §10. The GPU backend independently evicts the VBOs of sectors it stops being
+handed, so VRAM is bounded too.)
 
 `World` is also the **query API** for everything that interrogates the world rather than
 mutating it — most importantly the per-frame visibility walk `collectSectorsForRendering`
@@ -513,10 +506,11 @@ appearance only becomes meaningful higher up, once `aggregated()` summarizes eac
 face from the children on it. The result is returned already `aggregated()`.
 
 The generator carries three pieces of config the world uses to drive itself:
-`generationDistance` (how close a camera must be for `World.update` to build a region),
-`chunkSize` (the world-space edge of one streamed chunk — the granularity of the global
-chunk grid), and `detailDepth` (how deep `generate(bounds)` subdivides a chunk by default;
-the finest voxel is `chunkSize / 8^detailDepth`). It is **owned by the `World`** (see §5)
+`generationDistance` (the **full-detail radius** — within it, refinement bottoms out in
+`generate`d voxel chunks; see §5), `chunkSize` (the world-space edge of one generated chunk — the
+level at which refinement switches from coarse `etherOf` leaves to full voxel detail), and
+`detailDepth` (how deep `generate(bounds)` subdivides a chunk; the finest voxel is
+`chunkSize / 8^detailDepth`). It is **owned by the `World`** (see §5)
 rather than called from outside; the standalone `generate(bounds, maxDepth)` remains for
 tests and one-off builds. Making generation *pluggable* (an interface the world depends on,
 with `WorldGenerator` as one impl) is a natural future step — and would also dissolve the
@@ -535,10 +529,15 @@ ids for the cube material, and averages the boundary cells' textures for each fa
 computes exactly what `aggregated()` *would* produce, but analytically. By construction
 `etherOf(b)` equals `generate(b, 1).ether()` (a uniform region short-circuits to its single
 exact material, like a leaf), so a coarse node and its one-level refinement **agree** — which is
-what stops level-of-detail transitions from popping. This is the foundation (step 1) of the
-top-down LoD model: a sector can carry a faithful appearance while its detail is unloaded, so
-the renderer (§7) can draw distant terrain coarsely and the tree can stay sparse far from any
-camera (§10).
+what stops level-of-detail transitions from popping. This is the foundation of the top-down LoD
+model: a sector can carry a faithful appearance while its detail is unloaded, so the renderer (§7)
+can draw distant terrain coarsely and the tree can stay sparse far from any camera (§5).
+
+For the *many* coarse leaves the refinement cone (§5) materializes, `etherOf`'s full
+{@code 8³}-cell sampling is too costly, and a per-side summary is not worth it for something drawn
+as a single box. So there is also **`representativeEtherOf(bounds)`** — the cheap counterpart: one
+uniform appearance from the region's single `dominantMaterial` (a handful of samples). The few large
+sectors (the root, re-root wrappers) use the faithful `etherOf`; the cone's leaves use the cheap one.
 
 ---
 
@@ -780,7 +779,7 @@ structure:
 | `world/World_Spec`          | add/remove/move keeping tree + lookup in sync |
 | `world/WorldScreens_Spec`   | screen/camera lifecycle, one-way binding, resize, cameras stay out of the tree |
 | `world/WorldUpdate_Spec`    | inputs → camera mutations, held keys remembered between updates, unbound no-op |
-| `world/WorldGeneration_Spec`| infinite generation: chunks streamed (budgeted) around cameras, root grows to follow a far camera, reach, idempotent once settled, no-generator skip, far chunks evicted + losslessly regenerated on return |
+| `world/WorldGeneration_Spec`| infinite LoD refinement: starts as one coarse sector, refines full detail near a camera + coarse far, larger reach refines further, root grows to follow a far camera, idempotent once settled, no-generator skip, detail collapses behind a moved camera + re-refines losslessly on return |
 | `world/CameraFlight_Spec`   | pure free-fly math: move/strafe/sprint/look, dt scaling, no-input identity |
 | `world/CollectSectorsForRendering_Spec` | the visibility walk (frustum + occlusion + chunk floor + distance-based level-of-detail resolution) tested with no renderer |
 | `world/CoverageGrid_Spec`   | conservative mark/test, off-screen handling, occlusion of covered rects |
@@ -850,34 +849,32 @@ the real renderer to come:
 
 **Not yet built (future steps):**
 
-- **Top-down level-of-detail — kilometre view distance at bounded cost (in progress).** The goal:
-  draw terrain kilometres out, and keep the tree **sparse** (a coarse sector exists without its
-  sub-tree loaded), so neither memory nor render cost scales with view distance. Three steps:
-  **(1, done)** `WorldGenerator.etherOf(bounds)` describes a region top-down (§6), so a coarse
-  sector can carry a faithful appearance with no sub-tree. **(2, done)** the render walk descends by
-  *projected size* and **greedy-meshes coarse branch sectors** (each sub-sector one voxel via its
-  aggregated ether) at a chosen grid resolution, so distant terrain becomes a few big quads instead
-  of full detail (§7). **(3)** the tree goes **sparse + refinement-driven**: coarse nodes exist
-  childless (described by `etherOf`), the walk refines toward the camera and collapses away from it
-  (generalizing today's chunk-grid streaming and distance eviction into one continuous LoD octree).
-  This is the step that actually *extends* the view distance — until it lands, the LoD meshing of (2)
-  only coarsens terrain that is already loaded within the generation/eviction shell. `aggregated()`
-  then remains only for *edited* sub-trees the generator can't describe — which dovetails with
-  persistence below.
-- **Disk persistence for *edited* chunks (when edits exist).** Distance-based **eviction** with
-  deterministic regeneration is now in place (§5), so memory is bounded and pristine terrain needs
-  no disk — regeneration *is* the persistence. The remaining step lands once a chunk can carry
-  changes that are **not** reproducible from the seed (player/AI edits): tag chunks pristine vs
-  modified, and have `removeChunk` write only *modified* chunks before dropping them, reading them
-  back on return. Planned design: persist at **chunk granularity** keyed by the integer
-  `ChunkCoord` (not float bounds — fragile in filenames), bucketed into **region files**; store
-  only the sub-tree *shape* + **leaf material ids** (branch ether is recomputed via
-  `aggregateEtherOf`, bounds from tree position), so a chunk is a tiny, compressible stream; do the
-  I/O **async** off the update thread (the update loop only splices in completed loads, exactly as
-  it splices completed generations). A natural companion is making the chunk slot a **lazy/loadable
-  handle** (*materialized | evicted | on-disk*) the render walk respects.
+- **Top-down level-of-detail — kilometre view distance at bounded cost (done).** Terrain is drawn
+  kilometres out and the tree stays **sparse** (a coarse sector exists without its sub-tree), so
+  neither memory nor render cost scales with view distance. Three steps, all landed:
+  **(1)** `WorldGenerator.etherOf(bounds)` describes a region top-down (§6); **(2)** the render walk
+  descends by *projected size* and **greedy-meshes coarse branch sectors** at a chosen resolution
+  (§7); **(3)** the generation model is a single **refinement-driven LoD octree** (§5) — coarse
+  nodes exist childless (described by `etherOf`/`representativeEtherOf`), the walk refines toward
+  cameras and collapses away (subsuming the old chunk-grid streaming + eviction). `aggregated()` now
+  remains only for *edited* sub-trees the generator can't describe — which dovetails with persistence.
+  *Tuning follow-ups:* coarse far terrain is currently drawn as **boxes** (a childless coarse leaf
+  meshes at res 1); making mid/far terrain less blocky means refining one extra level for res-8
+  meshing (bounded by `REFINE_FACTOR`) or baking a small per-node LoD mesh, and smoothing LoD
+  pop (geomorph). `REFINE_FACTOR` / `VIEW_DISTANCE` / `TARGET_CELL_PX` are the knobs.
+- **Disk persistence for *edited* sectors (when edits exist).** Refinement + deterministic
+  regeneration bound memory today, so pristine terrain needs no disk — regeneration *is* the
+  persistence. The remaining step lands once a sector can carry changes **not** reproducible from
+  the seed (player/AI edits): tag sectors pristine vs modified, and have the **collapse** step (§5)
+  write only *modified* sub-trees before dropping them, reading them back on re-refine. Planned
+  design: persist at sector granularity keyed by integer grid coordinate (not float bounds — fragile
+  in filenames), bucketed into **region files**; store only the sub-tree *shape* + **leaf material
+  ids** (branch ether recomputed via `aggregateEtherOf`/`etherOf`, bounds from tree position), so it
+  is a tiny, compressible stream; do the I/O **async** off the update thread (the loop only splices
+  in completed loads, exactly as it adopts completed generations). A natural companion is making a
+  coarse leaf a **lazy/loadable handle** (*coarse | refined | on-disk*).
 - **Parallel generation** on a worker pool — now worthwhile, since a tick no longer redoes O(world)
-  work; generation requests fan out and completed chunks splice in over following ticks.
+  work; refinement requests fan out and completed sub-trees splice in over following ticks.
 - A richer GPU **fragment shader** consuming `TextureProfile` hints directly (lit/displaced/
   flowing), beyond today's pre-baked tiles; plus dynamic 64→32-bit scaling concerns.
 - Extending `World.update` beyond camera control: **entity behaviour** and **light-trace

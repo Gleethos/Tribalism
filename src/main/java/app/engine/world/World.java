@@ -52,33 +52,29 @@ public final class World
     private final Association<ScreenId, Screen> _screens;
     private final Association<ScreenId, ScreenInputState> _inputStates;
     private final @Nullable WorldGenerator _generator;
-    /** Grid coordinates of the chunks already generated, so they are never regenerated. */
-    private final ValueSet<ChunkCoord> _generatedChunks;
 
     private World(
         WorldSector root,
         Association<Long, Entity> entities,
         Association<ScreenId, Screen> screens,
         Association<ScreenId, ScreenInputState> inputStates,
-        @Nullable WorldGenerator generator,
-        ValueSet<ChunkCoord> generatedChunks
+        @Nullable WorldGenerator generator
     ) {
         _root            = Objects.requireNonNull(root);
         _entities        = Objects.requireNonNull(entities);
         _screens         = Objects.requireNonNull(screens);
         _inputStates     = Objects.requireNonNull(inputStates);
         _generator       = generator;
-        _generatedChunks = Objects.requireNonNull(generatedChunks);
     }
 
-    /** @return A copy of this world with the given core state, preserving its generator and generated-chunk set. */
+    /** @return A copy of this world with the given core state, preserving its generator. */
     private World copy(
         WorldSector root,
         Association<Long, Entity> entities,
         Association<ScreenId, Screen> screens,
         Association<ScreenId, ScreenInputState> inputStates
     ) {
-        return new World(root, entities, screens, inputStates, _generator, _generatedChunks);
+        return new World(root, entities, screens, inputStates, _generator);
     }
 
     /** @return An empty world whose root covers {@code bounds}, made of nothing, with no generator. */
@@ -93,28 +89,34 @@ public final class World
                 Association.between(Long.class, Entity.class),
                 Association.between(ScreenId.class, Screen.class),
                 Association.between(ScreenId.class, ScreenInputState.class),
-                null,
-                ValueSet.of(ChunkCoord.class)
+                null
         );
     }
 
     /**
      *  @return An <b>infinite</b> world that generates itself on demand with {@code generator}.
-     *          It starts as a single empty chunk at the origin; {@link #update} streams terrain
-     *          in around cameras (within the generator's
-     *          {@link WorldGenerator#generationDistance() reach}), growing the spatial tree's
-     *          root outward as cameras roam, with no fixed bounds &mdash; see
-     *          {@link #generateAroundCameras()}.
+     *          It starts as a single coarse sector at the origin (described top-down by the
+     *          generator, with no sub-tree); {@link #update} grows the root to cover each camera's
+     *          view range and then <b>refines the tree toward the cameras</b> &mdash; finer detail
+     *          where they are close, collapsing back to coarse where they are far &mdash; a single
+     *          continuous level-of-detail octree with no fixed bounds (see {@link #refineAroundCameras}).
      */
     public static World of( WorldGenerator generator ) {
         Objects.requireNonNull(generator);
+        // Start with one large coarse root covering the view range, centred on the origin and sized to a
+        // whole power of RESOLUTION chunks (so sub-cells land exactly on chunk-sized nodes). update()
+        // refines detail toward cameras and grows the root only if one roams beyond it.
+        double size = generator.chunkSize();
+        while ( size < 2 * VIEW_DISTANCE )
+            size *= WorldTreeNode.RESOLUTION;
+        double half = size / 2;
+        BoundsF64 rootBounds = BoundsF64.of(VecF64.of(-half, -half, -half), VecF64.of(half, half, half));
         return new World(
-                WorldSector.empty(chunkBounds(0, 0, 0, generator.chunkSize())),
+                WorldSector.leaf(rootBounds, generator.etherOf(rootBounds)),
                 Association.between(Long.class, Entity.class),
                 Association.between(ScreenId.class, Screen.class),
                 Association.between(ScreenId.class, ScreenInputState.class),
-                generator,
-                ValueSet.of(ChunkCoord.class)
+                generator
         );
     }
 
@@ -155,23 +157,11 @@ public final class World
     }
 
     /**
-     *  @return {@code true} if the chunk containing {@code point} has been generated. A
-     *          hand-built world (no generator) reports {@code false} everywhere &mdash; it has
-     *          no notion of streamed chunks.
-     */
-    public boolean isGenerated( VecF64 point ) {
-        if ( _generator == null )
-            return false;
-        double c = _generator.chunkSize();
-        ChunkCoord coord = new ChunkCoord(
-                (int) Math.floor(point.x() / c), (int) Math.floor(point.y() / c), (int) Math.floor(point.z() / c));
-        return _generatedChunks.contains(coord);
-    }
-
-    /**
-     *  @return The deepest existing sector containing {@code point} (a leaf voxel, a generated
-     *          chunk, or an empty cell), or empty if {@code point} lies outside the current root.
-     *          A spatial point query into the tree.
+     *  @return The deepest existing sector containing {@code point} &mdash; a finely refined sector
+     *          (small bounds) where detail has been materialized near a camera, or a coarse sector
+     *          (large bounds) where it has not. Empty if {@code point} lies outside the current root.
+     *          A spatial point query into the tree; the bounds size of the result tells you how
+     *          refined that location currently is.
      */
     public Optional<WorldSector> sectorAt( VecF64 point ) {
         if ( !_root.bounds().contains(point) )
@@ -290,10 +280,10 @@ public final class World
      *  screen's bound camera via {@link CameraFlight}. Screens not mentioned in the
      *  inputs are left untouched.
      *  <p>
-     *  Then, if the world has a {@link WorldGenerator}, it <b>builds itself around every
-     *  camera</b>: any not-yet-generated region within the generator's
-     *  {@link WorldGenerator#generationDistance() reach} of a camera is generated, so a
-     *  camera always has something to look at as it moves (see {@link #generateAroundCameras}).
+     *  Then, if the world has a {@link WorldGenerator}, it <b>refines the tree around every
+     *  camera</b>: the root is grown to cover each camera's view range, then detail is materialized
+     *  where a camera is close and collapsed back to coarse where it is far &mdash; a single
+     *  continuous level-of-detail octree (see {@link #refineAroundCameras}).
      *
      *  @param inputs What happened on each screen, and how much time elapsed.
      *  @return The world advanced by one step.
@@ -302,146 +292,174 @@ public final class World
         World result = this;
         for ( Pair<ScreenId, ScreenInputs> entry : inputs.screens() )
             result = result.applyScreenInputs(entry.first(), entry.second(), inputs.dtSeconds());
-        return result.generateAroundCameras().evictDistantChunks();
+        return result.refineAroundCameras();
     }
 
-    /**
-     *  How many chunks one {@link #update} may build, so a single tick never stalls. When a camera
-     *  flies into a swathe of ungenerated terrain, only the nearest few chunks are built this tick;
-     *  the rest stream in over following ticks. (Together with the incremental, structure-sharing
-     *  splice below, this is what keeps flying smooth: each tick does a bounded, small amount of work.)
-     */
-    private static final int GENERATION_BUDGET_PER_UPDATE = 8;
+    // ---- Level-of-detail refinement (the infinite, streaming world) -------------
+
+    /** How far around each camera the root is grown so coarse terrain exists out to here (world units). */
+    private static final double VIEW_DISTANCE = 4096.0;
 
     /**
-     *  Streams terrain in around every camera &mdash; the "build the world as you move" step that
-     *  makes the world effectively <b>infinite</b>.
+     *  How close a camera must be, as a multiple of a sector's own edge, for that sector to be refined
+     *  into finer children. Larger carries finer detail further out (more nodes / memory); the cone of
+     *  refined sectors around each camera is what bounds both cost and memory.
+     */
+    private static final double REFINE_FACTOR = 2.0;
+
+    /** Collapse hysteresis: a refined sector is only dropped once a camera is this much past {@link #REFINE_FACTOR}. */
+    private static final double COLLAPSE_HYSTERESIS = 1.5;
+
+    /** How many sectors one {@link #update} may materialize (subdivide or generate), so a tick never stalls. */
+    private static final int REFINE_BUDGET_PER_UPDATE = 8;
+
+    /**
+     *  Refines the level-of-detail octree around every camera &mdash; the unified "build the world as
+     *  you move" step that replaces the old chunk grid, making the world both <b>infinite</b> and
+     *  <b>memory-bounded</b>.
      *  <p>
-     *  Chunks live on a fixed global grid of {@link WorldGenerator#chunkSize()} cubes. Every chunk
-     *  whose nearest point lies within {@link WorldGenerator#generationDistance() reach} of a camera
-     *  and that has not been generated yet is a candidate; the candidates are built <b>nearest&nbsp;
-     *  first</b>, at most {@link #GENERATION_BUDGET_PER_UPDATE} per tick, and the rest are left for
-     *  following ticks. Each built chunk is spliced into the tree &mdash; {@link #growToContain growing
-     *  the root outward} (re-rooting) whenever it falls outside the current root, then
-     *  {@link #placeChunk descending} to its slot &mdash; with the level-of-detail ether re-aggregated
-     *  <i>only along that splice path</i> ({@link WorldSector#withAggregatedChildren}), so every
-     *  untouched sub-tree keeps its identity. There is no fixed region; only the chunks near where
-     *  cameras have been exist, and generated coordinates are remembered so a chunk is never rebuilt.
-     *  A world with no generator is returned unchanged.
+     *  First the root is {@link #growToContain grown} to cover a {@link #VIEW_DISTANCE} box around each
+     *  camera (so far terrain exists to refine into). Then the tree is walked and each sector, by its
+     *  distance relative to its own size, is:
+     *  <ul>
+     *      <li><b>refined</b> &mdash; a coarse sector a camera is within {@link #REFINE_FACTOR}&times;
+     *          its edge of is subdivided into eight finer {@link #coarseLeaf coarse children} (each
+     *          described top-down by {@link WorldGenerator#etherOf}); at the chunk level it is instead
+     *          {@link WorldGenerator#generate generated} to full voxel detail;</li>
+     *      <li><b>kept</b> as-is; or</li>
+     *      <li><b>collapsed</b> &mdash; a refined sector no camera is near (past the hysteresis band)
+     *          drops its sub-tree back to a single coarse leaf, freeing memory. Deterministic terrain
+     *          makes this lossless: approaching again re-refines it.</li>
+     *  </ul>
+     *  The materialized sectors form a <b>cone of detail</b> around each camera &mdash; full voxels up
+     *  close, progressively coarser {@code etherOf} leaves outward &mdash; so memory is bounded by the
+     *  cone, not the distance travelled. Materializations are budgeted
+     *  ({@link #REFINE_BUDGET_PER_UPDATE}, nearest first) so one tick never stalls; the rest stream in
+     *  over following ticks. A world with no generator, or no camera to anchor the cone, is unchanged.
      */
-    private World generateAroundCameras() {
-        if ( _generator == null )
+    private World refineAroundCameras() {
+        WorldGenerator generator = _generator;
+        if ( generator == null )
             return this;
-
-        double chunk = _generator.chunkSize();
-        double reach = _generator.generationDistance();
-
-        // Gather every not-yet-generated chunk within reach of any camera, then build the nearest few.
-        List<ChunkRequest> pending = new ArrayList<>();
-        for ( Entity entity : _entities.values() ) {
-            if ( !(entity instanceof Entity.CameraEntity cameraEntity) )
-                continue;
-            VecF64 eye = cameraEntity.camera().position();
-            int minX = (int) Math.floor((eye.x() - reach) / chunk), maxX = (int) Math.floor((eye.x() + reach) / chunk);
-            int minY = (int) Math.floor((eye.y() - reach) / chunk), maxY = (int) Math.floor((eye.y() + reach) / chunk);
-            int minZ = (int) Math.floor((eye.z() - reach) / chunk), maxZ = (int) Math.floor((eye.z() + reach) / chunk);
-            for ( int cz = minZ; cz <= maxZ; cz++ )
-                for ( int cy = minY; cy <= maxY; cy++ )
-                    for ( int cx = minX; cx <= maxX; cx++ ) {
-                        ChunkCoord coord = new ChunkCoord(cx, cy, cz);
-                        if ( _generatedChunks.contains(coord) )
-                            continue;
-                        BoundsF64 bounds = chunkBounds(cx, cy, cz, chunk);
-                        double distance = distanceToBounds(eye, bounds);
-                        if ( distance > reach )
-                            continue;
-                        pending.add(new ChunkRequest(coord, bounds, distance));
-                    }
-        }
-        if ( pending.isEmpty() )
+        List<VecF64> eyes = cameraEyes();
+        if ( eyes.isEmpty() )
             return this;
-        pending.sort(Comparator.comparingDouble(ChunkRequest::distance));
 
         WorldSector root = _root;
-        ValueSet<ChunkCoord> generated = _generatedChunks;
-        int built = 0;
-        for ( ChunkRequest request : pending ) {
-            if ( built >= GENERATION_BUDGET_PER_UPDATE )
-                break;
-            if ( generated.contains(request.coord()) )
-                continue; // several cameras can queue the same chunk; build it once.
-            root = growToContain(root, request.bounds());
-            root = placeChunk(root, request.bounds(), _generator.generate(request.bounds()), chunk);
-            generated = generated.add(request.coord());
-            built++;
-        }
-        if ( built == 0 )
+        double v = VIEW_DISTANCE;
+        for ( VecF64 eye : eyes )
+            root = growToContain(generator, root, BoundsF64.of(eye.sub(VecF64.of(v, v, v)), eye.add(VecF64.of(v, v, v))));
+
+        int[] budget = { REFINE_BUDGET_PER_UPDATE };
+        WorldSector refined = refine(generator, root, eyes, budget);
+        if ( refined == _root )
             return this;
-        return new World(root, _entities, _screens, _inputStates, _generator, generated);
+        return new World(refined, _entities, _screens, _inputStates, generator);
     }
 
-    /** A chunk awaiting generation: its grid coordinate, world bounds, and distance to the nearest camera. */
-    private record ChunkRequest(ChunkCoord coord, BoundsF64 bounds, double distance) {}
-
-    /**
-     *  The unload radius, as a multiple of the generator's {@link WorldGenerator#generationDistance() reach}.
-     *  A chunk is evicted once it is farther than this from <i>every</i> camera. It is deliberately larger
-     *  than the (1&times;) generation reach so there is a <b>hysteresis</b> band: a chunk does not flip-flop
-     *  between generated and evicted as a camera hovers near the boundary. (A minimum gap of a couple of
-     *  chunk widths is also enforced, so the band never collapses for a small reach.)
-     */
-    private static final double UNLOAD_REACH_FACTOR = 1.5;
-
-    /**
-     *  Drops generated chunks that have drifted far from every camera, so a long flight does not grow
-     *  memory without bound &mdash; the counterpart to {@link #generateAroundCameras}.
-     *  <p>
-     *  A chunk farther than the {@link #UNLOAD_REACH_FACTOR unload radius} from all cameras is removed
-     *  from the tree (its slot becomes empty air again, the splice path re-aggregated incrementally via
-     *  {@link #removeChunk}) <b>and</b> forgotten from {@link #_generatedChunks}. Because terrain is a
-     *  deterministic function of the generator's seed, this is <b>lossless</b>: if a camera returns, the
-     *  chunk is simply regenerated, byte-for-byte, by {@link #generateAroundCameras}. (Once chunks can
-     *  carry edits that are <i>not</i> reproducible from the seed, this is the seam where they would
-     *  instead be persisted to disk before being dropped.) A world with no generator, no generated
-     *  chunks, or no cameras to anchor the working set is returned unchanged.
-     */
-    private World evictDistantChunks() {
-        if ( _generator == null || _generatedChunks.isEmpty() )
-            return this;
-
+    /** @return The positions of all camera entities (the anchors of the detail cone). */
+    private List<VecF64> cameraEyes() {
         List<VecF64> eyes = new ArrayList<>();
         for ( Entity entity : _entities.values() )
             if ( entity instanceof Entity.CameraEntity cameraEntity )
                 eyes.add(cameraEntity.camera().position());
-        if ( eyes.isEmpty() )
-            return this; // nothing to anchor the working set to: keep everything rather than drop it all.
-
-        double chunk = _generator.chunkSize();
-        double unloadReach = Math.max(_generator.generationDistance() * UNLOAD_REACH_FACTOR,
-                                      _generator.generationDistance() + 2 * chunk);
-
-        WorldSector root = _root;
-        ValueSet<ChunkCoord> generated = _generatedChunks;
-        boolean changed = false;
-        for ( ChunkCoord coord : _generatedChunks ) {
-            BoundsF64 bounds = chunkBounds(coord.x(), coord.y(), coord.z(), chunk);
-            if ( withinAny(eyes, bounds, unloadReach) )
-                continue; // still near a camera: keep it loaded.
-            root = removeChunk(root, bounds, chunk);
-            generated = generated.remove(coord);
-            changed = true;
-        }
-        if ( !changed )
-            return this;
-        return new World(root, _entities, _screens, _inputStates, _generator, generated);
+        return eyes;
     }
 
-    /** @return {@code true} if {@code bounds} lies within {@code reach} of any of the camera {@code eyes}. */
-    private static boolean withinAny( List<VecF64> eyes, BoundsF64 bounds, double reach ) {
+    /**
+     *  Refines (or collapses) one sub-tree toward the cameras, returning the possibly-new sub-tree.
+     *  Returns the same instance when nothing changed, so an already-settled world is returned by
+     *  identity from {@link #refineAroundCameras} (and the renderer's value-keyed caches keep hitting).
+     */
+    private static WorldSector refine( WorldGenerator generator, WorldSector node, List<VecF64> eyes, int[] budget ) {
+        double edge = maxEdge(node.bounds());
+        double dist = nearestDistance(node.bounds(), eyes);
+
+        if ( edge <= generator.chunkSize() ) {
+            // Chunk level: full voxel detail when close, a single coarse leaf when far.
+            if ( dist < generator.generationDistance() ) {
+                if ( !node.isLeaf() )
+                    return node; // already a generated chunk with sub-tree detail.
+                if ( budget[0] <= 0 )
+                    return node; // out of budget this tick; generated next tick.
+                WorldSector generated = generator.generate(node.bounds());
+                if ( generated.isLeaf() )
+                    return node; // homogeneous region: the coarse leaf already equals full detail — keep it (no churn).
+                budget[0]--;
+                return generated;
+            }
+            if ( !node.isLeaf() && dist > generator.generationDistance() * COLLAPSE_HYSTERESIS )
+                return coarseLeaf(generator, node.bounds()); // far: drop the chunk's voxel detail.
+            return node;
+        }
+
+        // Above the chunk level: refine into coarse children when close, collapse when far.
+        if ( dist < edge * REFINE_FACTOR ) {
+            if ( node.isLeaf() ) {
+                if ( budget[0] <= 0 )
+                    return node; // out of budget; subdivided next tick.
+                budget[0]--;
+                node = subdivideCoarse(generator, node);
+            }
+            WorldTreeNode children = node.children();
+            WorldSector[] newKids = new WorldSector[WorldTreeNode.SECTOR_COUNT];
+            for ( int i = 0; i < WorldTreeNode.SECTOR_COUNT; i++ )
+                newKids[i] = children.sector(i);
+            boolean changed = false;
+            for ( int i : nearestFirst(children, eyes) ) {
+                WorldSector child = children.sector(i);
+                WorldSector refinedChild = refine(generator, child, eyes, budget);
+                if ( refinedChild != child ) {
+                    newKids[i] = refinedChild;
+                    changed = true;
+                }
+            }
+            return changed ? node.withChildren(new WorldTreeNode(newKids)) : node;
+        }
+
+        if ( !node.isLeaf() && dist > edge * REFINE_FACTOR * COLLAPSE_HYSTERESIS )
+            return coarseLeaf(generator, node.bounds()); // far: collapse the whole sub-tree to one coarse leaf.
+        return node;
+    }
+
+    /**
+     *  @return A childless sector over {@code bounds} described top-down by the generator. It uses the
+     *          <i>cheap</i> {@link WorldGenerator#representativeEtherOf} summary (not the full
+     *          {@link WorldGenerator#etherOf}), because the detail cone materializes many of these and a
+     *          per-side summary is not worth its cost at coarse levels &mdash; the renderer draws a
+     *          childless coarse leaf as a single box anyway.
+     */
+    private static WorldSector coarseLeaf( WorldGenerator generator, BoundsF64 bounds ) {
+        return WorldSector.leaf(bounds, generator.representativeEtherOf(bounds));
+    }
+
+    /** Subdivides a coarse leaf into eight coarse-leaf children (the node keeps its own top-down ether). */
+    private static WorldSector subdivideCoarse( WorldGenerator generator, WorldSector node ) {
+        Tuple<BoundsF64> cells = node.bounds().subdivide(WorldTreeNode.RESOLUTION);
+        WorldSector[] kids = new WorldSector[WorldTreeNode.SECTOR_COUNT];
+        for ( int i = 0; i < WorldTreeNode.SECTOR_COUNT; i++ )
+            kids[i] = coarseLeaf(generator, cells.get(i));
+        return node.withChildren(new WorldTreeNode(kids));
+    }
+
+    /** @return Child indices ordered nearest-camera first, so the materialization budget is spent on the nearest detail. */
+    private static Integer[] nearestFirst( WorldTreeNode node, List<VecF64> eyes ) {
+        Integer[] order = new Integer[WorldTreeNode.SECTOR_COUNT];
+        double[] dist = new double[WorldTreeNode.SECTOR_COUNT];
+        for ( int i = 0; i < WorldTreeNode.SECTOR_COUNT; i++ ) {
+            order[i] = i;
+            dist[i] = nearestDistance(node.sector(i).bounds(), eyes);
+        }
+        Arrays.sort(order, Comparator.comparingDouble(i -> dist[i]));
+        return order;
+    }
+
+    /** @return The distance from the nearest camera to {@code bounds} (0 if a camera is inside it). */
+    private static double nearestDistance( BoundsF64 bounds, List<VecF64> eyes ) {
+        double best = Double.POSITIVE_INFINITY;
         for ( VecF64 eye : eyes )
-            if ( distanceToBounds(eye, bounds) <= reach )
-                return true;
-        return false;
+            best = Math.min(best, distanceToBounds(eye, bounds));
+        return best;
     }
 
     /** @return The distance from {@code point} to the nearest point of {@code bounds} (0 if inside). */
@@ -449,86 +467,33 @@ public final class World
         return point.distance(point.clamp(bounds.min(), bounds.max()));
     }
 
-    /** @return The world-space bounds of chunk {@code (cx, cy, cz)} on the global {@code size}-grid. */
-    private static BoundsF64 chunkBounds( int cx, int cy, int cz, double size ) {
-        VecF64 min = VecF64.of(cx * size, cy * size, cz * size);
-        return BoundsF64.of(min, VecF64.of(min.x() + size, min.y() + size, min.z() + size));
-    }
-
     /**
-     *  Grows {@code root} until it contains {@code target}, re-rooting it
-     *  {@value WorldTreeNode#RESOLUTION}&times; larger (and grid-aligned) at each step. The old
-     *  root becomes exactly one cell of the new, larger root, so all existing content keeps its
-     *  world coordinates &mdash; this is the upward half of an unbounded octree. The old root is
-     *  reused <b>by reference</b> and only the fresh wrapper level's ether is aggregated, so growing
-     *  costs {@code O(1)} sectors per level.
+     *  Grows {@code root} until it contains {@code target}, re-rooting it {@value WorldTreeNode#RESOLUTION}&times;
+     *  larger at each step: the old root becomes one cell of a new, larger root (placed in the corner
+     *  furthest from the target so the root extends toward it), the other cells fresh
+     *  {@link #coarseLeaf coarse leaves}, so all existing content keeps its world coordinates. Rare
+     *  &mdash; the root already covers {@link #VIEW_DISTANCE} around the cameras &mdash; so the per-level
+     *  coarse-leaf cost is acceptable.
      */
-    private static WorldSector growToContain( WorldSector root, BoundsF64 target ) {
+    private static WorldSector growToContain( WorldGenerator generator, WorldSector root, BoundsF64 target ) {
         int res = WorldTreeNode.RESOLUTION;
         while ( !root.bounds().contains(target) ) {
             double size = root.bounds().width();
             VecF64 oldMin = root.bounds().min();
-            // Place the old root in the corner of the (8x larger) new root that is FURTHEST from
-            // the target, so the new root extends toward it. Each axis grows toward the target by
-            // up to (res-1) old-root widths, while the old root stays at one of the new cells and
-            // keeps its world coordinates. (Anchoring to a fixed grid instead would never reach
-            // negative coordinates from a root at the origin.)
             double newMinX = target.min().x() < oldMin.x() ? oldMin.x() - (res - 1) * size : oldMin.x();
             double newMinY = target.min().y() < oldMin.y() ? oldMin.y() - (res - 1) * size : oldMin.y();
             double newMinZ = target.min().z() < oldMin.z() ? oldMin.z() - (res - 1) * size : oldMin.z();
             double bigger = size * res;
             BoundsF64 newBounds = BoundsF64.of(VecF64.of(newMinX, newMinY, newMinZ),
                                                VecF64.of(newMinX + bigger, newMinY + bigger, newMinZ + bigger));
-            WorldSector grown = WorldSector.empty(newBounds).subdivide();
             int cell = cellContaining(newBounds, root.bounds().center());
-            root = grown.withAggregatedChildren(grown.children().withSector(cell, root));
+            Tuple<BoundsF64> cells = newBounds.subdivide(res);
+            WorldSector[] kids = new WorldSector[WorldTreeNode.SECTOR_COUNT];
+            for ( int i = 0; i < WorldTreeNode.SECTOR_COUNT; i++ )
+                kids[i] = i == cell ? root : coarseLeaf(generator, cells.get(i));
+            root = WorldSector.leaf(newBounds, generator.etherOf(newBounds)).withChildren(new WorldTreeNode(kids));
         }
         return root;
-    }
-
-    /**
-     *  Places a generated {@code chunk} into the tree at {@code bounds}, descending from
-     *  {@code sector} (which must already contain {@code bounds}) and subdividing empty cells on
-     *  the way until it reaches the chunk-sized slot, which it replaces &mdash; the downward half
-     *  of the octree. The {@code chunk} arrives already {@link WorldSector#aggregated() aggregated},
-     *  and as the recursion unwinds each ancestor on the path re-aggregates <i>only its own</i>
-     *  ether ({@link WorldSector#withAggregatedChildren}), reusing every off-path sibling sub-tree
-     *  by reference. Splicing one chunk therefore costs {@code O(depth)} sectors, not a whole-tree
-     *  rebuild, and leaves all other chunks' identities intact.
-     */
-    private static WorldSector placeChunk( WorldSector sector, BoundsF64 bounds, WorldSector chunk, double chunkSize ) {
-        if ( sector.bounds().width() <= chunkSize * 1.5 )
-            return chunk; // this cell is the chunk slot.
-        WorldSector branched = sector.isLeaf() ? sector.subdivide() : sector;
-        WorldTreeNode node = branched.children();
-        int cell = cellContaining(branched.bounds(), bounds.center());
-        WorldTreeNode spliced = node.withSector(cell, placeChunk(node.sector(cell), bounds, chunk, chunkSize));
-        return branched.withAggregatedChildren(spliced);
-    }
-
-    /**
-     *  Removes the chunk at {@code bounds} from the tree, the inverse of {@link #placeChunk}: it descends
-     *  to the chunk-sized slot and replaces it with empty air, re-aggregating each ancestor on the path
-     *  via {@link WorldSector#withAggregatedChildren} while reusing every off-path sub-tree by reference.
-     *  Already-empty paths (a leaf reached before the slot, or an already-void slot) are returned by
-     *  identity, so removing a chunk that is not present (or was empty) is a cheap no-op that preserves
-     *  structural sharing.
-     */
-    private static WorldSector removeChunk( WorldSector sector, BoundsF64 bounds, double chunkSize ) {
-        if ( sector.bounds().width() <= chunkSize * 1.5 ) {
-            if ( sector.isLeaf() && sector.isVoid() )
-                return sector; // the slot is already empty air: nothing to drop, keep identity.
-            return WorldSector.empty(sector.bounds()); // this cell is the chunk slot: clear it.
-        }
-        if ( sector.isLeaf() )
-            return sector; // an empty cell above the slot: the chunk is not here.
-        WorldTreeNode node = sector.children();
-        int cell = cellContaining(sector.bounds(), bounds.center());
-        WorldSector child = node.sector(cell);
-        WorldSector cleared = removeChunk(child, bounds, chunkSize);
-        if ( cleared == child )
-            return sector; // nothing changed below: keep this sub-tree's identity.
-        return sector.withAggregatedChildren(node.withSector(cell, cleared));
     }
 
     /** @return The linear index of the {@value WorldTreeNode#RESOLUTION}-cubed sub-cell of {@code bounds} that contains {@code point}. */
@@ -544,9 +509,6 @@ public final class World
     private static int clampCell( int value, int res ) {
         return value < 0 ? 0 : Math.min(value, res - 1);
     }
-
-    /** A chunk's integer coordinate on the global generation grid. */
-    private record ChunkCoord(int x, int y, int z) {}
 
     private World applyScreenInputs( ScreenId screenId, ScreenInputs screenInputs, double dtSeconds ) {
         ScreenInputState state = _inputStates.get(screenId).orElse(ScreenInputState.empty());
@@ -826,13 +788,12 @@ public final class World
             && _entities.equals(other._entities)
             && _screens.equals(other._screens)
             && _inputStates.equals(other._inputStates)
-            && Objects.equals(_generator, other._generator)
-            && _generatedChunks.equals(other._generatedChunks);
+            && Objects.equals(_generator, other._generator);
     }
 
     @Override
     public int hashCode() {
-        return Objects.hash(_root, _entities, _screens, _inputStates, _generator, _generatedChunks);
+        return Objects.hash(_root, _entities, _screens, _inputStates, _generator);
     }
 
     @Override
