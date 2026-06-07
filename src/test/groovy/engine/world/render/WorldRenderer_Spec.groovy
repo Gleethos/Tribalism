@@ -100,15 +100,15 @@ class WorldRenderer_Spec extends Specification
             WorldRenderer.faceProfile(ether, Side.NEG_Y).intensityOf(Texture.OPACITY) == 1.0
         and: '...while the near-invisible top falls back to the combined profile instead of being skipped.'
             !ether.sideOf(Side.POS_Y).isInvisible()
-            WorldRenderer.faceProfile(ether, Side.POS_Y).intensityOf(Texture.OPACITY) > TexturePalette.VISIBILITY_THRESHOLD
+            WorldRenderer.faceProfile(ether, Side.POS_Y).intensityOf(Texture.OPACITY) > TextureProfile.OPACITY_THRESHOLD
     }
 
     def "Majority-opaque decides whether a sector is drawn at all."()
     {
         expect: 'A solid rock cube is drawn...'
-            WorldRenderer.isMajorityOpaque(WorldSectorEtherData.of(Material.ROCK))
+            WorldSectorEtherData.of(Material.ROCK).isMajorityOpaque()
         and: '...empty air is not.'
-            !WorldRenderer.isMajorityOpaque(WorldSectorEtherData.empty())
+            !WorldSectorEtherData.empty().isMajorityOpaque()
     }
 
     def "The texture palette derives a plausible colour from appearance qualities."()

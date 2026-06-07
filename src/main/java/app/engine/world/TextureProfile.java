@@ -29,6 +29,9 @@ public final class TextureProfile
     private static final int COUNT = Texture.values().length;
     private static final TextureProfile _NONE = new TextureProfile(new double[COUNT]);
 
+    /** A surface is treated as a solid, drawable voxel only when its {@link Texture#OPACITY} is at least this. */
+    public static final double OPACITY_THRESHOLD = 0.25;
+
     /** Per-quality intensities in {@code [0, 1]}, indexed by {@link Texture#ordinal()}. Never exposed. */
     private final double[] _intensities;
 
@@ -55,6 +58,14 @@ public final class TextureProfile
         double[] copy = _intensities.clone();
         copy[quality.ordinal()] = clamp(intensity);
         return new TextureProfile(copy);
+    }
+
+    /**
+     *  @return {@code true} if this surface is opaque enough to be drawn as a solid
+     *          voxel &mdash; its {@link Texture#OPACITY} is at least {@link #OPACITY_THRESHOLD}.
+     */
+    public boolean isOpaque() {
+        return intensityOf(Texture.OPACITY) >= OPACITY_THRESHOLD;
     }
 
     /** @return {@code true} if every quality is {@code 0} (empty space / air). */

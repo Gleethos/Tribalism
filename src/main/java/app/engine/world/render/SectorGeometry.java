@@ -36,7 +36,7 @@ public final class SectorGeometry
         if ( sector.isSolidOpaque() ) {
             emitBox(sector, sink);
         } else if ( !wantsDetail || sector.isLeaf() ) {
-            if ( WorldRenderer.isMajorityOpaque(sector.ether()) )
+            if ( sector.ether().isMajorityOpaque() )
                 emitBox(sector, sink);
         } else if ( sector.hasOnlyLeafChildren() ) {
             for ( Quad quad : meshCache.meshOf(sector).quads() )

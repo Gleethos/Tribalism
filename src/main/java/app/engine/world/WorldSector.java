@@ -46,6 +46,7 @@ public final class WorldSector {
     // children), so it is excluded from equals/hashCode and computed at most once.
     private final Lazy<SideInsets> _insets;
     private final Lazy<Boolean> _solidOpaque;
+    private final Lazy<Boolean> _hasOnlyLeafChildren;
 
     // Cached hash. The value equals/hashCode are deep (they walk the whole sub-tree),
     // so memoizing the hash makes a sector a cheap key for value-keyed maps (e.g. the
@@ -68,6 +69,7 @@ public final class WorldSector {
         _children    = children;
         _insets      = Lazy.of(this::computeInsets);
         _solidOpaque = Lazy.of(this::computeSolidOpaque);
+        _hasOnlyLeafChildren = Lazy.of(this::computeHasOnlyLeafChildren);
     }
 
     public BoundsF64 bounds()                     { return _bounds; }
@@ -107,6 +109,10 @@ public final class WorldSector {
      *          meshes and the traversal treats it as a place to stop descending.
      */
     public boolean hasOnlyLeafChildren() {
+        return _hasOnlyLeafChildren.get();
+    }
+
+    private boolean computeHasOnlyLeafChildren() {
         if ( _children == null )
             return false;
         for ( int i = 0; i < WorldTreeNode.SECTOR_COUNT; i++ )

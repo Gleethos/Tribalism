@@ -112,14 +112,14 @@ public final class SectorMeshCache
         WorldSector voxel = node.sector(WorldTreeNode.indexOf(coord(0, a, la, u, uu, v, vv),
                                                               coord(1, a, la, u, uu, v, vv),
                                                               coord(2, a, la, u, uu, v, vv)));
-        if ( !WorldRenderer.isMajorityOpaque(voxel.ether()) )
+        if ( !voxel.ether().isMajorityOpaque() )
             return null;
         int nla = la + step;
         if ( nla >= 0 && nla < res ) {
             WorldSector neighbour = node.sector(WorldTreeNode.indexOf(coord(0, a, nla, u, uu, v, vv),
                                                                       coord(1, a, nla, u, uu, v, vv),
                                                                       coord(2, a, nla, u, uu, v, vv)));
-            if ( WorldRenderer.isMajorityOpaque(neighbour.ether()) )
+            if ( neighbour.ether().isMajorityOpaque() )
                 return null; // buried between two opaque voxels: cull this face
         }
         return voxel.ether().sideOf(side);

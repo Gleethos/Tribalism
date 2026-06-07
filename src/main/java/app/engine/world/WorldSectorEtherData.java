@@ -1,5 +1,7 @@
 package app.engine.world;
 
+import app.engine.util.Lazy;
+
 import java.util.Arrays;
 
 /**
@@ -33,6 +35,11 @@ public final class WorldSectorEtherData
     private final MaterialId _material;
     /** Appearance per face, indexed by {@link Side#ordinal()}; entries are never null. Never exposed. */
     private final TextureProfile[] _sides;
+
+    // Derived, memoized: whether this sector reads as a solid surface. Purely a function of
+    // the fields above, so it is excluded from equals/hashCode and computed at most once. It
+    // sits on the hot rendering path and combined() is not cheap, hence the lazy cache.
+    private final Lazy<Boolean> _majorityOpaque = Lazy.of(this::computeMajorityOpaque);
 
     /** Takes ownership of {@code sides}: callers must not retain or mutate it afterwards. */
     private WorldSectorEtherData( MaterialId material, TextureProfile[] sides ) {
@@ -111,6 +118,21 @@ public final class WorldSectorEtherData
      */
     public TextureProfile combined() {
         return TextureProfile.average(Arrays.asList(_sides));
+    }
+
+    /**
+     *  @return {@code true} if this sector reads as a solid, drawable surface &mdash; its
+     *          {@link #combined() combined} appearance is {@link TextureProfile#isOpaque()
+     *          opaque}. Gating on the averaged opacity keeps a mostly-empty coarse box from
+     *          inflating past the true surface. Memoized, as it is queried per visible sector
+     *          every frame and {@link #combined()} allocates and sums all six faces.
+     */
+    public boolean isMajorityOpaque() {
+        return _majorityOpaque.get();
+    }
+
+    private boolean computeMajorityOpaque() {
+        return combined().isOpaque();
     }
 
     @Override

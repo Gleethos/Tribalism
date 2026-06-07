@@ -2,6 +2,8 @@ package app.engine.primitives;
 
 import sprouts.Tuple;
 
+import java.util.Objects;
+
 /**
  *  An immutable, axis-aligned bounding box in 64-bit simulation space,
  *  defined by its {@code min} and {@code max} corners.
@@ -10,21 +12,30 @@ import sprouts.Tuple;
  *  occupies a cubic {@code BoundsF64}, and the recursive subdivision of the world
  *  tree is expressed purely in terms of {@link #subdivide(int)}.
  *  <p>
- *  Being a {@code record}, it carries full value semantics, which the persistent
- *  Sprouts collections rely upon.
- *
- *  @param min The corner with the smallest coordinate on every axis.
- *  @param max The corner with the largest coordinate on every axis.
+ *  It is an immutable <b>value</b> (with {@code equals}/{@code hashCode} over its two
+ *  corners, which the persistent Sprouts collections rely upon). It is a {@code class}
+ *  rather than a {@code record} so it can cache its {@link #center() centre}: the centre
+ *  is read very heavily (per visible sector, every frame, for distance ordering) but is
+ *  cheap to derive, so &mdash; unlike the expensive lazily-cached values elsewhere &mdash;
+ *  it is computed <b>eagerly</b> once in the constructor and returned as a plain field.
+ *  (A {@code Lazy} wrapper would cost two extra allocations per box, more than the single
+ *  vector it would defer; eager is strictly cheaper for a value created in this volume.)
  */
-public record BoundsF64(
-    VecF64 min,
-    VecF64 max
-) {
-    public BoundsF64 {
+public final class BoundsF64
+{
+    private final VecF64 _min;
+    private final VecF64 _max;
+    private final VecF64 _center;
+
+    public BoundsF64( VecF64 min, VecF64 max ) {
         if ( min.x() > max.x() || min.y() > max.y() || min.z() > max.z() )
             throw new IllegalArgumentException(
                     "The 'min' corner " + min + " must not exceed the 'max' corner " + max + " on any axis."
                 );
+        _min = min;
+        _max = max;
+        // Eagerly derived (see class note): one vector, computed directly to avoid intermediates.
+        _center = VecF64.of((min.x() + max.x()) / 2, (min.y() + max.y()) / 2, (min.z() + max.z()) / 2);
     }
 
     public static BoundsF64 of( VecF64 min, VecF64 max ) {
@@ -37,14 +48,18 @@ public record BoundsF64(
         return new BoundsF64(center.sub(half), center.add(half));
     }
 
-    public VecF64 center() { return min.add(max).div(2); }
+    public VecF64 min() { return _min; }
+    public VecF64 max() { return _max; }
+
+    /** @return The centre point of the box (cached). */
+    public VecF64 center() { return _center; }
 
     /** @return The extent of the box along each axis, i.e. {@code max - min}. */
-    public VecF64 size() { return max.sub(min); }
+    public VecF64 size() { return _max.sub(_min); }
 
-    public double width()  { return max.x() - min.x(); }
-    public double height() { return max.y() - min.y(); }
-    public double depth()  { return max.z() - min.z(); }
+    public double width()  { return _max.x() - _min.x(); }
+    public double height() { return _max.y() - _min.y(); }
+    public double depth()  { return _max.z() - _min.z(); }
 
     public double volume() {
         VecF64 s = size();
@@ -59,50 +74,50 @@ public record BoundsF64(
     }
 
     public boolean contains( VecF64 point ) {
-        return point.x() >= min.x() && point.x() <= max.x()
-            && point.y() >= min.y() && point.y() <= max.y()
-            && point.z() >= min.z() && point.z() <= max.z();
+        return point.x() >= _min.x() && point.x() <= _max.x()
+            && point.y() >= _min.y() && point.y() <= _max.y()
+            && point.z() >= _min.z() && point.z() <= _max.z();
     }
 
     /** @return {@code true} if {@code other} lies entirely within this box. */
     public boolean contains( BoundsF64 other ) {
-        return other.min.x() >= min.x() && other.max.x() <= max.x()
-            && other.min.y() >= min.y() && other.max.y() <= max.y()
-            && other.min.z() >= min.z() && other.max.z() <= max.z();
+        return other._min.x() >= _min.x() && other._max.x() <= _max.x()
+            && other._min.y() >= _min.y() && other._max.y() <= _max.y()
+            && other._min.z() >= _min.z() && other._max.z() <= _max.z();
     }
 
     public boolean intersects( BoundsF64 other ) {
-        return min.x() <= other.max.x() && max.x() >= other.min.x()
-            && min.y() <= other.max.y() && max.y() >= other.min.y()
-            && min.z() <= other.max.z() && max.z() >= other.min.z();
+        return _min.x() <= other._max.x() && _max.x() >= other._min.x()
+            && _min.y() <= other._max.y() && _max.y() >= other._min.y()
+            && _min.z() <= other._max.z() && _max.z() >= other._min.z();
     }
 
     public BoundsF64 intersectionWith( BoundsF64 other ) {
         return BoundsF64.of(
                     VecF64.of(
-                        Math.max(min.x(), other.min.x()),
-                        Math.max(min.y(), other.min.y()),
-                        Math.max(min.z(), other.min.z())
+                        Math.max(_min.x(), other._min.x()),
+                        Math.max(_min.y(), other._min.y()),
+                        Math.max(_min.z(), other._min.z())
                     ),
                     VecF64.of(
-                        Math.min(max.x(), other.max.x()),
-                        Math.min(max.y(), other.max.y()),
-                        Math.min(max.z(), other.max.z())
+                        Math.min(_max.x(), other._max.x()),
+                        Math.min(_max.y(), other._max.y()),
+                        Math.min(_max.z(), other._max.z())
                     )
                 );
     }
 
     /** @return The smallest box enclosing both this box and {@code other}. */
     public BoundsF64 union( BoundsF64 other ) {
-        return BoundsF64.of(min.min(other.min), max.max(other.max));
+        return BoundsF64.of(_min.min(other._min), _max.max(other._max));
     }
 
     public BoundsF64 add( VecF64 offset ) {
-        return BoundsF64.of(min.add(offset), max.add(offset));
+        return BoundsF64.of(_min.add(offset), _max.add(offset));
     }
 
     public BoundsF64 sub( VecF64 offset ) {
-        return BoundsF64.of(min.sub(offset), max.sub(offset));
+        return BoundsF64.of(_min.sub(offset), _max.sub(offset));
     }
 
     /**
@@ -126,7 +141,7 @@ public record BoundsF64(
         for ( int z = 0; z < divisions; z++ ) {
             for ( int y = 0; y < divisions; y++ ) {
                 for ( int x = 0; x < divisions; x++ ) {
-                    VecF64 cellMin = min.add(step.mul(VecF64.of(x, y, z)));
+                    VecF64 cellMin = _min.add(step.mul(VecF64.of(x, y, z)));
                     VecF64 cellMax = cellMin.add(step);
                     cells[x + y * divisions + z * divisions * divisions] = new BoundsF64(cellMin, cellMax);
                 }
@@ -144,7 +159,24 @@ public record BoundsF64(
         if ( x < 0 || y < 0 || z < 0 || x >= divisions || y >= divisions || z >= divisions )
             throw new IndexOutOfBoundsException("Cell (" + x + ", " + y + ", " + z + ") is outside a " + divisions + "^3 grid.");
         VecF64 step = size().div(divisions);
-        VecF64 cellMin = min.add(step.mul(VecF64.of(x, y, z)));
+        VecF64 cellMin = _min.add(step.mul(VecF64.of(x, y, z)));
         return new BoundsF64(cellMin, cellMin.add(step));
+    }
+
+    @Override
+    public boolean equals( Object obj ) {
+        if ( this == obj ) return true;
+        if ( !(obj instanceof BoundsF64 other) ) return false;
+        return _min.equals(other._min) && _max.equals(other._max);
+    }
+
+    @Override
+    public int hashCode() {
+        return Objects.hash(_min, _max);
+    }
+
+    @Override
+    public String toString() {
+        return "BoundsF64[min=" + _min + ", max=" + _max + ']';
     }
 }

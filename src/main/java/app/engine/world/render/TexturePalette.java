@@ -24,9 +24,6 @@ import java.util.concurrent.ConcurrentHashMap;
  */
 public final class TexturePalette
 {
-    /** A surface is drawn as a voxel only if it is at least this opaque on average. */
-    public static final double VISIBILITY_THRESHOLD = 0.5;
-
     private static final Color DEFAULT = new Color(150, 150, 150);
 
     // A representative hue per quality. Structural/optical qualities use muted greys
@@ -62,11 +59,6 @@ public final class TexturePalette
     private static final Map<TextureProfile, Color> _COLOR_CACHE = new ConcurrentHashMap<>();
 
     private TexturePalette() {}
-
-    /** @return {@code true} if a surface this opaque (on average) should be drawn. */
-    public static boolean isVisible( double opacity ) {
-        return opacity >= VISIBILITY_THRESHOLD;
-    }
 
     /**
      *  @return The intensity-weighted blend of the tints of {@code profile}'s

@@ -113,16 +113,6 @@ public final class WorldRenderer
     }
 
     /**
-     *  @return {@code true} if the sector is <i>majority opaque</i> &mdash; its combined
-     *          per-side appearance has {@link Texture#OPACITY} of at least
-     *          {@link TexturePalette#VISIBILITY_THRESHOLD}. Gating on a majority keeps
-     *          mostly-empty coarse boxes from inflating past the true surface.
-     */
-    public static boolean isMajorityOpaque( WorldSectorEtherData ether ) {
-        return TexturePalette.isVisible(ether.combined().intensityOf(Texture.OPACITY));
-    }
-
-    /**
      *  The appearance a given face should be painted with: that {@link Side}'s own
      *  profile, or &mdash; when an aggregated face came out (near-)invisible on an
      *  otherwise opaque cube &mdash; the sector's {@link WorldSectorEtherData#combined()
@@ -130,7 +120,7 @@ public final class WorldRenderer
      */
     public static TextureProfile faceProfile( WorldSectorEtherData ether, Side side ) {
         TextureProfile profile = ether.sideOf(side);
-        if ( !TexturePalette.isVisible(profile.intensityOf(Texture.OPACITY)) )
+        if ( !profile.isOpaque() )
             return ether.combined();
         return profile;
     }
