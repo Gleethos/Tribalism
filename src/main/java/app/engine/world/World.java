@@ -592,6 +592,29 @@ public final class World
     /** The occlusion coverage grid's tile size in pixels (coarser = faster, less culling). */
     private static final int COVERAGE_TILE = 16;
 
+    /**
+     *  The level-of-detail target: roughly the screen size, in pixels, of one meshed grid cell. The
+     *  walk meshes each collected sector at the resolution that keeps its cells near this size, so a
+     *  sector small on screen is drawn from a few coarse cells and a near one finely. Smaller = more
+     *  detail (and more quads); larger = coarser.
+     */
+    private static final double TARGET_CELL_PX = 6.0;
+
+    /**
+     *  The cap on the grid resolution a single render unit is meshed at. A power of
+     *  {@link WorldTreeNode#RESOLUTION}; the renderer's mesher caps its grid at the same value.
+     */
+    private static final int MAX_MESH_RESOLUTION = WorldTreeNode.RESOLUTION * WorldTreeNode.RESOLUTION; // 64
+
+    /**
+     *  Above the {@code chunkSize} floor, a sector small enough on screen to span at most this many
+     *  {@link #TARGET_CELL_PX target-sized} cells is collapsed into <i>one</i> coarse render unit
+     *  (meshed from its branch sectors); a bigger one is descended into instead, so its children carry
+     *  the detail and occlusion can act between them. Tied to {@link WorldTreeNode#RESOLUTION} so a
+     *  collapsed unit is meshed at one tree level (its direct children as voxels) or coarser.
+     */
+    private static final double LOD_COLLAPSE_CELLS = WorldTreeNode.RESOLUTION; // 8
+
     /** What a {@link #collectSectorsForRendering visibility traversal} did, for HUDs and tests. */
     public record RenderStats(
         int sectorsCollected,
@@ -613,11 +636,16 @@ public final class World
      *          silhouette into a {@link CoverageGrid} as it is collected, and any later
      *          (farther) sector whose screen rectangle is already fully covered is
      *          skipped, sub-tree and all.</li>
-     *      <li><b>Chunking</b> &mdash; descent stops at the first sector no larger than
-     *          {@code chunkSize} (in world units), at a solid occluder, or at a leaf; that
-     *          whole sub-tree is handed over as one render unit to be meshed as a unit.
-     *          A larger {@code chunkSize} yields fewer, bigger meshes (better GPU batching,
-     *          coarser culling); the value snaps to the octree's level sizes.</li>
+     *      <li><b>Level of detail</b> &mdash; for each surviving sector the walk estimates its
+     *          projected screen size and the grid resolution that would keep cells near
+     *          {@link #TARGET_CELL_PX}. A leaf, a solid occluder, a sector already {@code chunkSize}
+     *          or smaller (the floor, meshed at full detail), or one small enough on screen to span
+     *          only a few cells ({@link #LOD_COLLAPSE_CELLS}) is handed over as one render unit
+     *          together with that resolution &mdash; distant sectors meshed coarsely from big blocks
+     *          of branch sectors, near ones finely. A sector still big on screen above the floor is
+     *          descended into so its children carry the detail (and occlusion can act between them).
+     *          {@code chunkSize} is the floor below which the walk never descends, so near terrain
+     *          stays batched into chunk-sized units.</li>
      *  </ul>
      *  The camera and viewport size come entirely from the screen (the camera's aspect is
      *  overridden to the screen's). If the screen is unknown, unbound, or its camera no
@@ -663,6 +691,22 @@ public final class World
         return edgeLength * focalLengthPx / distance;
     }
 
+    /**
+     *  @return The grid resolution to mesh a unit at, given how many {@link #TARGET_CELL_PX}-sized
+     *          cells would span its projected edge: the nearest power of {@link WorldTreeNode#RESOLUTION}
+     *          ({@code 1, 8, 64}), capped at {@link #MAX_MESH_RESOLUTION}. Nearest (rather than floor)
+     *          keeps the cell size centred on the target across the coarse, factor-8 LoD steps.
+     */
+    private static int meshResolutionFor( double desiredCells ) {
+        if ( desiredCells <= 1 )
+            return 1;
+        int exponent = (int) Math.round(Math.log(desiredCells) / Math.log(WorldTreeNode.RESOLUTION));
+        int res = 1;
+        for ( int i = 0; i < exponent; i++ )
+            res *= WorldTreeNode.RESOLUTION;
+        return Math.min(res, MAX_MESH_RESOLUTION);
+    }
+
     /** @return The focal length in pixels for a camera rendered into a viewport of the given height. */
     public static double focalLengthPx( CameraF64 camera, int viewportHeight ) {
         return (viewportHeight / 2.0) / Math.tan(camera.fovYRadians() / 2.0);
@@ -705,23 +749,33 @@ public final class World
 
             if ( sector.isSolidOpaque() ) {
                 // A perfect occluder: collect it as one render unit (its mesh is just the
-                // shell) and record its silhouette so it blocks whatever is behind.
-                collector.collect(sector, view);
+                // shell, so the coarsest resolution suffices) and record its silhouette so it
+                // blocks whatever is behind.
+                collector.collect(sector, view, 1);
                 collected++;
                 if ( corners != null )
                     coverage.markOccluder(corners);
                 return;
             }
 
-            if ( sector.isLeaf() || maxEdge(sector.bounds()) <= chunkSize ) {
-                // Small enough on its own: hand the whole sub-tree over as one chunk to mesh.
-                collector.collect(sector, view);
+            // Level of detail: how many cells across would keep each grid cell near the target
+            // screen size? A sector that is small on screen is meshed coarsely (few big quads from
+            // branch sectors); a near, big one is descended into so its children carry the detail.
+            double distance = view.camera().position().distance(sector.bounds().center());
+            double projectedPx = projectedEdgePixels(maxEdge(sector.bounds()), distance, view.focalLengthPx());
+            double desiredCells = projectedPx / TARGET_CELL_PX;
+
+            boolean atFloor = sector.isLeaf() || maxEdge(sector.bounds()) <= chunkSize;
+            if ( atFloor || desiredCells <= LOD_COLLAPSE_CELLS ) {
+                // At the chunk floor (full detail), or far enough that the whole sector is only a few
+                // cells on screen: hand it over as one unit, meshed at the chosen level of detail.
+                collector.collect(sector, view, meshResolutionFor(desiredCells));
                 collected++;
                 return;
             }
 
-            // Too big to be one chunk: recurse, nearest child first, so nearer occluders are
-            // marked before farther siblings are tested.
+            // Still big on screen above the floor: recurse so children carry the detail (and occlusion
+            // can act between them), nearest child first, so nearer occluders are marked before farther ones.
             WorldTreeNode node = sector.children();
             Integer[] order = new Integer[WorldTreeNode.SECTOR_COUNT];
             double[] dist = new double[WorldTreeNode.SECTOR_COUNT];

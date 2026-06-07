@@ -125,7 +125,7 @@ class WorldScreens_Spec extends Specification
     {
         given:
             var world = freshWorld().createScreen(SCREEN, 200, 200)
-            var sink = { s, v -> } as app.engine.world.SectorDrawCollector
+            var sink = { s, v, r -> } as app.engine.world.SectorDrawCollector
         expect: 'Unknown screen.'
             world.collectSectorsForRendering(ScreenId.of(999L), 64.0, sink) == World.RenderStats.NONE
         and: 'Known but unbound screen.'

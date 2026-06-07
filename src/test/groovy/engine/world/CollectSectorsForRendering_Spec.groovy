@@ -37,11 +37,13 @@ class CollectSectorsForRendering_Spec extends Specification
                     .bindScreenToCamera(SCREEN, 1L)
     }
 
-    /** Collects every render unit the world hands out. */
+    /** Collects every render unit the world hands out, with the level of detail chosen for it. */
     private static final class Capture implements SectorDrawCollector {
         final List<WorldSector> sectors = []
-        @Override void collect( WorldSector sector, app.engine.world.ViewInfo view ) {
+        final List<Integer> resolutions = []
+        @Override void collect( WorldSector sector, app.engine.world.ViewInfo view, int meshResolution ) {
             sectors << sector
+            resolutions << meshResolution
         }
     }
 
@@ -108,6 +110,25 @@ class CollectSectorsForRendering_Spec extends Specification
         then: 'The coarse pass hands over a single big chunk; the fine pass many small ones.'
             coarse.sectors.size() == 1
             fine.sectors.size() > coarse.sectors.size()
+    }
+
+    def "A sector is meshed coarsely when far and finely when near (level of detail by distance)."()
+    {
+        given: 'A 128-unit branch (rock below, air above), with a chunk size of the whole world so it is always one unit.'
+            var bounds = BoundsF64.cube(VecF64.zero(), 128)
+            var world = World.of(branch(bounds) { int x, int y, int z -> y < 4 ? Material.ROCK : Material.AIR })
+            var near = new CameraF64(VecF64.of(0, 0, 200),  VecF64.zero(), VecF64.of(0, 1, 0), Math.toRadians(60), 1.0, 0.5, 6000)
+            var far  = new CameraF64(VecF64.of(0, 0, 3000), VecF64.zero(), VecF64.of(0, 1, 0), Math.toRadians(60), 1.0, 0.5, 6000)
+            var nearUnits = new Capture()
+            var farUnits  = new Capture()
+        when:
+            onScreen(world, near, 600, 600).collectSectorsForRendering(SCREEN, 128.0, nearUnits)
+            onScreen(world, far,  600, 600).collectSectorsForRendering(SCREEN, 128.0, farUnits)
+        then: 'Both hand over the single root unit...'
+            nearUnits.sectors.size() == 1
+            farUnits.sectors.size() == 1
+        and: '...but the distant one is meshed at a coarser (smaller) grid resolution.'
+            farUnits.resolutions[0] < nearUnits.resolutions[0]
     }
 
     /** An aggregated 8x8x8 branch over {@code bounds} whose leaves come from a (x,y,z)->Material function. */

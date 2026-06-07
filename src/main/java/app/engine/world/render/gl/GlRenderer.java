@@ -200,6 +200,13 @@ public final class GlRenderer implements Renderer
         }
     }
 
+    /**
+     *  The identity of a retained chunk upload: the (immutable) sector <i>and</i> the level of detail
+     *  it was meshed at. The same sector drawn at two distances needs two meshes, so the resolution is
+     *  part of the key; structural sharing still makes the (sector, res) pair stable frame-to-frame.
+     */
+    private record ChunkKey( WorldSector sector, int resolution ) {}
+
     /** A retained GPU upload of one chunk's mesh: its own VAO + VBO and how stale it is. */
     private static final class GpuChunk
     {
@@ -236,8 +243,8 @@ public final class GlRenderer implements Renderer
         private final Map<TextureProfile, Integer> _layers = new HashMap<>(); // appearance -> texture-array layer
         private FloatBuffer _scratch = MemoryUtil.memAllocFloat(FLOATS_PER_QUAD * 1024); // building a chunk before upload
 
-        private final Map<WorldSector, GpuChunk> _chunks = new HashMap<>(); // retained chunk VBOs
-        private final List<GpuChunk> _toDraw = new ArrayList<>();           // chunks drawn this frame
+        private final Map<ChunkKey, GpuChunk> _chunks = new HashMap<>(); // retained chunk VBOs, keyed by (sector, LoD)
+        private final List<GpuChunk> _toDraw = new ArrayList<>();        // chunks drawn this frame
 
         private final float[] _mvp = new float[16];
         private boolean _mvpReady;
@@ -293,12 +300,12 @@ public final class GlRenderer implements Renderer
 
                 World.RenderStats stats = world.collectSectorsForRendering(
                         _screenId, CHUNK_SIZE,
-                        ( sector, view ) -> {
+                        ( sector, view, meshResolution ) -> {
                             if ( !_mvpReady ) {
                                 captureMvp(view.viewProjection());
                                 _mvpReady = true;
                             }
-                            GpuChunk chunk = chunkFor(sector);
+                            GpuChunk chunk = chunkFor(sector, meshResolution);
                             chunk.lastUsedFrame = _frame;
                             _toDraw.add(chunk);
                         });
@@ -323,19 +330,20 @@ public final class GlRenderer implements Renderer
             swapBuffers();
         }
 
-        /** Returns the retained VBO for a chunk, meshing and uploading it once on first sight. */
-        private GpuChunk chunkFor( WorldSector chunk ) {
-            GpuChunk gpu = _chunks.get(chunk);
+        /** Returns the retained VBO for a chunk at a level of detail, meshing and uploading it once on first sight. */
+        private GpuChunk chunkFor( WorldSector chunk, int meshResolution ) {
+            ChunkKey key = new ChunkKey(chunk, meshResolution);
+            GpuChunk gpu = _chunks.get(key);
             if ( gpu == null ) {
-                gpu = uploadChunk(chunk);
-                _chunks.put(chunk, gpu);
+                gpu = uploadChunk(chunk, meshResolution);
+                _chunks.put(key, gpu);
             }
             return gpu;
         }
 
-        private GpuChunk uploadChunk( WorldSector chunk ) {
+        private GpuChunk uploadChunk( WorldSector chunk, int meshResolution ) {
             List<Quad> quads = new ArrayList<>();
-            SectorGeometry.emitChunk(chunk, _meshCache, quads::add);
+            SectorGeometry.emitChunk(chunk, _meshCache, meshResolution, quads::add);
             ensureScratch(quads.size() * FLOATS_PER_QUAD);
             for ( Quad quad : quads )
                 putQuad(quad);

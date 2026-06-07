@@ -85,7 +85,7 @@ app.engine
     │   ├── Renderer            SPI: a swappable backend (viewport + setWorld + stats), a fn of the World
     │   ├── FrameStats          Per-frame diagnostics a backend reports (faces drawn, sectors culled)
     │   ├── SectorGeometry      Turns a collected chunk sub-tree into world-space Quads
-    │   ├── SectorMeshCache     Greedy-meshes a chunk over a rasterized voxel grid; memoized per sector
+    │   ├── SectorMeshCache     Greedy-meshes a sector over a rasterized voxel grid at a chosen LoD; memoized per (sector, res)
     │   ├── SectorMesh          A chunk's culled + greedy-merged set of visible faces
     │   ├── Quad                One world-space face (4 corners + normal + profile)
     │   ├── Cubes               Bounds + Side → face Quad (shared box/mesh geometry)
@@ -623,39 +623,53 @@ The rules are deliberately conservative so culling never hides something visible
 *inner* (only tiles fully inside an occluder), testing is *outer* (cull only if the whole
 rectangle is covered). One test in front of a wall prunes everything behind it.
 
-### Chunking (deciding *how deep* to descend)
+### Level of detail (deciding *how deep* to descend, and *how finely* to mesh)
 
-Descent stops — handing the whole sub-tree over as one render unit — at the first sector that
-is **at or below `chunkSize` in world units** (the size snaps to the octree's level sizes), or
-is a solid occluder, or is a leaf. Otherwise the walk recurses (nearest child first). This
-hands the renderer **chunk-sized units to mesh and cache as a whole** rather than thousands of
-tiny ones; a larger `chunkSize` means fewer, bigger meshes (better GPU batching, coarser
-culling). Distance-based LoD from the *aggregated* coarse levels is a future refinement; today
-the unit of work is the chunk. (`World.projectedEdgePixels` / `focalLengthPx` remain as pure,
-tested helpers for that future selection.)
+For each surviving sector the walk estimates its projected screen edge
+(`World.projectedEdgePixels`/`focalLengthPx`) and the grid resolution that would keep each meshed
+cell near `TARGET_CELL_PX`. Then:
 
-### Meshing a chunk: face culling + greedy meshing (deciding *which faces*)
+- a **leaf**, a **solid occluder**, a sector at or below the **`chunkSize` floor**, or one small
+  enough on screen to span only a few cells (`LOD_COLLAPSE_CELLS`) is **collected as one render
+  unit**, together with the chosen grid **resolution** (`meshResolutionFor` — a power of
+  `RESOLUTION`: `1, 8, 64`);
+- a sector still **big on screen above the floor** is **descended into** (nearest child first), so
+  its children carry the detail and occlusion can act between them.
 
-Turning a chunk into one cube per voxel is wasteful: a solid region draws the faces *between*
-adjacent voxels only to overdraw them. So `SectorMeshCache` meshes a collected chunk over a
-**rasterized voxel grid**: it descends the sub-tree filling a flat `res³` grid (`res` = the
-chunk's finest leaf resolution, capped) with each cell's leaf ether, then **greedy-meshes** that
-grid. For each face direction and layer it keeps a face only if the neighbouring grid cell is
-empty (culling **internal sub-block faces** between adjacent voxels *and* between adjacent
-sub-blocks within the chunk), then merges coplanar adjacent faces of the same appearance
-(`TextureProfile`) into the largest rectangles (a flat grass top becomes **one** quad; a solid
-shell becomes **6**, not hundreds). Merging stops at appearance boundaries.
+So distance picks both *what* to collect and *how finely* to mesh it: near terrain is handed over
+as `chunkSize`-sized units at full resolution; distant terrain as a few **big coarse units**. The
+`chunkSize` floor is never descended below, so near terrain stays batched into chunk-sized meshes.
+(This puts the long-idle `projectedEdgePixels`/`focalLengthPx` to work.)
 
-Meshing is relatively expensive — but a `WorldSector` is an **immutable value**, the perfect
-cache key. `SectorMeshCache` is a `WeakHashMap<WorldSector, SectorMesh>`: a chunk re-encountered
-next frame reuses its mesh for free, and meshes for chunks the world no longer references are
-GC'd. Lookups stay cheap because `WorldSector` **memoizes its deep hash** and `equals`
-short-circuits on identity — which is precisely why the §4/§5 *structure-sharing* aggregation
-is what keeps this cache hitting as new terrain streams in. (Chunk-boundary faces are drawn
-conservatively — we don't peek into the neighbouring chunk — a small, correct over-draw.)
+### Meshing a unit at a level of detail: face culling + greedy meshing (deciding *which faces*)
 
-`SectorGeometry.emitChunk` adapts a collected unit into the stream of world-space **`Quad`s**
-(4 corners + outward normal + per-face `TextureProfile`) both backends consume.
+Turning a unit into one cube per voxel is wasteful: a solid region draws the faces *between*
+adjacent voxels only to overdraw them. So `SectorMeshCache` meshes a collected unit over a
+**rasterized voxel grid** at the requested **resolution**: it descends the sub-tree filling a flat
+`res³` grid, then **greedy-meshes** it. At full resolution each grid cell is a leaf's ether; at a
+**coarser resolution the rasterizer stops higher up and fills each cell with that *branch*
+sector's own (LoD-aggregated) ether** — so a distant unit is greedy-meshed *from big blocks of
+branch sectors, not leaves*, for a few coarse quads instead of thousands (a checkerboard chunk
+that needs hundreds of faces up close collapses to a 6-face box far away). For each face direction
+and layer a face is kept only if the neighbouring grid cell is empty (culling **internal faces**
+between adjacent voxels *and* between adjacent sub-blocks), then coplanar adjacent faces of the
+same appearance (`TextureProfile`) merge into the largest rectangles. Merging stops at appearance
+boundaries. (Valid resolutions are powers of `RESOLUTION` — `1, 8, 64` — since each tree level
+divides the grid by that factor.)
+
+Meshing is relatively expensive — but a `WorldSector` is an **immutable value**, the perfect cache
+key. `SectorMeshCache` keys a `WeakHashMap<WorldSector, …>` by sector (so meshes of unreferenced
+sectors are GC'd) and, within it, caches each resolution the sector was meshed at: a unit
+re-encountered at the same distance reuses its mesh for free. Lookups stay cheap because
+`WorldSector` **memoizes its deep hash** and `equals` short-circuits on identity — which is
+precisely why the §4/§5 *structure-sharing* aggregation is what keeps this cache hitting as new
+terrain streams in. (Unit-boundary faces are drawn conservatively — we don't peek into the
+neighbouring unit — a small, correct over-draw.)
+
+`SectorGeometry.emitChunk` adapts a collected unit (and its resolution) into the stream of
+world-space **`Quad`s** (4 corners + outward normal + per-face `TextureProfile`) both backends
+consume. The retained GPU backend keys its VBOs by `(sector, resolution)`, so the same sector
+drawn at two distances keeps two meshes.
 
 ### Backend #1 — software (`WorldRenderer` / `Graphics2D`)
 
@@ -768,12 +782,12 @@ structure:
 | `world/WorldUpdate_Spec`    | inputs → camera mutations, held keys remembered between updates, unbound no-op |
 | `world/WorldGeneration_Spec`| infinite generation: chunks streamed (budgeted) around cameras, root grows to follow a far camera, reach, idempotent once settled, no-generator skip, far chunks evicted + losslessly regenerated on return |
 | `world/CameraFlight_Spec`   | pure free-fly math: move/strafe/sprint/look, dt scaling, no-input identity |
-| `world/CollectSectorsForRendering_Spec` | the visibility walk (frustum + occlusion + chunk-size descent) tested with no renderer |
+| `world/CollectSectorsForRendering_Spec` | the visibility walk (frustum + occlusion + chunk floor + distance-based level-of-detail resolution) tested with no renderer |
 | `world/CoverageGrid_Spec`   | conservative mark/test, off-screen handling, occlusion of covered rects |
 | `world/gen/PerlinNoise_Spec`| determinism, range, lattice zeros |
 | `world/gen/WorldGenerator_Spec` | material classification, adaptive subdivision, reproducibility, top-down `etherOf` (faithful to a one-level build, coarse description without a sub-tree) |
 | `world/render/WorldRenderer_Spec` | culling maths, frustum culling, majority-opaque, texture→colour, occlusion culling behind solids, render smoke test |
-| `world/render/SectorMeshCache_Spec` | chunk face culling (incl. internal sub-block boundaries), greedy merge (per-appearance, height-independent), mesh memoization |
+| `world/render/SectorMeshCache_Spec` | chunk face culling (incl. internal sub-block boundaries), greedy merge (per-appearance, height-independent), coarse meshing from branch sectors at a chosen resolution, mesh memoization |
 | `world/render/TextureBaker_Spec`    | procedural tiles: sized + opaque, deterministic, varied (not flat), per-appearance distinct, air bakes cleanly |
 
 Run them with:
@@ -840,14 +854,16 @@ the real renderer to come:
   draw terrain kilometres out, and keep the tree **sparse** (a coarse sector exists without its
   sub-tree loaded), so neither memory nor render cost scales with view distance. Three steps:
   **(1, done)** `WorldGenerator.etherOf(bounds)` describes a region top-down (§6), so a coarse
-  sector can carry a faithful appearance with no sub-tree. **(2)** the render walk descends by
-  *projected size* (reusing `projectedEdgePixels`/`focalLengthPx`) and **greedy-meshes coarse
-  branch sectors** — each sub-sector one voxel via its own `etherOf` — so far terrain becomes a few
-  big quads instead of full detail (today the walk stops at `chunkSize` and meshes everything fully).
-  **(3)** the tree goes **sparse + refinement-driven**: coarse nodes exist childless, the walk
-  refines toward the camera and collapses away from it (generalizing today's chunk-grid streaming
-  and distance eviction into one continuous LoD octree). `aggregated()` then remains only for
-  *edited* sub-trees the generator can't describe — which dovetails with persistence below.
+  sector can carry a faithful appearance with no sub-tree. **(2, done)** the render walk descends by
+  *projected size* and **greedy-meshes coarse branch sectors** (each sub-sector one voxel via its
+  aggregated ether) at a chosen grid resolution, so distant terrain becomes a few big quads instead
+  of full detail (§7). **(3)** the tree goes **sparse + refinement-driven**: coarse nodes exist
+  childless (described by `etherOf`), the walk refines toward the camera and collapses away from it
+  (generalizing today's chunk-grid streaming and distance eviction into one continuous LoD octree).
+  This is the step that actually *extends* the view distance — until it lands, the LoD meshing of (2)
+  only coarsens terrain that is already loaded within the generation/eviction shell. `aggregated()`
+  then remains only for *edited* sub-trees the generator can't describe — which dovetails with
+  persistence below.
 - **Disk persistence for *edited* chunks (when edits exist).** Distance-based **eviction** with
   deterministic regeneration is now in place (§5), so memory is bounded and pristine terrain needs
   no disk — regeneration *is* the persistence. The remaining step lands once a chunk can carry

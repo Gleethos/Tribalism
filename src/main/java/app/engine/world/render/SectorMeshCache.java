@@ -11,6 +11,7 @@ import org.jspecify.annotations.Nullable;
 import sprouts.Tuple;
 
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.WeakHashMap;
@@ -27,49 +28,77 @@ import java.util.WeakHashMap;
  *  deep) hash code, and {@code equals} short-circuits on identity for the common "same
  *  instance again" hit.
  *  <p>
- *  <b>Unified chunk meshing.</b> The chunk's whole sub-tree is first rasterized into a
- *  single uniform voxel grid (at its finest leaf resolution, capped at
- *  {@value #MAX_GRID_RES}&sup3;), then greedy-meshed in one pass: within each face
- *  direction and layer, adjacent <i>exposed</i> voxel faces that share the same
- *  appearance are merged into the largest possible rectangles. Because it is one grid,
- *  every interior face is culled &mdash; including the faces on the boundaries
- *  <i>between</i> the chunk's sub-blocks, which a per-block mesher would have drawn. A
- *  solid chunk collapses to its six shell faces; a flat grass top to a single quad. The
- *  picture is unchanged (merged rectangles are coplanar and uniformly coloured); only the
- *  quad count drops.
+ *  <b>Unified meshing, at a chosen level of detail.</b> The sub-tree is first rasterized
+ *  into a single uniform voxel grid, then greedy-meshed in one pass: within each face
+ *  direction and layer, adjacent <i>exposed</i> voxel faces that share the same appearance
+ *  are merged into the largest possible rectangles. Because it is one grid, every interior
+ *  face is culled &mdash; including the faces on the boundaries <i>between</i> sub-blocks,
+ *  which a per-block mesher would have drawn. A solid block collapses to its six shell faces;
+ *  a flat grass top to a single quad. The picture is unchanged (merged rectangles are
+ *  coplanar and uniformly coloured); only the quad count drops.
+ *  <p>
+ *  The grid resolution is a <b>level-of-detail knob</b> ({@link #meshOf(WorldSector, int)}).
+ *  At the finest resolution the grid reaches the sub-tree's leaves (full detail); at a coarser
+ *  resolution the rasterizer stops higher up and fills each cell with that <i>branch</i>
+ *  sector's own (level-of-detail aggregated) ether &mdash; so a distant sector is greedy-meshed
+ *  from big blocks of branch sectors rather than leaves, for a few coarse quads instead of
+ *  thousands. Valid resolutions are powers of {@value WorldTreeNode#RESOLUTION}
+ *  ({@code 1, 8, 64}), because each tree level divides the grid by that factor.
  *  <p>
  *  This deliberately lives in the renderer; the data model knows nothing of meshes.
  */
 public final class SectorMeshCache
 {
-    /** Cap on the grid edge so a deep/large chunk meshes coarsely rather than blowing memory ({@code res}&sup3;). */
-    private static final int MAX_GRID_RES = 64;
+    /** Cap on the grid edge so a deep/large sector meshes coarsely rather than blowing memory ({@code res}&sup3;). */
+    public static final int MAX_GRID_RES = 64;
 
-    private final Map<WorldSector, SectorMesh> _cache = new WeakHashMap<>();
+    /** Per sector, the meshes built for it keyed by grid resolution. Outer map is weak so meshes of
+     *  no-longer-referenced sectors are garbage-collected; the inner map holds the few LoD levels. */
+    private final Map<WorldSector, Map<Integer, SectorMesh>> _cache = new WeakHashMap<>();
 
     /**
-     *  Meshes a render unit, building on first request and caching thereafter.
+     *  Meshes a render unit at its full available detail (the finest resolution its sub-tree supports,
+     *  capped at {@link #MAX_GRID_RES}). Equivalent to {@link #meshOf(WorldSector, int)} with the cap.
      *
      *  @param sector A render unit (a chunk-sized sub-tree, a solid region, or a leaf).
      *  @return Its occlusion-culled, greedy-meshed visible surface.
      */
     public SectorMesh meshOf( WorldSector sector ) {
-        SectorMesh mesh = _cache.get(sector);
-        if ( mesh == null ) {
-            mesh = build(sector);
-            _cache.put(sector, mesh);
-        }
-        return mesh;
+        return meshOf(sector, MAX_GRID_RES);
     }
 
-    private static SectorMesh build( WorldSector sector ) {
-        int res = gridResolution(sector);
+    /**
+     *  Meshes a render unit at the requested level of detail, building on first request and caching
+     *  thereafter (per sector, per resolution).
+     *
+     *  @param sector         A render unit (a sub-tree, a solid region, or a leaf).
+     *  @param resolutionCap  The desired grid edge; clamped to the sector's available detail and to
+     *                        {@link #MAX_GRID_RES}, and snapped down to a power of
+     *                        {@value WorldTreeNode#RESOLUTION}. A smaller value meshes the sector
+     *                        more coarsely (from branch sectors rather than leaves).
+     *  @return Its occlusion-culled, greedy-meshed visible surface at that detail.
+     */
+    public SectorMesh meshOf( WorldSector sector, int resolutionCap ) {
+        int res = Math.min(snapDownToPowerOfResolution(resolutionCap), gridResolution(sector));
+        return _cache.computeIfAbsent(sector, s -> new HashMap<>())
+                     .computeIfAbsent(res, r -> build(sector, r));
+    }
+
+    private static SectorMesh build( WorldSector sector, int res ) {
         WorldSectorEtherData[] grid = new WorldSectorEtherData[res * res * res];
         rasterize(sector, grid, res, 0, 0, 0, res);
         return greedyMesh(sector.bounds(), grid, res);
     }
 
-    /** @return The grid edge to mesh {@code sector} at: {@code 8^depth} to its finest leaf, capped at {@link #MAX_GRID_RES}. */
+    /** @return {@code cap} reduced to the largest power of {@link WorldTreeNode#RESOLUTION} that is {@code <= cap} (at least 1). */
+    private static int snapDownToPowerOfResolution( int cap ) {
+        int res = 1;
+        while ( res * WorldTreeNode.RESOLUTION <= cap && res * WorldTreeNode.RESOLUTION <= MAX_GRID_RES )
+            res *= WorldTreeNode.RESOLUTION;
+        return res;
+    }
+
+    /** @return The grid edge to mesh {@code sector} at its finest: {@code 8^depth} to its deepest leaf, capped at {@link #MAX_GRID_RES}. */
     private static int gridResolution( WorldSector sector ) {
         int depth = maxLeafDepth(sector);
         int res = 1;

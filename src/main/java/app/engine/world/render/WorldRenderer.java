@@ -68,8 +68,8 @@ public final class WorldRenderer
         List<ScreenFace> faces = new ArrayList<>();
         World.RenderStats stats = world.collectSectorsForRendering(
                 screenId, _chunkSize,
-                ( sector, view ) ->
-                        SectorGeometry.emitChunk(sector, _meshCache,
+                ( sector, view, meshResolution ) ->
+                        SectorGeometry.emitChunk(sector, _meshCache, meshResolution,
                                                  quad -> emitQuad(quad, view, _lightDirection, faces)));
         _occlusionCulled = stats.occlusionCulledSectors();
 

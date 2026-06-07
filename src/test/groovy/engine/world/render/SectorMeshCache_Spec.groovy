@@ -71,6 +71,27 @@ class SectorMeshCache_Spec extends Specification
             mesh.faceCount() == 6
     }
 
+    def "A coarser resolution meshes from branch sectors and collapses detail (level of detail)."()
+    {
+        given: 'An aggregated 64-unit chunk: an 8x8x8 checkerboard of solid rock sub-blocks and air.'
+            var bounds = cube(0, 64)
+            var cells = bounds.subdivide(WorldTreeNode.RESOLUTION)
+            WorldSector[] blocks = new WorldSector[WorldTreeNode.SECTOR_COUNT]
+            for ( int z = 0; z < 8; z++ )
+                for ( int y = 0; y < 8; y++ )
+                    for ( int x = 0; x < 8; x++ ) {
+                        int i = WorldTreeNode.indexOf(x, y, z)
+                        blocks[i] = ((x + y + z) % 2 == 0) ? solidBlock(cells.get(i)) : WorldSector.empty(cells.get(i))
+                    }
+            var chunk = WorldSector.empty(bounds).withChildren(new WorldTreeNode(blocks)).aggregated()
+            var cache = new SectorMeshCache()
+        expect: 'At the sub-block resolution the checkerboard exposes many faces...'
+            cache.meshOf(chunk, 8).faceCount() > 6
+        and: '...but coarsened to a single voxel - from the chunk\'s own aggregated ether, not its leaves - it is at most a 6-face box, far fewer.'
+            cache.meshOf(chunk, 1).faceCount() <= 6
+            cache.meshOf(chunk, 1).faceCount() < cache.meshOf(chunk, 8).faceCount()
+    }
+
     /** A solid 8x8x8 block of rock leaves over the given bounds. */
     private static WorldSector solidBlock( BoundsF64 bounds ) {
         var cells = bounds.subdivide(WorldTreeNode.RESOLUTION)
