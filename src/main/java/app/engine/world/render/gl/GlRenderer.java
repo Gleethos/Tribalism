@@ -14,6 +14,7 @@ import app.engine.world.render.SectorMeshCache;
 import app.engine.world.render.Shading;
 import app.engine.world.render.TextureBaker;
 import org.jspecify.annotations.Nullable;
+import org.lwjgl.opengl.EXTTextureFilterAnisotropic;
 import org.lwjgl.opengl.GL11;
 import org.lwjgl.opengl.GL12;
 import org.lwjgl.opengl.GL13;
@@ -37,6 +38,7 @@ import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.atomic.AtomicReference;
 
 import static org.lwjgl.opengl.GL.createCapabilities;
+import static org.lwjgl.opengl.GL.getCapabilities;
 
 /**
  *  The OpenGL rendering backend (behind the {@link Renderer} SPI), drawing the world
@@ -52,6 +54,15 @@ import static org.lwjgl.opengl.GL.createCapabilities;
  *  The flat directional {@link Shading#brightness shade} rides along as a per-vertex scalar
  *  that the fragment shader multiplies the sampled texel by. Layers are assigned lazily on
  *  the render thread the first time an appearance is seen, and cached.
+ *  <p>
+ *  <b>Mip pyramid (texture LoD).</b> The base tile is baked at a high resolution
+ *  ({@link #TILE_PX}px) so close surfaces stay crisp, and a full mip chain is box-filtered
+ *  down from it ({@code glGenerateMipmap}) so distant surfaces sample a pre-averaged level
+ *  instead of aliasing the high-frequency noise &mdash; the texture analogue of the retained
+ *  geometry LoD. Minification is trilinear ({@code GL_LINEAR_MIPMAP_LINEAR}); where the
+ *  driver offers it, anisotropic filtering keeps ground planes sharp at grazing angles. The
+ *  chain is regenerated whenever a new appearance is baked into a layer (rare: once per
+ *  appearance), since {@code glGenerateMipmap} rebuilds every layer from level 0.
  *  <p>
  *  <b>Retained chunk meshes.</b> {@link World#collectSectorsForRendering} hands down
  *  chunk-sized render units; each is greedy-meshed by {@link SectorMeshCache}, uploaded to
@@ -79,8 +90,9 @@ public final class GlRenderer implements Renderer
     /** A cached chunk VBO is freed once it has not been drawn for this many frames. */
     private static final int EVICT_AFTER_FRAMES = 240;
 
-    private static final int TILE_PX = 64;     // baked texture-tile resolution
+    private static final int TILE_PX = 256;    // baked texture-tile resolution (level 0 of the mip chain)
     private static final int MAX_LAYERS = 64;  // distinct appearances the texture array holds
+    private static final float MAX_ANISOTROPY = 8f; // capped against the driver's limit
 
     private static final int FLOATS_PER_VERTEX = 7; // x,y,z, u,v, layer, brightness
     private static final int VERTICES_PER_QUAD = 6; // two triangles
@@ -253,8 +265,17 @@ public final class GlRenderer implements Renderer
                               0, GL11.GL_RGBA, GL11.GL_UNSIGNED_BYTE, (ByteBuffer) null);
             GL11.glTexParameteri(GL30.GL_TEXTURE_2D_ARRAY, GL11.GL_TEXTURE_WRAP_S, GL11.GL_REPEAT);
             GL11.glTexParameteri(GL30.GL_TEXTURE_2D_ARRAY, GL11.GL_TEXTURE_WRAP_T, GL11.GL_REPEAT);
-            GL11.glTexParameteri(GL30.GL_TEXTURE_2D_ARRAY, GL11.GL_TEXTURE_MIN_FILTER, GL11.GL_LINEAR);
+            // Trilinear minification over the box-filtered mip chain; crisp nearest-neighbour-free magnification.
+            GL11.glTexParameteri(GL30.GL_TEXTURE_2D_ARRAY, GL11.GL_TEXTURE_MIN_FILTER, GL11.GL_LINEAR_MIPMAP_LINEAR);
             GL11.glTexParameteri(GL30.GL_TEXTURE_2D_ARRAY, GL11.GL_TEXTURE_MAG_FILTER, GL11.GL_LINEAR);
+            if ( getCapabilities().GL_EXT_texture_filter_anisotropic ) {
+                float limit = GL11.glGetFloat(EXTTextureFilterAnisotropic.GL_MAX_TEXTURE_MAX_ANISOTROPY_EXT);
+                GL11.glTexParameterf(GL30.GL_TEXTURE_2D_ARRAY,
+                        EXTTextureFilterAnisotropic.GL_TEXTURE_MAX_ANISOTROPY_EXT,
+                        Math.min(MAX_ANISOTROPY, limit));
+            }
+            // Make the texture mip-complete up front, so it samples cleanly before any layer is baked.
+            GL30.glGenerateMipmap(GL30.GL_TEXTURE_2D_ARRAY);
         }
 
         @Override
@@ -375,6 +396,8 @@ public final class GlRenderer implements Renderer
             GL12.glTexSubImage3D(GL30.GL_TEXTURE_2D_ARRAY, 0, 0, 0, layer, TILE_PX, TILE_PX, 1,
                                  GL11.GL_RGBA, GL11.GL_UNSIGNED_BYTE, pixels);
             MemoryUtil.memFree(pixels);
+            // Rebuild the mip chain so this layer's distant LoDs are box-filtered, not aliased.
+            GL30.glGenerateMipmap(GL30.GL_TEXTURE_2D_ARRAY);
         }
 
         private void evictStaleChunks() {

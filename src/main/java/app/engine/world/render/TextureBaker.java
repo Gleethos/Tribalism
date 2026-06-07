@@ -69,41 +69,57 @@ public final class TextureBaker
         return top * (1 - fy) + bottom * fy;
     }
 
-    /** The intensity-weighted blend of the noise patterns the profile's qualities call for, in {@code [0, 1]}. */
+    /**
+     *  The intensity-weighted blend of the noise patterns the profile's qualities call for, in {@code [0, 1]}.
+     *  Qualities the profile does not have ({@code intensity == 0}) are skipped without evaluating their
+     *  (relatively expensive) noise function &mdash; a zero weight contributed nothing to the blend anyway &mdash;
+     *  which keeps a typical few-quality material cheap to bake even at a high tile resolution.
+     */
     private static double noiseFor( TextureProfile profile, double x, double y ) {
-        double sum = 0, weight = 0;
+        Blend blend = new Blend();
         // Each textural quality contributes its matching pattern, weighted by its intensity.
-        sum += add(profile, Texture.GRAINY,      Noise.grainy(x, y));      weight += w(profile, Texture.GRAINY);
-        sum += add(profile, Texture.ROUGH,       Noise.stochastic(x, y));  weight += w(profile, Texture.ROUGH);
-        sum += add(profile, Texture.POWDERY,     Noise.spots(x, y));       weight += w(profile, Texture.POWDERY);
-        sum += add(profile, Texture.CRYSTALLINE, Noise.faceted(x, y));     weight += w(profile, Texture.CRYSTALLINE);
-        sum += add(profile, Texture.LIQUID,      Noise.smoothWaves(x, y)); weight += w(profile, Texture.LIQUID);
-        sum += add(profile, Texture.WET,         Noise.haze(x, y));        weight += w(profile, Texture.WET);
-        sum += add(profile, Texture.MOLTEN,      Noise.marble(x, y));      weight += w(profile, Texture.MOLTEN);
-        sum += add(profile, Texture.FIBROUS,     Noise.wood(x, y));        weight += w(profile, Texture.FIBROUS);
-        sum += add(profile, Texture.HAIRY,       Noise.cells(x, y));       weight += w(profile, Texture.HAIRY);
-        sum += add(profile, Texture.MOSSY,       Noise.cells(x, y));       weight += w(profile, Texture.MOSSY);
-        sum += add(profile, Texture.LEAFY,       Noise.foliage(x, y));     weight += w(profile, Texture.LEAFY);
-        sum += add(profile, Texture.SPIKY,       Noise.tissue(x, y));      weight += w(profile, Texture.SPIKY);
-        sum += add(profile, Texture.SHATTERED,   Noise.mosaic(x, y));      weight += w(profile, Texture.SHATTERED);
-        sum += add(profile, Texture.POROUS,      Noise.cells(x, y));       weight += w(profile, Texture.POROUS);
-        sum += add(profile, Texture.LAYERED,     Noise.layered(x, y));     weight += w(profile, Texture.LAYERED);
-        sum += add(profile, Texture.VEINED,      Noise.marble(x, y));      weight += w(profile, Texture.VEINED);
-        sum += add(profile, Texture.METALLIC,    Noise.smoothWaves(x, y)); weight += w(profile, Texture.METALLIC);
-        sum += add(profile, Texture.REFLECTIVE,  Noise.smoothWaves(x, y)); weight += w(profile, Texture.REFLECTIVE);
-        sum += add(profile, Texture.EMISSIVE,    Noise.clouds(x, y));      weight += w(profile, Texture.EMISSIVE);
-        if ( weight <= 0 )
+        blend.add(profile, Texture.GRAINY,      x, y, Noise::grainy);
+        blend.add(profile, Texture.ROUGH,       x, y, Noise::stochastic);
+        blend.add(profile, Texture.POWDERY,     x, y, Noise::spots);
+        blend.add(profile, Texture.CRYSTALLINE, x, y, Noise::faceted);
+        blend.add(profile, Texture.LIQUID,      x, y, Noise::smoothWaves);
+        blend.add(profile, Texture.WET,         x, y, Noise::haze);
+        blend.add(profile, Texture.MOLTEN,      x, y, Noise::marble);
+        blend.add(profile, Texture.FIBROUS,     x, y, Noise::wood);
+        blend.add(profile, Texture.HAIRY,       x, y, Noise::cells);
+        blend.add(profile, Texture.MOSSY,       x, y, Noise::cells);
+        blend.add(profile, Texture.LEAFY,       x, y, Noise::foliage);
+        blend.add(profile, Texture.SPIKY,       x, y, Noise::tissue);
+        blend.add(profile, Texture.SHATTERED,   x, y, Noise::mosaic);
+        blend.add(profile, Texture.POROUS,      x, y, Noise::cells);
+        blend.add(profile, Texture.LAYERED,     x, y, Noise::layered);
+        blend.add(profile, Texture.VEINED,      x, y, Noise::marble);
+        blend.add(profile, Texture.METALLIC,    x, y, Noise::smoothWaves);
+        blend.add(profile, Texture.REFLECTIVE,  x, y, Noise::smoothWaves);
+        blend.add(profile, Texture.EMISSIVE,    x, y, Noise::clouds);
+        if ( blend.weight <= 0 )
             return Noise.stochastic(x, y); // featureless surface: a subtle default speckle
-        return clamp01(sum / weight);
+        return clamp01(blend.sum / blend.weight);
     }
 
-    private static double w( TextureProfile profile, Texture quality ) {
-        return profile.intensityOf(quality);
+    /** A running intensity-weighted sum that evaluates a quality's pattern only when the profile has it. */
+    private static final class Blend
+    {
+        double sum;
+        double weight;
+
+        void add( TextureProfile profile, Texture quality, double x, double y, Pattern pattern ) {
+            double intensity = profile.intensityOf(quality);
+            if ( intensity <= 0 )
+                return; // absent quality: skip the noise evaluation, it would add 0 to both sum and weight
+            sum += intensity * pattern.at(x, y);
+            weight += intensity;
+        }
     }
 
-    private static double add( TextureProfile profile, Texture quality, double value ) {
-        return profile.intensityOf(quality) * value;
-    }
+    /** A named {@link Noise} pattern, picked per textural quality. */
+    @FunctionalInterface
+    private interface Pattern { double at( double x, double y ); }
 
     private static double clamp01( double v ) {
         return v < 0 ? 0 : (v > 1 ? 1 : v);
