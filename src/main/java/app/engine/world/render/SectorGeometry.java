@@ -33,15 +33,27 @@ public final class SectorGeometry
      *  @param sink        Receives each quad to draw.
      */
     public static void emit( WorldSector sector, boolean wantsDetail, SectorMeshCache meshCache, Consumer<Quad> sink ) {
-        if ( sector.isSolidOpaque() ) {
-            emitBox(sector, sink);
-        } else if ( !wantsDetail || sector.isLeaf() ) {
-            if ( sector.ether().isMajorityOpaque() )
-                emitBox(sector, sink);
-        } else if ( sector.hasOnlyLeafChildren() ) {
+        if ( isMeshBlock(sector, wantsDetail) ) {
             for ( Quad quad : meshCache.meshOf(sector).quads() )
                 sink.accept(quad);
+        } else if ( sector.isSolidOpaque()
+                 || ((!wantsDetail || sector.isLeaf()) && sector.ether().isMajorityOpaque()) ) {
+            emitBox(sector, sink);
         }
+    }
+
+    /**
+     *  Decides whether a visible sector is drawn as a detailed mesh rather than a box.
+     *
+     *  @return {@code true} if this visible sector should be drawn as a full-detail
+     *          greedy {@link SectorMeshCache mesh} (a block of leaf voxels worth its
+     *          detail), as opposed to a single coarse box. This is the one case whose
+     *          geometry is heavy and worth retaining on the GPU; everything else is a
+     *          cheap box. (Kept as a predicate so a retained-geometry backend can route
+     *          mesh blocks to a per-block cache while still using {@link #emit} for boxes.)
+     */
+    public static boolean isMeshBlock( WorldSector sector, boolean wantsDetail ) {
+        return !sector.isSolidOpaque() && wantsDetail && !sector.isLeaf() && sector.hasOnlyLeafChildren();
     }
 
     private static void emitBox( WorldSector sector, Consumer<Quad> sink ) {
