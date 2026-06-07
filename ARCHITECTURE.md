@@ -459,7 +459,11 @@ sectors outward, with uniform interiors left as single coarse boxes — so **mem
 surface cone, not the distance travelled**, and the renderer draws far terrain as shaped surface
 instead of not at all. Materializations are **budgeted** (`REFINE_BUDGET_PER_UPDATE`, nearest-first),
 so a tick never stalls and detail streams in over following ticks; an already-settled world is
-returned by **identity** (so the renderer's caches keep hitting). Because terrain is a deterministic
+returned by **identity** (so the renderer's caches keep hitting). The nearest-first ordering exists
+only to aim that budget, so the walk **skips the per-node sort once the budget is spent** (the bulk
+of the walk only detects far-collapses, which are order-independent); the sorts that remain pack
+distance+index into a `long[]` and use the primitive `Arrays.sort` — no boxed `Integer[]`, no
+`Comparator` — keeping the refinement walk off the GC and out of the flame graph. Because terrain is a deterministic
 function of the seed, collapse is **lossless** — approaching again re-refines it byte-for-byte.
 
 So a generator world is the unified LoD octree: refine toward cameras, collapse away, grow to

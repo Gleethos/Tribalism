@@ -12,7 +12,6 @@ import sprouts.ValueSet;
 
 import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.Comparator;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
@@ -346,7 +345,7 @@ public final class World
         WorldGenerator generator = _generator;
         if ( generator == null )
             return this;
-        List<VecF64> eyes = cameraEyes();
+        Tuple<VecF64> eyes = cameraEyes();
         if ( eyes.isEmpty() )
             return this;
 
@@ -363,12 +362,12 @@ public final class World
     }
 
     /** @return The positions of all camera entities (the anchors of the detail cone). */
-    private List<VecF64> cameraEyes() {
+    private Tuple<VecF64> cameraEyes() {
         List<VecF64> eyes = new ArrayList<>();
         for ( Entity entity : _entities.values() )
             if ( entity instanceof Entity.CameraEntity cameraEntity )
                 eyes.add(cameraEntity.camera().position());
-        return eyes;
+        return Tuple.of(VecF64.class, eyes);
     }
 
     /**
@@ -376,7 +375,7 @@ public final class World
      *  Returns the same instance when nothing changed, so an already-settled world is returned by
      *  identity from {@link #refineAroundCameras} (and the renderer's value-keyed caches keep hitting).
      */
-    private static WorldSector refine( WorldGenerator generator, WorldSector node, List<VecF64> eyes, int[] budget ) {
+    private static WorldSector refine( WorldGenerator generator, WorldSector node, Tuple<VecF64> eyes, int[] budget ) {
         double edge = maxEdge(node.bounds());
         double dist = nearestDistance(node.bounds(), eyes);
 
@@ -414,7 +413,11 @@ public final class World
             for ( int i = 0; i < WorldTreeNode.SECTOR_COUNT; i++ )
                 newKids[i] = children.sector(i);
             boolean changed = false;
-            for ( int i : nearestFirst(children, eyes) ) {
+            // Nearest-first ordering exists only to spend the materialization budget on the closest
+            // detail; once the budget is gone the remaining walk only detects far-collapses (which are
+            // order-independent), so we skip the per-node sort entirely - that is the bulk of the walk.
+            int[] order = budget[0] > 0 ? nearestFirst(children, eyes) : NATURAL_CHILD_ORDER;
+            for ( int i : order ) {
                 WorldSector child = children.sector(i);
                 WorldSector refinedChild = refine(generator, child, eyes, budget);
                 if ( refinedChild != child ) {
@@ -450,20 +453,43 @@ public final class World
         return node.withChildren(new WorldTreeNode(kids));
     }
 
-    /** @return Child indices ordered nearest-camera first, so the materialization budget is spent on the nearest detail. */
-    private static Integer[] nearestFirst( WorldTreeNode node, List<VecF64> eyes ) {
-        Integer[] order = new Integer[WorldTreeNode.SECTOR_COUNT];
-        double[] dist = new double[WorldTreeNode.SECTOR_COUNT];
-        for ( int i = 0; i < WorldTreeNode.SECTOR_COUNT; i++ ) {
+    /** The identity child order {0, 1, ..., SECTOR_COUNT-1}, reused (read-only) when no sort is needed. */
+    private static final int[] NATURAL_CHILD_ORDER = naturalOrder();
+    private static int[] naturalOrder() {
+        int[] order = new int[WorldTreeNode.SECTOR_COUNT];
+        for ( int i = 0; i < order.length; i++ )
             order[i] = i;
+        return order;
+    }
+
+    /** @return Child indices ordered nearest-camera first, so the materialization budget is spent on the nearest detail. */
+    private static int[] nearestFirst( WorldTreeNode node, Tuple<VecF64> eyes ) {
+        double[] dist = new double[WorldTreeNode.SECTOR_COUNT];
+        for ( int i = 0; i < WorldTreeNode.SECTOR_COUNT; i++ )
             dist[i] = nearestDistance(node.sector(i).bounds(), eyes);
-        }
-        Arrays.sort(order, Comparator.comparingDouble(i -> dist[i]));
+        return orderByDistance(dist);
+    }
+
+    /**
+     *  @return The indices {@code [0, SECTOR_COUNT)} ordered by ascending {@code dist}, sorted as packed
+     *          primitives so the hot refinement walk never boxes an {@code Integer} nor allocates a
+     *          {@code Comparator}. Each entry packs the (non-negative) distance's float bits into the high
+     *          bits and the index into the low 9 bits, so a plain {@link Arrays#sort(long[])} orders by
+     *          distance with the index as a stable tie-break.
+     */
+    private static int[] orderByDistance( double[] dist ) {
+        long[] keyed = new long[WorldTreeNode.SECTOR_COUNT];
+        for ( int i = 0; i < WorldTreeNode.SECTOR_COUNT; i++ )
+            keyed[i] = ( (long) Float.floatToRawIntBits((float) dist[i]) << 9 ) | i;
+        Arrays.sort(keyed);
+        int[] order = new int[WorldTreeNode.SECTOR_COUNT];
+        for ( int i = 0; i < WorldTreeNode.SECTOR_COUNT; i++ )
+            order[i] = (int) ( keyed[i] & 0x1FFL );
         return order;
     }
 
     /** @return The distance from the nearest camera to {@code bounds} (0 if a camera is inside it). */
-    private static double nearestDistance( BoundsF64 bounds, List<VecF64> eyes ) {
+    private static double nearestDistance( BoundsF64 bounds, Tuple<VecF64> eyes ) {
         double best = Double.POSITIVE_INFINITY;
         for ( VecF64 eye : eyes )
             best = Math.min(best, distanceToBounds(eye, bounds));
@@ -747,14 +773,10 @@ public final class World
             // Still big on screen above the floor: recurse so children carry the detail (and occlusion
             // can act between them), nearest child first, so nearer occluders are marked before farther ones.
             WorldTreeNode node = sector.children();
-            Integer[] order = new Integer[WorldTreeNode.SECTOR_COUNT];
             double[] dist = new double[WorldTreeNode.SECTOR_COUNT];
-            for ( int i = 0; i < WorldTreeNode.SECTOR_COUNT; i++ ) {
-                order[i] = i;
+            for ( int i = 0; i < WorldTreeNode.SECTOR_COUNT; i++ )
                 dist[i] = view.camera().position().distance(node.sector(i).bounds().center());
-            }
-            Arrays.sort(order, Comparator.comparingDouble(i -> dist[i]));
-            for ( int i : order )
+            for ( int i : orderByDistance(dist) )
                 collect(node.sector(i));
         }
 
