@@ -3,12 +3,17 @@ package app.engine.world.gen;
 import app.engine.primitives.BoundsF64;
 import app.engine.primitives.VecF64;
 import app.engine.world.Material;
+import app.engine.world.MaterialId;
+import app.engine.world.Side;
+import app.engine.world.TextureProfile;
 import app.engine.world.WorldSector;
 import app.engine.world.WorldSectorEtherData;
 import app.engine.world.WorldTreeNode;
 import sprouts.Tuple;
 
+import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 
 /**
@@ -119,6 +124,54 @@ public record WorldGenerator(
      */
     public WorldSector generate( BoundsF64 bounds, int maxDepth ) {
         return build(bounds, maxDepth).aggregated();
+    }
+
+    /**
+     *  Describes a whole region's appearance <b>top-down</b>, directly from the noise &mdash; the
+     *  level-of-detail summary of {@code bounds} <i>without building (or even owning) its sub-tree</i>.
+     *  <p>
+     *  This is the inverse of {@link WorldSector#aggregated() bottom-up aggregation}: instead of
+     *  averaging the ether of children that must first exist, it samples the region's own
+     *  {@value WorldTreeNode#RESOLUTION}-cubed grid of cells analytically &mdash; each cell's
+     *  {@link #dominantMaterial dominant material}, the whole-cube material their
+     *  {@link MaterialId#merge merge}, and each face the {@link TextureProfile#average average} of the
+     *  {@link WorldTreeNode#boundaryCells boundary cells} on that face. (A uniform region short-circuits
+     *  to its single exact material, exactly as {@link #build} collapses one into a leaf.) It is what
+     *  lets a coarse sector exist and be drawn while its detail is unloaded (or evicted), which is the
+     *  basis for rendering terrain kilometres into the distance at bounded cost.
+     *  <p>
+     *  <b>Faithfulness.</b> By construction this equals the bottom-up ether of a one-level build of
+     *  the same region: {@code etherOf(b)} is identical to {@code generate(b, 1).ether()} (both reduce
+     *  to the same per-cell dominant materials and the same per-face boundary average). So a coarse
+     *  node and its one-level refinement agree, which is what keeps level-of-detail transitions from
+     *  popping. Deeper refinements simply describe each child region with its own {@code etherOf}.
+     *
+     *  @param bounds The region to summarize.
+     *  @return The region's representative material and per-side appearance, derived purely from noise.
+     */
+    public WorldSectorEtherData etherOf( BoundsF64 bounds ) {
+        Material homogeneous = homogeneousMaterial(bounds);
+        if ( homogeneous != null )
+            return WorldSectorEtherData.of(homogeneous); // uniform region: one exact material, no averaging drift.
+
+        Tuple<BoundsF64> cells = bounds.subdivide(WorldTreeNode.RESOLUTION);
+        Material[] cellMaterials = new Material[WorldTreeNode.SECTOR_COUNT];
+        List<MaterialId> ids = new ArrayList<>(WorldTreeNode.SECTOR_COUNT);
+        for ( int i = 0; i < WorldTreeNode.SECTOR_COUNT; i++ ) {
+            Material material = dominantMaterial(cells.get(i));
+            cellMaterials[i] = material;
+            ids.add(material.materialId());
+        }
+
+        WorldSectorEtherData ether = WorldSectorEtherData.empty().withMaterial(MaterialId.merge(ids));
+        for ( Side side : Side.values() ) {
+            int[] boundary = WorldTreeNode.boundaryCells(side);
+            List<TextureProfile> faces = new ArrayList<>(boundary.length);
+            for ( int cell : boundary )
+                faces.add(cellMaterials[cell].texture());
+            ether = ether.withSide(side, TextureProfile.average(faces));
+        }
+        return ether;
     }
 
     private WorldSector build( BoundsF64 bounds, int depth ) {

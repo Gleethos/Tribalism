@@ -522,6 +522,24 @@ tests and one-off builds. Making generation *pluggable* (an interface the world 
 with `WorldGenerator` as one impl) is a natural future step — and would also dissolve the
 current `world ↔ world.gen` coupling.
 
+### Top-down description — `etherOf(bounds)`
+
+`generate` works **bottom-up**: build a region down to leaves, then `aggregated()` summarizes
+each branch from its children. For terrain that stretches *kilometres* into the distance that
+is the wrong direction — a coarse far-away sector can't afford to materialize (or even own) its
+whole sub-tree just to know what it looks like. So the generator also describes a region
+**top-down**: `etherOf(BoundsF64)` returns a representative `WorldSectorEtherData` (whole-cube
+material + per-side `TextureProfile`) **directly from the noise, without building a sub-tree**.
+It samples the region's own `8³` grid of cells (each cell's `dominantMaterial`), merges their
+ids for the cube material, and averages the boundary cells' textures for each face — i.e. it
+computes exactly what `aggregated()` *would* produce, but analytically. By construction
+`etherOf(b)` equals `generate(b, 1).ether()` (a uniform region short-circuits to its single
+exact material, like a leaf), so a coarse node and its one-level refinement **agree** — which is
+what stops level-of-detail transitions from popping. This is the foundation (step 1) of the
+top-down LoD model: a sector can carry a faithful appearance while its detail is unloaded, so
+the renderer (§7) can draw distant terrain coarsely and the tree can stay sparse far from any
+camera (§10).
+
 ---
 
 ## 7. Rendering (`app.engine.world.render`)
@@ -753,7 +771,7 @@ structure:
 | `world/CollectSectorsForRendering_Spec` | the visibility walk (frustum + occlusion + chunk-size descent) tested with no renderer |
 | `world/CoverageGrid_Spec`   | conservative mark/test, off-screen handling, occlusion of covered rects |
 | `world/gen/PerlinNoise_Spec`| determinism, range, lattice zeros |
-| `world/gen/WorldGenerator_Spec` | material classification, adaptive subdivision, reproducibility |
+| `world/gen/WorldGenerator_Spec` | material classification, adaptive subdivision, reproducibility, top-down `etherOf` (faithful to a one-level build, coarse description without a sub-tree) |
 | `world/render/WorldRenderer_Spec` | culling maths, frustum culling, majority-opaque, texture→colour, occlusion culling behind solids, render smoke test |
 | `world/render/SectorMeshCache_Spec` | chunk face culling (incl. internal sub-block boundaries), greedy merge (per-appearance, height-independent), mesh memoization |
 | `world/render/TextureBaker_Spec`    | procedural tiles: sized + opaque, deterministic, varied (not flat), per-appearance distinct, air bakes cleanly |
@@ -818,6 +836,18 @@ the real renderer to come:
 
 **Not yet built (future steps):**
 
+- **Top-down level-of-detail — kilometre view distance at bounded cost (in progress).** The goal:
+  draw terrain kilometres out, and keep the tree **sparse** (a coarse sector exists without its
+  sub-tree loaded), so neither memory nor render cost scales with view distance. Three steps:
+  **(1, done)** `WorldGenerator.etherOf(bounds)` describes a region top-down (§6), so a coarse
+  sector can carry a faithful appearance with no sub-tree. **(2)** the render walk descends by
+  *projected size* (reusing `projectedEdgePixels`/`focalLengthPx`) and **greedy-meshes coarse
+  branch sectors** — each sub-sector one voxel via its own `etherOf` — so far terrain becomes a few
+  big quads instead of full detail (today the walk stops at `chunkSize` and meshes everything fully).
+  **(3)** the tree goes **sparse + refinement-driven**: coarse nodes exist childless, the walk
+  refines toward the camera and collapses away from it (generalizing today's chunk-grid streaming
+  and distance eviction into one continuous LoD octree). `aggregated()` then remains only for
+  *edited* sub-trees the generator can't describe — which dovetails with persistence below.
 - **Disk persistence for *edited* chunks (when edits exist).** Distance-based **eviction** with
   deterministic regeneration is now in place (§5), so memory is bounded and pristine terrain needs
   no disk — regeneration *is* the persistence. The remaining step lands once a chunk can carry
@@ -832,9 +862,6 @@ the real renderer to come:
   handle** (*materialized | evicted | on-disk*) the render walk respects.
 - **Parallel generation** on a worker pool — now worthwhile, since a tick no longer redoes O(world)
   work; generation requests fan out and completed chunks splice in over following ticks.
-- Distance **level-of-detail from the aggregated coarse levels** (the walk currently stops at
-  the chunk size; `projectedEdgePixels`/`focalLengthPx` are ready to drive choosing a coarser
-  aggregate for far terrain).
 - A richer GPU **fragment shader** consuming `TextureProfile` hints directly (lit/displaced/
   flowing), beyond today's pre-baked tiles; plus dynamic 64→32-bit scaling concerns.
 - Extending `World.update` beyond camera control: **entity behaviour** and **light-trace
