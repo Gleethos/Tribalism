@@ -57,6 +57,29 @@ class SectorMeshCache_Spec extends Specification
             mesh.faceCount() < 512 * 6
     }
 
+    def "A multi-level chunk culls faces on the boundaries between its sub-blocks."()
+    {
+        when: 'A 64-unit chunk whose 8x8x8 cells are each a solid 8x8x8 rock block (two tree levels).'
+            var bounds = cube(0, 64)
+            var cells = bounds.subdivide(WorldTreeNode.RESOLUTION)
+            WorldSector[] blocks = new WorldSector[WorldTreeNode.SECTOR_COUNT]
+            for ( int i = 0; i < WorldTreeNode.SECTOR_COUNT; i++ )
+                blocks[i] = solidBlock(cells.get(i))
+            var chunk = WorldSector.empty(bounds).withChildren(new WorldTreeNode(blocks))
+            var mesh = new SectorMeshCache().meshOf(chunk)
+        then: 'Meshed as one grid, the whole chunk is a solid cube: 6 shell faces, not 6 per sub-block.'
+            mesh.faceCount() == 6
+    }
+
+    /** A solid 8x8x8 block of rock leaves over the given bounds. */
+    private static WorldSector solidBlock( BoundsF64 bounds ) {
+        var cells = bounds.subdivide(WorldTreeNode.RESOLUTION)
+        WorldSector[] leaves = new WorldSector[WorldTreeNode.SECTOR_COUNT]
+        for ( int i = 0; i < WorldTreeNode.SECTOR_COUNT; i++ )
+            leaves[i] = WorldSector.leaf(cells.get(i), WorldSectorEtherData.of(Material.ROCK))
+        return WorldSector.empty(bounds).withChildren(new WorldTreeNode(leaves))
+    }
+
     def "A column of stacked voxels greedy-merges each side into a single strip, regardless of height."()
     {
         when: 'A single 1x(height)x1 column of rock along Y at the corner.'
