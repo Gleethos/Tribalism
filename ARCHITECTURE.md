@@ -81,16 +81,26 @@ app.engine
     │   ├── PerlinNoise         Deterministic, seeded 3D gradient noise + fbm
     │   └── WorldGenerator      Adaptive noise → sector tree (+ generationDistance/chunkSize/detailDepth)
     │
-    ├── render           First-draft Graphics2D rendering
-    │   ├── TexturePalette      TextureProfile → AWT Color (keeps AWT out of the model)
+    ├── render           Rendering: a backend SPI + two interchangeable backends
+    │   ├── Renderer            SPI: a swappable backend (viewport + setWorld + stats), a fn of the World
+    │   ├── FrameStats          Per-frame diagnostics a backend reports (faces drawn, sectors culled)
+    │   ├── SectorGeometry      Turns a collected chunk sub-tree into world-space Quads
+    │   ├── SectorMeshCache     Greedy-meshes a chunk over a rasterized voxel grid; memoized per sector
+    │   ├── SectorMesh          A chunk's culled + greedy-merged set of visible faces
     │   ├── Quad                One world-space face (4 corners + normal + profile)
     │   ├── Cubes               Bounds + Side → face Quad (shared box/mesh geometry)
-    │   ├── SectorMesh          A sector's face-culled set of visible faces (within a block)
-    │   ├── SectorMeshCache     Builds + memoizes meshes, keyed by the (immutable) sector
-    │   └── WorldRenderer       Turns the sectors World hands it into shaded 2D polygons
+    │   ├── Shading             Pure directional shade (ambient floor + diffuse) — colour and scalar
+    │   ├── Noise               Engine-owned procedural noise toolkit (value/fBm/Worley + named patterns)
+    │   ├── TextureBaker        Bakes a TextureProfile into a seamless, tileable procedural tile
+    │   ├── TexturePalette      TextureProfile → base AWT Color (the tile's tint; keeps AWT out of the model)
+    │   ├── Graphics2DRenderer  Backend #1: software Graphics2D (the dependable fallback)
+    │   ├── WorldRenderer       The Graphics2D SectorDrawCollector (shaded 2D polygons, painter's sort)
+    │   └── gl
+    │       └── GlRenderer      Backend #2: OpenGL (LWJGL) — retained per-chunk VBOs, z-buffer,
+    │                           procedural textures in a mip-mapped GL_TEXTURE_2D_ARRAY
     │
     └── demo
-        └── WorldEngineDemo     Self-contained, runnable demo window
+        └── WorldEngineDemo     Self-contained, runnable demo window (either backend)
 ```
 
 > **Note:** an older `app.engine` prototype (`VoxelChunkTree`, `Engine`,
@@ -201,14 +211,24 @@ final class WorldSector {           // a value (immutable, value equals/hashCode
     ValueSet<LightSource>       lights;       // lights positioned here
     Tuple<LightTrace>           lightTraces;  // light radiating through here
     @Nullable WorldTreeNode     children;     // null = leaf voxel; else 512 sub-sectors
-    Lazy<SideInsets>            insets;        // derived: how far content is recessed per face
+    // derived, lazily-memoized (excluded from equals/hashCode):
+    Lazy<SideInsets>            insets;             // how far content is recessed per face
+    Lazy<Boolean>               solidOpaque;        // is every voxel inside fully opaque? (a perfect occluder)
+    Lazy<Boolean>               hasOnlyLeafChildren;// is this a branch of only leaves? (a full-detail block)
+    Lazy<Boolean>               isVoid;             // is the whole sub-tree empty air? (nothing to draw)
+    int                         hash;               // cached deep hash (0 = not yet computed)
 }
 ```
 
 It is a `final class` rather than a `record` for the same reason as `CameraF64`:
-so it can encapsulate one *derived, lazily-memoized* field — its
-[`SideInsets`](#side-insets) — while still behaving as an immutable value (its
-`equals`/`hashCode` cover only the six defining fields, never the cache).
+so it can encapsulate its *derived, lazily-memoized* fields — its
+[`SideInsets`](#side-insets) plus the bottom-up predicates the render walk leans on
+(`isSolidOpaque`, `hasOnlyLeafChildren`, `isVoid`) — while still behaving as an immutable
+value (its `equals`/`hashCode` cover only the six defining fields, never the caches).
+The value `equals`/`hashCode` are *deep* (they walk the whole sub-tree), so the hash is
+**memoized** too: that makes a sector a cheap key for value-keyed caches (e.g. the
+renderer's per-chunk meshes), and `equals` further short-circuits on identity — which is
+exactly why the incremental, structure-sharing aggregation below matters so much.
 
 A sector with `children == null` is a **leaf** — effectively a single voxel. A
 sector with children is a branch of 512 finer sub-sectors. This gives the
@@ -221,7 +241,7 @@ full of detail.
                         │ children?
             ┌───────────┴───────────┐
           null                 WorldTreeNode
-        (leaf voxel)        Tuple<WorldSector>[512]
+        (leaf voxel)         WorldSector[512]
                           ┌──────┬──────┬─── … ───┐
                           │  0   │  1   │   …      │  (each a WorldSector,
                           └──────┴──────┴──────────┘   recursing again)
@@ -317,6 +337,18 @@ a super-sector straddling the ground shows grassy/mossy texture on its `POS_Y`
 (top) face and rocky texture on `NEG_Y` (bottom), with a `Diverse` material —
 which is what makes cheap, directionally-correct LoD rendering possible.
 
+**Incremental, structure-sharing aggregation.** `aggregated()` rebuilds a *whole* sub-tree
+(every descendant becomes a new instance) — right for aggregating one freshly-generated chunk,
+but ruinous if run over the entire world each time a chunk streams in: it is `O(every voxel)`
+*and* it replaces every existing sector with a new-but-`equals` instance, which silently
+destroys structural sharing (so value-keyed caches stop hitting on identity and fall back to
+deep `equals`, and the lazy predicates above all recompute). The splice path therefore uses
+**`WorldSector.withAggregatedChildren(node)`** instead: it adopts an *already-aggregated*
+`node` **by reference** and recomputes only *this one* sector's ether from it. Splicing a chunk
+re-aggregates just the ancestors on its root-to-chunk path (`O(depth)`), leaving every off-path
+sub-tree — and every other chunk — untouched and identity-stable. This is the single change
+that keeps flying smooth (see §5); the full `aggregated()` remains for building one chunk.
+
 **3. Side insets — `WorldSector.insets()`** <a id="side-insets"></a>
 
 Per-side appearance fixes the *colour* of a coarse LoD box, but not its *shape*: a
@@ -399,9 +431,11 @@ the engine). Keys are the engine-neutral `Key` enum, so the world model never se
 **Generation around cameras — the infinite world.** A world can own a `WorldGenerator`
 (`World.of(generator)`); `update` then **builds the world around every camera**, and the
 world is effectively **unbounded**. Chunks live on a fixed global grid of
-`generator.chunkSize()` cubes. After the camera mutations, for each camera every chunk
-whose nearest point lies within `generationDistance` and that hasn't been generated yet is
-generated (once), then spliced into the tree by:
+`generator.chunkSize()` cubes. After the camera mutations, every chunk whose nearest point lies
+within `generationDistance` of a camera and that hasn't been generated yet becomes a *candidate*;
+the candidates are built **nearest-first**, but only **a bounded number per tick**
+(`GENERATION_BUDGET_PER_UPDATE`) — the rest stream in over following ticks. Each built chunk is
+spliced into the tree by:
 
 - **growing the root outward** (`growToContain`) — re-rooting it 8× larger whenever a chunk
   falls outside the current root: the old root becomes one cell of a new, larger root,
@@ -409,6 +443,13 @@ generated (once), then spliced into the tree by:
   all existing content keeps its world coordinates (the upward half of the octree); and
 - **descending to the chunk's slot** (`placeChunk`) — subdividing empty cells on the way
   down to the chunk-sized cell, which it replaces (the downward half).
+
+Both splice steps re-aggregate the LoD ether **only along the path** they touch
+(`withAggregatedChildren`, see §4), reusing every off-path sub-tree by reference; there is no
+whole-tree `aggregated()` pass. The combination — *budget the work per tick* + *touch only the
+splice path* — is what fixed the multi-second freezes when flying into fresh terrain: a single
+update now does a small, bounded amount of work, and previously-loaded chunks keep their identity
+so the renderer's per-chunk GPU cache keeps hitting instead of re-meshing the whole view.
 
 So the root starts as a single empty chunk at the origin and grows without bound as cameras
 roam; terrain streams in around them while distant, unvisited chunks cost nothing, and a
@@ -471,183 +512,200 @@ current `world ↔ world.gen` coupling.
 
 ## 7. Rendering (`app.engine.world.render`)
 
-The renderer is a **pure function of world state**; it does not own any
-simulation state.
+Rendering is a **pure function of world state**; it owns no simulation state. Two
+things make it pluggable: the world decides *what* is visible (one tree walk, shared
+by every backend), and a small **`Renderer` SPI** abstracts *how* those visible units
+become pixels — so the software path and the GPU path are interchangeable behind one seam.
+
+### The backend SPI (`Renderer`)
+
+A `Renderer` is a whole-renderer backend, deliberately coarse (3D rendering is retained
+and batched, and OpenGL vs. Vulkan differ far too much to hide at the level of individual
+primitives):
+
+```java
+interface Renderer extends AutoCloseable {
+    Component  viewportFor(ScreenId);   // the AWT component a screen draws into
+    void       setWorld(World);         // publish the latest immutable world (thread-safe)
+    FrameStats stats(ScreenId);         // per-frame diagnostics (faces drawn, sectors culled)
+    void       close();
+}
+```
+
+The viewport is a `java.awt.Component` — the common supertype of a lightweight `JPanel`
+(software) and a heavyweight `AWTGLCanvas` (OpenGL) — so the host code adds it to a window
+without knowing which backend it got. There are two implementations:
+
+- **`Graphics2DRenderer`** (backend #1) — the dependable software fallback: a `JPanel` and a
+  Swing `Timer` loop driving the `WorldRenderer` `SectorDrawCollector` onto `Graphics2D`.
+- **`gl.GlRenderer`** (backend #2) — the real GPU renderer (below).
+
+A `World` is a deeply immutable value, so `setWorld` crosses from the update thread to a
+renderer's own paint thread with no locking (it is just an `AtomicReference` swap).
 
 ### What is visible vs. how it looks (`World.collectSectorsForRendering`)
 
-Deciding *what* is visible is a world concern, not a renderer concern. The whole
-per-frame visibility walk therefore lives on **`World`**, not on any renderer:
+Deciding *what* is visible is a world concern. The whole per-frame visibility walk lives on
+**`World`**, not on any renderer:
 
 ```java
 World.RenderStats collectSectorsForRendering(
-        ScreenId screenId, double refineThresholdPx, SectorDrawCollector collector)
+        ScreenId screenId, double chunkSize, SectorDrawCollector collector)
 ```
 
-It is asked to render a **screen**: the screen resolves to its bound camera and pixel
-size (the camera's aspect is overridden to the screen's), so the viewpoint is implied
-by the world's own state rather than passed in. (An unknown, unbound or dangling screen
-collects nothing — `RenderStats.NONE`.) It walks the sector tree from that viewpoint
-applying **frustum culling**, **occlusion culling** and the **level-of-detail decision**
-(all described below), and hands every sector worth drawing to the `collector` together
-with a `ViewInfo` (the frame's camera + frustum + projection) and a `wantsDetail` flag.
-It returns a small `RenderStats` (sectors collected, sectors occlusion-culled). A
-`SectorDrawCollector` decides *how* a collected sector becomes pixels — a box, a
-mesh — but never has to traverse the tree itself.
+It is asked to render a **screen**: the screen resolves to its bound camera and pixel size
+(the camera's aspect is overridden to the screen's), so the viewpoint is implied by world
+state rather than passed in. (An unknown, unbound or dangling screen collects nothing —
+`RenderStats.NONE`.) It walks the tree applying **frustum culling**, **occlusion culling**
+and **chunking** (below), handing every render unit worth drawing to the `collector` with a
+`ViewInfo` (the frame's camera + frustum + projection). A render unit is a whole sub-tree to
+be meshed as one; the collector decides how it becomes pixels but never traverses the tree.
+It returns a small `RenderStats` (collected, occlusion-culled).
 
-This is the clean seam between the world and any renderer (or test): the same walk
-serves every renderer, and frustum/occlusion/LoD behaviour can be unit-tested by
-collecting sectors into a list, with **no rendering surface and no renderer
-instantiated** (`CollectSectorsForRendering_Spec`). `WorldRenderer` below is just
-*one* `SectorDrawCollector` that targets `Graphics2D`.
+This is the clean seam between the world and any backend (or test): the same walk serves
+every renderer, and culling/chunking behaviour is unit-tested by collecting into a list with
+**no surface and no renderer instantiated** (`CollectSectorsForRendering_Spec`).
 
 ### Frustum culling (deciding *whether* to descend)
 
-Before anything else, the tree walk is gated by the camera's `frustum()`. As it
-recurses, each sector is first tested with `frustum.intersects(sector.bounds())`;
-if the sector's bounds fall entirely outside the view volume it is skipped — and
-with it its **entire sub-tree**. So the walk only ever descends into the
-fraction of the world the camera can actually see, instead of traversing the whole
-tree every frame. The frustum is built once per frame (cached on the camera) and
-threaded down the recursion.
+The walk is gated by the camera's `frustum()`. Each sector is first tested with
+`frustum.intersects(sector.bounds())`; if its bounds fall entirely outside the view volume it
+is skipped, with its **entire sub-tree**. An all-empty sub-tree (`sector.isVoid()`) is pruned
+just as cheaply — open sky costs nothing. So the walk only descends into the slice of the world
+the camera can see. The frustum is built once per frame (cached on the camera).
 
 ### Occlusion culling (skipping what's *hidden*)
 
-Frustum culling drops what's off-screen, but not what's on-screen *behind a wall*.
-For that the walk goes **near → far** (children recursed nearest-first) and carries
-a `CoverageGrid` — a coarse grid of screen tiles flagged "already blocked":
+Frustum culling drops what's off-screen, not what's on-screen *behind a wall*. For that the
+walk goes **near → far** (children recursed nearest-first) carrying a `CoverageGrid` — a coarse
+grid of screen tiles flagged "already blocked":
 
-- Before descending into a sector, its 8 world corners are projected to a screen
-  rectangle. If **every tile that rectangle touches is already covered**, the sector
-  (and its whole sub-tree) is hidden behind nearer solid geometry, so it is skipped.
-- A sector that is `isSolidOpaque()` (every voxel inside fully opaque — a perfect
-  occluder, detected lazily bottom-up like the insets) is collected as a single box
-  (the renderer draws it) and the walk **marks the tiles inside its silhouette** (the
-  convex hull of its projected corners). Front-to-back order guarantees those marks
-  come from *closer* geometry.
+- Before descending, a sector's 8 world corners are projected to a screen rectangle. If **every
+  tile it touches is already covered**, the sector (and its sub-tree) is hidden behind nearer
+  solid geometry, so it is skipped.
+- A sector that is `isSolidOpaque()` (every voxel inside fully opaque — a perfect occluder,
+  memoized lazily bottom-up) is collected as one unit and the walk **marks the tiles inside its
+  silhouette**. Front-to-back order guarantees those marks come from *closer* geometry.
 
-The two rules are deliberately conservative so culling never hides something
-visible: marking is *inner* (only tiles fully inside an occluder), testing is
-*outer* (cull only if the whole rectangle is covered). One test in front of a wall
-prunes everything behind it — the hierarchy makes it cheap. (A solid occluder is
-drawn as a box rather than a mesh, since a solid block's mesh is just its shell
-anyway — so this also saves those meshes.)
+The rules are deliberately conservative so culling never hides something visible: marking is
+*inner* (only tiles fully inside an occluder), testing is *outer* (cull only if the whole
+rectangle is covered). One test in front of a wall prunes everything behind it.
 
-### Level-of-detail selection (deciding *how deep* to descend)
+### Chunking (deciding *how deep* to descend)
 
-For sectors that survive culling, the walk estimates how big each would
-appear on screen:
+Descent stops — handing the whole sub-tree over as one render unit — at the first sector that
+is **at or below `chunkSize` in world units** (the size snaps to the octree's level sizes), or
+is a solid occluder, or is a leaf. Otherwise the walk recurses (nearest child first). This
+hands the renderer **chunk-sized units to mesh and cache as a whole** rather than thousands of
+tiny ones; a larger `chunkSize` means fewer, bigger meshes (better GPU batching, coarser
+culling). Distance-based LoD from the *aggregated* coarse levels is a future refinement; today
+the unit of work is the chunk. (`World.projectedEdgePixels` / `focalLengthPx` remain as pure,
+tested helpers for that future selection.)
 
-```java
-projectedEdgePixels(edgeLength, distance, focalLengthPx) = edgeLength · focal / distance
-focalLengthPx(camera, viewportHeight)                    = (height/2) / tan(fovY/2)
-```
+### Meshing a chunk: face culling + greedy meshing (deciding *which faces*)
 
-If a sector's projected edge is *below* the threshold it is collected as a single
-coarse "super-voxel" (`wantsDetail == false`, one inset-fitted box); otherwise it
-needs detail and the walk descends. Thus distant geometry is drawn coarsely (high in
-the tree) and nearby geometry finely. These functions (`World.projectedEdgePixels` /
-`World.focalLengthPx`) are pure and unit-tested.
+Turning a chunk into one cube per voxel is wasteful: a solid region draws the faces *between*
+adjacent voxels only to overdraw them. So `SectorMeshCache` meshes a collected chunk over a
+**rasterized voxel grid**: it descends the sub-tree filling a flat `res³` grid (`res` = the
+chunk's finest leaf resolution, capped) with each cell's leaf ether, then **greedy-meshes** that
+grid. For each face direction and layer it keeps a face only if the neighbouring grid cell is
+empty (culling **internal sub-block faces** between adjacent voxels *and* between adjacent
+sub-blocks within the chunk), then merges coplanar adjacent faces of the same appearance
+(`TextureProfile`) into the largest rectangles (a flat grass top becomes **one** quad; a solid
+shell becomes **6**, not hundreds). Merging stops at appearance boundaries.
 
-### Face culling + greedy meshing within a block (deciding *which faces*)
+Meshing is relatively expensive — but a `WorldSector` is an **immutable value**, the perfect
+cache key. `SectorMeshCache` is a `WeakHashMap<WorldSector, SectorMesh>`: a chunk re-encountered
+next frame reuses its mesh for free, and meshes for chunks the world no longer references are
+GC'd. Lookups stay cheap because `WorldSector` **memoizes its deep hash** and `equals`
+short-circuits on identity — which is precisely why the §4/§5 *structure-sharing* aggregation
+is what keeps this cache hitting as new terrain streams in. (Chunk-boundary faces are drawn
+conservatively — we don't peek into the neighbouring chunk — a small, correct over-draw.)
 
-Descending all the way to individual leaf voxels and drawing each as a cube is
-wasteful: a solid region draws the faces *between* adjacent voxels, only to overdraw
-them. So when the walk reaches a **full-detail block** — a branch whose children are
-all leaves (an 8×8×8 grid of voxels) — the walk stops descending (it does not recurse
-into 512 cubes) and the renderer draws the block's **`SectorMesh`**: the set of
-*exposed* voxel faces, where a face is kept only if the neighbouring voxel in that
-direction is empty (or lies outside the block). Faces buried between two opaque voxels
-are dropped.
+`SectorGeometry.emitChunk` adapts a collected unit into the stream of world-space **`Quad`s**
+(4 corners + outward normal + per-face `TextureProfile`) both backends consume.
 
-On top of that, the mesh is **greedy-meshed**: within each face direction and layer,
-adjacent exposed faces that share the same appearance (`TextureProfile`) are merged into
-the largest possible rectangles (a flat 8×8 grass top becomes **one** quad, not 64; a
-solid block's whole shell becomes **6** quads, not 384). A merged rectangle is coplanar
-and uniformly coloured, so this is a pure `fillPolygon`-count win with **no visual
-change**. Merging stops at appearance boundaries (grass next to sand stays two quads).
+### Backend #1 — software (`WorldRenderer` / `Graphics2D`)
 
-Meshing a block is relatively expensive — but a `WorldSector` is an **immutable
-value**, so it is the perfect cache key. `SectorMeshCache` is a `WeakHashMap<WorldSector,
-SectorMesh>`: a block re-encountered next frame reuses its mesh for free, and meshes
-for blocks the world no longer references are garbage-collected. Lookups stay cheap
-because `WorldSector` **memoizes its (otherwise deep) hash code**, and `equals`
-short-circuits on identity for the common "same instance again" hit. (Block-boundary
-faces are drawn conservatively — we don't peek into the neighbouring block — a small,
-correct over-draw.)
+`WorldRenderer` is the `SectorDrawCollector` that targets `Graphics2D`. Per quad it does
+back-face culling, projects the 4 corners via the view-projection matrix (skipping anything
+at/behind the camera or off-viewport), applies flat directional `Shading`, depth-sorts
+far→near (painter's algorithm) and fills with `Graphics2D.fillPolygon(int[],int[],4)`. Face
+colour comes from `TexturePalette` — an intensity-weighted blend of a tint per `Texture`,
+**memoized per `TextureProfile`**. Its `fillPolygon` throughput is the ceiling that motivated
+the GPU backend; it stays as the reliable, surface-free fallback.
 
-### Drawing
+### Backend #2 — OpenGL (`gl.GlRenderer`)
 
-The renderer turns each collected sector into world-space **`Quad`s** from two sources:
+The GPU backend draws directly into a heavyweight `AWTGLCanvas` (GL 3.3 core, 24-bit depth) —
+no read-back, a real **z-buffer** (early-z kills overdraw; no painter's sort). A dedicated
+`gl-renderer` daemon thread owns the GL context and all GL objects; it paints each viewport on
+its own loop, reading the latest world from the `AtomicReference`.
 
-- **Coarse boxes** (distant sectors / lone big leaves). A box is emitted only if its
-  sector is **majority opaque** — `combined()` `OPACITY` ≥
-  `TexturePalette.VISIBILITY_THRESHOLD` (`isMajorityOpaque`) — so a mostly-empty
-  super-voxel isn't inflated into a full block. The box is first **shrunk to fit its
-  content** (`sector.insets().shrink(sector.bounds())`) so it stops at the content
-  surface (no protrusion, no hole). Each face is coloured from **its own `Side`'s**
-  `TextureProfile` (`faceProfile`) — grassy on top, rocky on the sides — falling back
-  to the sector's `combined()` profile if an aggregated face came out invisible (so a
-  drawn box is never holey).
-- **Mesh quads** (full-detail blocks), straight from the cached `SectorMesh`.
+- **Retained per-chunk geometry.** Each collected chunk is meshed once, uploaded to its own
+  VBO/VAO, and **kept on the GPU keyed by the immutable `WorldSector`** (a GPU mirror of
+  `SectorMeshCache`). Because structural sharing keeps static terrain's chunk instances stable,
+  those chunks are **never re-meshed or re-uploaded** — the cache hits on identity. Chunks
+  unused for a number of frames are evicted.
+- **Procedural textures.** Each distinct appearance (`TextureProfile`) is baked once by
+  `TextureBaker` into a seamless tile and uploaded into one layer of a `GL_TEXTURE_2D_ARRAY`
+  (one bound texture for the whole frame). `TextureBaker` colours a base tint from
+  `TexturePalette` and modulates it with an intensity-weighted blend of the engine-owned
+  **`Noise`** patterns the profile's qualities call for (grainy→speckle, fibrous→wood grain,
+  crystalline→facets, liquid→smooth waves, …); seamlessness comes from a 4-corner cross-fade
+  over the tile period. `Noise` is our own value-noise/fBm/Worley toolkit — inspired by the
+  classic techniques, not a dependency.
+- **Texture LoD (mip pyramid).** Tiles bake at high resolution so close surfaces stay crisp,
+  and a full box-filtered mip chain (`glGenerateMipmap`) is built so distant surfaces sample a
+  pre-averaged level instead of aliasing the high-frequency noise. Minification is trilinear,
+  with anisotropic filtering where the driver offers it.
+- **Vertices** carry position, **world-space UVs** (taken from the quad's in-plane axes, so
+  `GL_REPEAT` tiles continuously and adjacent quads line up), the appearance's texture-array
+  layer, and the flat `Shading` brightness as a scalar the fragment shader multiplies the texel
+  by. A `sampler2DArray` resolves the layer.
 
-All quads are then handled uniformly:
-
-1. **back-face culling** (only faces whose outward normal points toward the camera),
-2. projecting the 4 corners to screen via the camera's view-projection matrix
-   (skipping a quad if any corner is at/behind the camera, or if its screen bounding box
-   falls entirely outside the viewport),
-3. flat directional shading (ambient floor + diffuse against a fixed light),
-4. depth-sorting far-to-near (painter's algorithm, per quad) and filling it via
-   `Graphics2D.fillPolygon(int[], int[], 4)` (raw point arrays, no per-face `Polygon`).
-
-`TexturePalette` derives a face's colour from its appearance qualities — an
-intensity-weighted blend of a tint per `Texture` (grainy→tan, liquid→blue,
-hairy/mossy→green, molten→orange, …), **memoized per `TextureProfile`** (the same few
-profiles recur across thousands of faces, so `colorOf` is a cache lookup after the first
-sighting). This is a **crude stand-in for a future procedural noise shader** (§10) and
-keeps AWT out of the data model. Note the
-renderer never looks at `MaterialId`: the *appearance* drives the picture, while
-the material is reserved for gameplay.
+The OpenGL/Vulkan/WebGPU choice lives behind the `Renderer` SPI: OpenGL first (AWT-surface
+integration, simplest path); a Vulkan/WebGPU backend can slot in later without touching the world.
 
 ### Result
 
-The output is a recognizably Minecraft-style blocky landscape (grass surface,
-soil/rock below, blue sky), with visibly coarser blocks toward the horizon from
-the LoD selection.
+A recognizably blocky landscape (grass surface, soil/rock below, blue sky) — flat-shaded under
+the software backend, and under the GPU backend richly **procedurally textured** (speckled grass,
+rough rock, grainy sand) with crisp detail up close and clean, mip-filtered terrain into the
+distance.
 
 ---
 
 ## 8. Running the demo
 
-`app.engine.world.demo.WorldEngineDemo` is a self-contained, runnable window:
+`app.engine.world.demo.WorldEngineDemo` is a self-contained, runnable window. The Gradle task
+picks the backend behind the `Renderer` SPI:
 
 ```bash
-# via the project's run tooling, or directly:
-java -cp <classpath> app.engine.world.demo.WorldEngineDemo
+./gradlew runWorldDemo                       # software Graphics2D backend (default)
+./gradlew runWorldDemo -Dengine.renderer=gl  # OpenGL backend
 ```
 
-It builds an **infinite** generator-backed world (`World.of(generator)`, seed `1337`,
-64-unit chunks), then drives everything through the **real engine pipeline**: it
-`createCamera`s a camera entity, `createScreen`s a screen bound to it, and runs a ~60 FPS
-Swing timer. There is no fixed region — the world owns the `WorldGenerator` and streams
-chunks in via `World.update` around the camera (generation distance `160`), growing its tree
-as you fly so you can keep going in any direction. Each frame the
-demo only *translates* raw Swing input into `ScreenInputEvent`s, calls
-`world.update(EngineInputs(dt, {screen: events}))`, and asks the renderer to draw the
-screen (`renderer.render(g, world, screenId)`); the panel's size is mirrored onto the
-screen via `resizeScreen`. The camera orbits on its own until you press a movement key
-(**W/A/S/D**, **Q/E** or **Space** for down/up, **Shift** to sprint) or **move the
-mouse**, at which point control passes to you — but the actual fly logic now lives in
-the engine (`CameraFlight`, exercised by `World.update`), not in the demo. It is
-intentionally isolated from the main Tribalism application.
+It builds an **infinite** generator-backed world (`World.of(generator)`, 64-unit chunks), then
+drives everything through the **real engine pipeline**: it `createCamera`s a camera entity,
+`createScreen`s a screen bound to it, picks a `Renderer` from the `engine.renderer` property and
+adds `renderer.viewportFor(screenId)` to the frame (a `JPanel` for software, an `AWTGLCanvas` for
+GL — same call site either way). There is no fixed region — the world owns the `WorldGenerator`
+and streams chunks in via `World.update` around the camera, growing its tree as you fly. The demo
+only *translates* raw Swing input into `ScreenInputEvent`s and calls
+`world.update(EngineInputs(dt, {screen: events}))`; the panel's size is mirrored onto the screen
+via `resizeScreen`. The camera orbits on its own until you press a movement key (**W/A/S/D**,
+**Q/E** or **Space** for down/up, **Shift** to sprint) or **move the mouse**, at which point
+control passes to you — the fly logic lives in the engine (`CameraFlight`, exercised by
+`World.update`), not the demo. It is intentionally isolated from the main Tribalism application.
 
-Because a `World` is a **deeply immutable value, it crosses threads with no locking**: the
-demo runs `World.update` (input + terrain generation — the expensive part) on a background
-**`world-updater`** thread, publishing each new world through an `AtomicReference`, while the
-Swing EDT just renders the latest published world. So the next frame's world is computed
-while the current one is being drawn, keeping the UI responsive. Input events flow EDT →
-updater through a `ConcurrentLinkedQueue`; nothing else is shared.
+Because a `World` is a **deeply immutable value, it crosses threads with no locking**: the demo
+runs `World.update` (input + terrain generation) on a background **`world-updater`** thread,
+publishing each new world to the renderer via `setWorld` (an `AtomicReference` swap), while the
+backend paints the latest published world on its own loop (a Swing `Timer` for software; the
+dedicated `gl-renderer` thread for GL). So the next world is computed while the current one is
+drawn. Input events flow EDT → updater through a `ConcurrentLinkedQueue`; the EDT only refreshes
+a diagnostics title from `renderer.stats(screenId)`. Nothing else is shared.
 
 ---
 
@@ -676,14 +734,15 @@ structure:
 | `world/World_Spec`          | add/remove/move keeping tree + lookup in sync |
 | `world/WorldScreens_Spec`   | screen/camera lifecycle, one-way binding, resize, cameras stay out of the tree |
 | `world/WorldUpdate_Spec`    | inputs → camera mutations, held keys remembered between updates, unbound no-op |
-| `world/WorldGeneration_Spec`| infinite generation: chunks built around cameras, root grows to follow a far camera, reach, idempotent, no-generator skip |
+| `world/WorldGeneration_Spec`| infinite generation: chunks streamed (budgeted) around cameras, root grows to follow a far camera, reach, idempotent once settled, no-generator skip |
 | `world/CameraFlight_Spec`   | pure free-fly math: move/strafe/sprint/look, dt scaling, no-input identity |
-| `world/CollectSectorsForRendering_Spec` | the visibility walk (frustum + occlusion + LoD) tested with no renderer |
+| `world/CollectSectorsForRendering_Spec` | the visibility walk (frustum + occlusion + chunk-size descent) tested with no renderer |
 | `world/CoverageGrid_Spec`   | conservative mark/test, off-screen handling, occlusion of covered rects |
 | `world/gen/PerlinNoise_Spec`| determinism, range, lattice zeros |
 | `world/gen/WorldGenerator_Spec` | material classification, adaptive subdivision, reproducibility |
-| `world/render/WorldRenderer_Spec` | LoD maths, frustum culling, majority-opaque, texture→colour, occlusion culling behind solids, render smoke test |
-| `world/render/SectorMeshCache_Spec` | within-block face culling, greedy merge (per-appearance, height-independent), mesh memoization |
+| `world/render/WorldRenderer_Spec` | culling maths, frustum culling, majority-opaque, texture→colour, occlusion culling behind solids, render smoke test |
+| `world/render/SectorMeshCache_Spec` | chunk face culling (incl. internal sub-block boundaries), greedy merge (per-appearance, height-independent), mesh memoization |
+| `world/render/TextureBaker_Spec`    | procedural tiles: sized + opaque, deterministic, varied (not flat), per-appearance distinct, air bakes cleanly |
 
 Run them with:
 
@@ -698,23 +757,27 @@ Run them with:
 **Built:** math primitives (incl. a lazily-caching `CameraF64` and a `Frustum`);
 the full immutable world tree (sectors, nodes, ether, entities, lights, traces);
 the appearance/material model (`Texture` qualities, `TextureProfile`, `MaterialId`
-sum type, `Material` starter registry); entity fall-down, per-side LoD
-aggregation and lazily-derived per-side `SideInsets`; the `Entity` sum type;
-the `World` **value class** with multi-**screen** support (screens bound one-way to
-camera entities by id), an event-based input model (`EngineInputs` → per-screen
-`ScreenInputs` event logs) and a `World.update` step that folds input into **camera
-mutations** via the pure `CameraFlight` controls (held state remembered between
-updates); a **`WorldGenerator` owned by the world** that `update` uses to build/stream
-terrain in chunks around cameras within a configured `generationDistance` — an effectively
-**infinite world** whose octree root grows outward (re-roots) to follow cameras wherever
-they fly; first-draft Graphics2D rendering with distance LoD,
-frustum culling, inset-fitted LoD boxes, cached **greedy-meshed** voxel surfaces **and
-near→far software occlusion culling** (a coverage grid that skips sub-trees hidden
-behind solid geometry); a free-fly **and** auto-orbit demo, driven end-to-end through
-`World.update` on a **background thread** (the immutable world is rendered by the EDT
-while the next one is computed), with a live face-count / cull-count HUD. The hot
-aggregation path was made allocation-/hash-free by backing `TextureProfile` and
-`WorldSectorEtherData` with flat ordinal-indexed arrays instead of maps.
+sum type, `Material` starter registry); entity fall-down, per-side LoD aggregation —
+now **incremental and structure-sharing** (splicing a chunk re-aggregates only its
+root-to-leaf path, `withAggregatedChildren`, leaving every other chunk identity-stable) —
+and lazily-derived per-side `SideInsets`; the `Entity` sum type; the `World` **value class**
+with multi-**screen** support (screens bound one-way to camera entities by id), an
+event-based input model (`EngineInputs` → per-screen `ScreenInputs` event logs) and a
+`World.update` step that folds input into **camera mutations** via the pure `CameraFlight`
+controls (held state remembered between updates); a **`WorldGenerator` owned by the world**
+that `update` uses to **stream** terrain in chunks around cameras within a configured
+`generationDistance` — **budgeted** (a bounded number of nearest chunks per tick) so flying
+never stalls — an effectively **infinite world** whose octree root grows outward (re-roots)
+to follow cameras wherever they fly. Rendering is a swappable **`Renderer` SPI** with two
+backends: a software **`Graphics2D`** path (frustum + near→far occlusion culling, chunk-sized
+greedy-meshed surfaces, painter's sort — the dependable fallback) and a real **OpenGL**
+backend (`GlRenderer`: a true z-buffer, retained per-chunk VBOs keyed by the immutable sector,
+and **procedural textures** baked from the engine-owned `Noise` into a **mip-mapped**
+`GL_TEXTURE_2D_ARRAY`). A free-fly **and** auto-orbit demo drives either backend end-to-end
+through `World.update` on a **background thread** (the immutable world is rendered while the
+next one is computed), with a live face-count / cull-count HUD. The hot aggregation path is
+allocation-/hash-free (flat ordinal-indexed arrays for `TextureProfile` / `WorldSectorEtherData`),
+and `WorldSector` memoizes its deep hash and bottom-up predicates so it is a cheap cache key.
 
 ### The long-term rendering vision
 
@@ -728,7 +791,11 @@ the real renderer to come:
   noise field and lighting model (its frequency and anisotropy, specular/metallic
   response, emission, displacement, surface flow, …) so a material's appearance
   *emerges procedurally* and scales to thousands of materials without texture
-  assets. `TexturePalette`'s tint-blend is just the throwaway 2D stand-in for this.
+  assets. The GPU backend's `TextureBaker` is the **first realization** of this — it
+  bakes each `TextureProfile` from the engine's own `Noise` into a tiled, mip-mapped
+  texture; folding the qualities into a richer lit/displaced *fragment* shader (rather
+  than a pre-baked tile) is the next step. `TexturePalette`'s flat tint-blend remains
+  only as the software backend's stand-in and the baker's base colour.
 - **Material is for gameplay.** The single per-cube `MaterialId` is what the
   simulation reasons about ("this block is ore"); the renderer ignores it. No
   percentages, no "what's inside" — at the point something matters to a player it is
@@ -736,20 +803,24 @@ the real renderer to come:
 
 **Not yet built (future steps):**
 
-- Extending `World.update` beyond camera control: **entity behaviour** and
-  **light-trace propagation/radiation** as part of the same per-tick step.
-- Making **generation pluggable** (an interface the world depends on), which would also
-  break the current `world ↔ world.gen` package coupling.
-- **Bounding/evicting generated chunks** far behind the camera (and re-aggregating only the
-  changed paths instead of the whole tree) so a long flight doesn't grow memory without limit
-  — the infinite world currently keeps every chunk it has ever generated.
+- **Lazy chunk materialization + disk persistence (the next world-streaming step).** Wrap a
+  `WorldTreeNode`'s children in a lazy value capturing the `WorldGenerator`, so a sub-tree is a
+  *recipe* materialized (or read back from disk) on demand rather than eagerly; the render walk
+  would collect only already-materialized nodes. This is the planned seam for **persisting
+  sectors to disk** and for **evicting/bounding chunks** far behind the camera (today the world
+  keeps every chunk it has ever generated — CPU memory grows over a long flight, even though the
+  GPU backend already evicts cold chunk VBOs). With that foundation, **parallel generation** on
+  a worker pool is the follow-on (it only pays off now that a tick no longer redoes O(world) work).
+- Distance **level-of-detail from the aggregated coarse levels** (the walk currently stops at
+  the chunk size; `projectedEdgePixels`/`focalLengthPx` are ready to drive choosing a coarser
+  aggregate for far terrain).
+- A richer GPU **fragment shader** consuming `TextureProfile` hints directly (lit/displaced/
+  flowing), beyond today's pre-baked tiles; plus dynamic 64→32-bit scaling concerns.
+- Extending `World.update` beyond camera control: **entity behaviour** and **light-trace
+  propagation/radiation** as part of the same per-tick step.
+- Making **generation pluggable** (an interface the world depends on), which would also break
+  the current `world ↔ world.gen` package coupling.
 - Recursive sub-entities inside `VoxelEntity`.
-- A **GPU renderer** (LWJGL/OpenGL): per-chunk vertex buffers and a real z-buffer (no
-  painter's sort, early-z kills overdraw), feeding the **procedural noise shader** that
-  consumes `TextureProfile` hints — replacing the first-draft, software `Graphics2D`/
-  `TexturePalette` path (whose `fillPolygon` throughput is the current ceiling), plus
-  dynamic 64→32-bit scaling for the GPU. Content-keyed, position-independent meshes on top
-  of `SectorMeshCache` are a smaller related win. (*Greedy meshing* itself is now done.)
-- A richer, registry-backed material system (resolving `MaterialId` to gameplay
-  substances) as the world gains items and interactions.
+- A richer, registry-backed material system (resolving `MaterialId` to gameplay substances) as
+  the world gains items and interactions.
 - Integration of a world view into the main Tribalism application.
