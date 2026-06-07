@@ -19,6 +19,10 @@ import spock.lang.Title
     generator's reach - growing the spatial tree's root outward (re-rooting) whenever a camera
     roams beyond it. Already-generated chunks are never rebuilt.
 
+    Generation is budgeted: a single update only builds the nearest few chunks, so flying never
+    stalls; the rest stream in over following ticks. These specs therefore drive the world to a
+    settled state (repeated updates with the camera unmoved) before asserting on what exists.
+
 ''')
 class WorldGeneration_Spec extends Specification
 {
@@ -34,8 +38,18 @@ class WorldGeneration_Spec extends Specification
         return new CameraF64(p, p.add(VecF64.of(0, 0, 1)), VecF64.of(0, 1, 0), Math.toRadians(60), 1.0, 0.5, 2000)
     }
 
+    /** Drives the world with the camera unmoved until generation settles (no chunk is left to build). */
+    private static World settled( World world ) {
+        World previous
+        do {
+            previous = world
+            world = world.update(EngineInputs.of(0.0))
+        } while ( !world.is(previous) ) // update returns the SAME instance once nothing is left to stream in
+        return world
+    }
+
     private static World builtAround( VecF64 eye, double reach ) {
-        return World.of(generator(reach)).createCamera(CAMERA, cameraAt(eye)).update(EngineInputs.of(0.0))
+        return settled(World.of(generator(reach)).createCamera(CAMERA, cameraAt(eye)))
     }
 
     def "A generator-backed world starts as a single empty chunk and exposes its generator."()
