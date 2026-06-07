@@ -68,17 +68,9 @@ public final class WorldRenderer
         List<ScreenFace> faces = new ArrayList<>();
         World.RenderStats stats = world.collectSectorsForRendering(
                 screenId, _refineThresholdPx,
-                ( sector, wantsDetail, view ) -> {
-                    if ( sector.isSolidOpaque() ) {
-                        emitBox(sector, view, _lightDirection, faces);
-                    } else if ( !wantsDetail || sector.isLeaf() ) {
-                        if ( isMajorityOpaque(sector.ether()) )
-                            emitBox(sector, view, _lightDirection, faces);
-                    } else if ( sector.hasOnlyLeafChildren() ) {
-                        for ( Quad quad : _meshCache.meshOf(sector).quads() )
-                            emitQuad(quad, view, _lightDirection, faces);
-                    }
-                });
+                ( sector, wantsDetail, view ) ->
+                        SectorGeometry.emit(sector, wantsDetail, _meshCache,
+                                            quad -> emitQuad(quad, view, _lightDirection, faces)));
         _occlusionCulled = stats.occlusionCulledSectors();
 
         // Painter's algorithm: draw far faces first so near ones cover them.
@@ -88,16 +80,6 @@ public final class WorldRenderer
             g.fillPolygon(f.xs, f.ys, 4);
         }
         _facesDrawn = faces.size();
-    }
-
-    private static void emitBox( WorldSector sector, ViewInfo view, VecF64 lightDirection, List<ScreenFace> out ) {
-        BoundsF64 bounds = sector.insets().shrink(sector.bounds());
-        WorldSectorEtherData ether = sector.ether();
-        for ( Side side : Side.values() ) {
-            TextureProfile profile = faceProfile(ether, side);
-            if ( !profile.isInvisible() )
-                emitQuad(Cubes.faceQuad(bounds, side, profile), view, lightDirection, out);
-        }
     }
 
     private static void emitQuad( Quad quad, ViewInfo view, VecF64 lightDirection, List<ScreenFace> out ) {
@@ -117,7 +99,7 @@ public final class WorldRenderer
         if ( offScreen(xs, ys, view.width(), view.height()) )
             return; // the whole face is outside the viewport: nothing to draw.
 
-        Color color = shade(TexturePalette.colorOf(quad.profile()), quad.normal(), lightDirection);
+        Color color = Shading.shade(TexturePalette.colorOf(quad.profile()), quad.normal(), lightDirection);
         out.add(new ScreenFace(xs, ys, color, view.camera().position().distance(center)));
     }
 
@@ -151,20 +133,6 @@ public final class WorldRenderer
         if ( !TexturePalette.isVisible(profile.intensityOf(Texture.OPACITY)) )
             return ether.combined();
         return profile;
-    }
-
-    /** Flat directional shading with an ambient floor, clamped to valid colour values. */
-    private static Color shade( Color base, VecF64 normal, VecF64 lightDirection ) {
-        double diffuse = Math.max(0, normal.dot(lightDirection.negate()));
-        double brightness = 0.45 + 0.55 * diffuse;
-        int r = clampColor((int) Math.round(base.getRed()   * brightness));
-        int gr = clampColor((int) Math.round(base.getGreen() * brightness));
-        int b = clampColor((int) Math.round(base.getBlue()  * brightness));
-        return new Color(r, gr, b);
-    }
-
-    private static int clampColor( int v ) {
-        return v < 0 ? 0 : Math.min(v, 255);
     }
 
     /** A face ready to draw: its screen polygon (4 points), colour, and distance for painter's ordering. */
