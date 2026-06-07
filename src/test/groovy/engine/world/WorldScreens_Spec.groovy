@@ -125,12 +125,12 @@ class WorldScreens_Spec extends Specification
     {
         given:
             var world = freshWorld().createScreen(SCREEN, 200, 200)
-            var sink = { s, d, v -> } as app.engine.world.SectorDrawCollector
+            var sink = { s, v -> } as app.engine.world.SectorDrawCollector
         expect: 'Unknown screen.'
-            world.collectSectorsForRendering(ScreenId.of(999L), 28.0, sink) == World.RenderStats.NONE
+            world.collectSectorsForRendering(ScreenId.of(999L), 64.0, sink) == World.RenderStats.NONE
         and: 'Known but unbound screen.'
-            world.collectSectorsForRendering(SCREEN, 28.0, sink) == World.RenderStats.NONE
+            world.collectSectorsForRendering(SCREEN, 64.0, sink) == World.RenderStats.NONE
         and: 'Bound to a camera that was never created (dangling).'
-            world.bindScreenToCamera(SCREEN, 123L).collectSectorsForRendering(SCREEN, 28.0, sink) == World.RenderStats.NONE
+            world.bindScreenToCamera(SCREEN, 123L).collectSectorsForRendering(SCREEN, 64.0, sink) == World.RenderStats.NONE
     }
 }

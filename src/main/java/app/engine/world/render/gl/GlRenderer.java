@@ -40,17 +40,15 @@ import static org.lwjgl.opengl.GL.createCapabilities;
  *  directly into a heavyweight {@code AWTGLCanvas} &mdash; no read-back, a real depth
  *  buffer (so no painter's sort and no overdraw cost beyond the depth test).
  *  <p>
- *  <b>This milestone (3): retained per-block geometry.</b> The expensive geometry &mdash;
- *  the greedy-meshed full-detail voxel blocks &mdash; is uploaded to a per-block VBO and
- *  <i>kept</i> on the GPU, keyed by the immutable {@link WorldSector} that produced it
- *  (the GPU mirror of {@link SectorMeshCache}). Because the world tree is persistent and
- *  structurally shared, the same block instance recurs frame after frame and hits the
- *  cache &mdash; so static terrain is never re-meshed or re-uploaded. The per-frame
- *  {@link World#collectSectorsForRendering} walk (which already does frustum/occlusion/LoD
- *  culling) drives it: a {@linkplain SectorGeometry#isMeshBlock mesh block} draws its
- *  cached VBO, while the cheap coarse LoD boxes (a handful of quads) go into one small
- *  per-frame dynamic buffer. Blocks not drawn for {@link #EVICT_AFTER_FRAMES} frames are
- *  freed ({@code glDeleteBuffers}), bounding GPU memory as the camera roams.
+ *  <b>Retained chunk meshes.</b> {@link World#collectSectorsForRendering} hands down
+ *  chunk-sized render units (sub-trees no larger than {@link #CHUNK_SIZE}); each is meshed
+ *  in full by {@link SectorGeometry#emitChunk} and uploaded to its own VBO, kept on the
+ *  GPU and keyed by the immutable {@link WorldSector} that produced it (the GPU mirror of
+ *  {@link SectorMeshCache}). Because the octree is persistent and structurally shared, the
+ *  same chunk instance recurs frame after frame and hits the cache &mdash; so static
+ *  terrain is never re-meshed or re-uploaded; a frame is one {@code glDrawArrays} per
+ *  visible chunk. There is no per-frame box geometry at all. Chunks not drawn for
+ *  {@link #EVICT_AFTER_FRAMES} frames are freed, bounding GPU memory as the camera roams.
  *  <p>
  *  <b>Threading:</b> a single {@code gl-renderer} thread owns rendering and calls
  *  {@link AWTGLCanvas#render()} on each viewport in turn (each call makes that viewport's
@@ -65,10 +63,12 @@ public final class GlRenderer implements Renderer
     private static final float SKY_G = 180f / 255f;
     private static final float SKY_B = 235f / 255f;
     private static final long FRAME_MILLIS = 8L; // render-thread pacing (~120 Hz cap)
-    private static final double REFINE_THRESHOLD_PX = 28.0;
+
+    /** World-space edge size at or below which a sub-tree is meshed as one retained chunk. */
+    private static final double CHUNK_SIZE = 64.0;
     private static final VecF64 LIGHT = VecF64.of(-0.4, -1.0, -0.3).normalize();
 
-    /** A cached per-block VBO is freed once it has not been drawn for this many frames. */
+    /** A cached chunk VBO is freed once it has not been drawn for this many frames. */
     private static final int EVICT_AFTER_FRAMES = 240;
 
     private static final int FLOATS_PER_VERTEX = 6; // x,y,z, r,g,b
@@ -168,7 +168,7 @@ public final class GlRenderer implements Renderer
         }
     }
 
-    /** A retained GPU upload of one detail block's mesh: its own VAO + VBO and how stale it is. */
+    /** A retained GPU upload of one chunk's mesh: its own VAO + VBO and how stale it is. */
     private static final class GpuChunk
     {
         final int vao;
@@ -199,17 +199,13 @@ public final class GlRenderer implements Renderer
 
         private int _program;
         private int _mvpLocation;
-        private int _coarseVao; // re-uploaded each frame: the cheap LoD boxes
-        private int _coarseVbo;
-        private FloatBuffer _coarseVertices = MemoryUtil.memAllocFloat(FLOATS_PER_QUAD * 1024);
         private FloatBuffer _scratch = MemoryUtil.memAllocFloat(FLOATS_PER_QUAD * 1024); // building a chunk before upload
 
-        private final Map<WorldSector, GpuChunk> _chunks = new HashMap<>(); // retained detail-block VBOs
+        private final Map<WorldSector, GpuChunk> _chunks = new HashMap<>(); // retained chunk VBOs
         private final List<GpuChunk> _toDraw = new ArrayList<>();           // chunks drawn this frame
 
         private final float[] _mvp = new float[16];
         private boolean _mvpReady;
-        private int _coarseQuadCount;
         private long _frame;
 
         Viewport( ScreenId screenId, GLData data ) {
@@ -223,16 +219,8 @@ public final class GlRenderer implements Renderer
             GL11.glClearColor(SKY_R, SKY_G, SKY_B, 1f);
             GL11.glEnable(GL11.GL_DEPTH_TEST);
             GL11.glDepthFunc(GL11.GL_LESS);
-
             _program = linkProgram(VERTEX_SHADER, FRAGMENT_SHADER);
             _mvpLocation = GL20.glGetUniformLocation(_program, "uMvp");
-
-            _coarseVao = GL30.glGenVertexArrays();
-            GL30.glBindVertexArray(_coarseVao);
-            _coarseVbo = GL15.glGenBuffers();
-            GL15.glBindBuffer(GL15.GL_ARRAY_BUFFER, _coarseVbo);
-            configureVertexFormat();
-            GL30.glBindVertexArray(0);
         }
 
         @Override
@@ -245,40 +233,25 @@ public final class GlRenderer implements Renderer
             int occlusionCulled = 0;
             if ( world != null ) {
                 _frame++;
-                _coarseVertices.clear();
-                _coarseQuadCount = 0;
                 _toDraw.clear();
                 _mvpReady = false;
 
                 World.RenderStats stats = world.collectSectorsForRendering(
-                        _screenId, REFINE_THRESHOLD_PX,
-                        ( sector, wantsDetail, view ) -> {
+                        _screenId, CHUNK_SIZE,
+                        ( sector, view ) -> {
                             if ( !_mvpReady ) {
                                 captureMvp(view.viewProjection());
                                 _mvpReady = true;
                             }
-                            if ( SectorGeometry.isMeshBlock(sector, wantsDetail) ) {
-                                GpuChunk chunk = chunkFor(sector);
-                                chunk.lastUsedFrame = _frame;
-                                _toDraw.add(chunk);
-                            } else {
-                                SectorGeometry.emit(sector, wantsDetail, _meshCache, this::appendCoarseQuad);
-                            }
+                            GpuChunk chunk = chunkFor(sector);
+                            chunk.lastUsedFrame = _frame;
+                            _toDraw.add(chunk);
                         });
                 occlusionCulled = stats.occlusionCulledSectors();
 
                 if ( _mvpReady ) {
                     GL20.glUseProgram(_program);
                     GL20.glUniformMatrix4fv(_mvpLocation, false, _mvp);
-
-                    if ( _coarseQuadCount > 0 ) {
-                        GL30.glBindVertexArray(_coarseVao);
-                        GL15.glBindBuffer(GL15.GL_ARRAY_BUFFER, _coarseVbo);
-                        _coarseVertices.flip();
-                        GL15.glBufferData(GL15.GL_ARRAY_BUFFER, _coarseVertices, GL15.GL_DYNAMIC_DRAW);
-                        GL11.glDrawArrays(GL11.GL_TRIANGLES, 0, _coarseQuadCount * VERTICES_PER_QUAD);
-                        faces += _coarseQuadCount;
-                    }
                     for ( GpuChunk chunk : _toDraw ) {
                         GL30.glBindVertexArray(chunk.vao);
                         GL11.glDrawArrays(GL11.GL_TRIANGLES, 0, chunk.vertexCount);
@@ -292,20 +265,21 @@ public final class GlRenderer implements Renderer
             swapBuffers();
         }
 
-        /** Returns the retained VBO for a detail block, uploading it once on first sight. */
-        private GpuChunk chunkFor( WorldSector block ) {
-            GpuChunk chunk = _chunks.get(block);
-            if ( chunk == null ) {
-                chunk = uploadChunk(block);
-                _chunks.put(block, chunk);
+        /** Returns the retained VBO for a chunk, meshing and uploading it once on first sight. */
+        private GpuChunk chunkFor( WorldSector chunk ) {
+            GpuChunk gpu = _chunks.get(chunk);
+            if ( gpu == null ) {
+                gpu = uploadChunk(chunk);
+                _chunks.put(chunk, gpu);
             }
-            return chunk;
+            return gpu;
         }
 
-        private GpuChunk uploadChunk( WorldSector block ) {
-            int quadCount = _meshCache.meshOf(block).quads().size();
-            ensureScratch(quadCount * FLOATS_PER_QUAD);
-            for ( Quad quad : _meshCache.meshOf(block).quads() )
+        private GpuChunk uploadChunk( WorldSector chunk ) {
+            List<Quad> quads = new ArrayList<>();
+            SectorGeometry.emitChunk(chunk, _meshCache, quads::add);
+            ensureScratch(quads.size() * FLOATS_PER_QUAD);
+            for ( Quad quad : quads )
                 putQuad(_scratch, quad);
             _scratch.flip();
 
@@ -316,7 +290,7 @@ public final class GlRenderer implements Renderer
             GL15.glBufferData(GL15.GL_ARRAY_BUFFER, _scratch, GL15.GL_STATIC_DRAW);
             configureVertexFormat();
             GL30.glBindVertexArray(0);
-            return new GpuChunk(vao, vbo, quadCount * VERTICES_PER_QUAD, _frame);
+            return new GpuChunk(vao, vbo, quads.size() * VERTICES_PER_QUAD, _frame);
         }
 
         private void evictStaleChunks() {
@@ -329,15 +303,6 @@ public final class GlRenderer implements Renderer
                     it.remove();
                 }
             }
-        }
-
-        private void appendCoarseQuad( Quad quad ) {
-            if ( _coarseVertices.remaining() < FLOATS_PER_QUAD ) {
-                int newCapacity = Math.max(_coarseVertices.capacity() * 2, _coarseVertices.capacity() + FLOATS_PER_QUAD);
-                _coarseVertices = MemoryUtil.memRealloc(_coarseVertices, newCapacity);
-            }
-            putQuad(_coarseVertices, quad);
-            _coarseQuadCount++;
         }
 
         private void ensureScratch( int floats ) {

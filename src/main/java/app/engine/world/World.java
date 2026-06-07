@@ -480,34 +480,36 @@ public final class World
 
     /**
      *  Walks the world tree from the viewpoint of the camera bound to {@code screenId}
-     *  and hands every sector worth drawing to {@code collector}, applying every
-     *  visibility decision itself so that no renderer (or test) has to traverse the tree:
+     *  and hands every <i>render unit</i> worth drawing to {@code collector}, applying
+     *  every visibility decision itself so that no renderer (or test) traverses the tree:
      *  <ul>
      *      <li><b>Frustum culling</b> &mdash; a sector outside the view volume (and its
-     *          whole sub-tree) is skipped.</li>
+     *          whole sub-tree) is skipped, as is a fully transparent (air) sub-tree.</li>
      *      <li><b>Occlusion culling</b> &mdash; the walk proceeds <b>near&nbsp;&rarr;&nbsp;far</b>;
      *          a fully-{@link WorldSector#isSolidOpaque() solid} sector marks its screen
      *          silhouette into a {@link CoverageGrid} as it is collected, and any later
      *          (farther) sector whose screen rectangle is already fully covered is
      *          skipped, sub-tree and all.</li>
-     *      <li><b>Level of detail</b> &mdash; a sector smaller on screen than
-     *          {@code refineThresholdPx} is collected as one coarse box
-     *          ({@code wantsDetail == false}) instead of being refined into its children.</li>
+     *      <li><b>Chunking</b> &mdash; descent stops at the first sector no larger than
+     *          {@code chunkSize} (in world units), at a solid occluder, or at a leaf; that
+     *          whole sub-tree is handed over as one render unit to be meshed as a unit.
+     *          A larger {@code chunkSize} yields fewer, bigger meshes (better GPU batching,
+     *          coarser culling); the value snaps to the octree's level sizes.</li>
      *  </ul>
      *  The camera and viewport size come entirely from the screen (the camera's aspect is
      *  overridden to the screen's). If the screen is unknown, unbound, or its camera no
      *  longer exists, nothing is collected ({@link RenderStats#NONE}). How a collected
-     *  sector becomes pixels is the {@link SectorDrawCollector collector}'s business; this
+     *  unit becomes pixels is the {@link SectorDrawCollector collector}'s business; this
      *  method only decides <i>what</i> is visible.
      *
-     *  @param screenId          The screen (hence camera + viewport) to render from.
-     *  @param refineThresholdPx The on-screen edge size, in pixels, above which a sector
-     *                           is refined into its children rather than drawn as one box.
-     *  @param collector         Receives each (potentially) visible sector.
+     *  @param screenId  The screen (hence camera + viewport) to render from.
+     *  @param chunkSize The world-space edge size at or below which a sub-tree is handed
+     *                   over whole as one render unit rather than descended into.
+     *  @param collector Receives each (potentially) visible render unit.
      *  @return Counts describing what the traversal collected and culled.
      */
     public RenderStats collectSectorsForRendering(
-        ScreenId screenId, double refineThresholdPx, SectorDrawCollector collector
+        ScreenId screenId, double chunkSize, SectorDrawCollector collector
     ) {
         Optional<Screen> maybeScreen = screen(screenId);
         if ( maybeScreen.isEmpty() )
@@ -522,7 +524,7 @@ public final class World
         CameraF64 camera = cam.get().camera().withAspect(screen.aspect());
         ViewInfo view = ViewInfo.of(camera, screen.width(), screen.height());
         RenderTraversal traversal = new RenderTraversal(
-                view, new CoverageGrid(screen.width(), screen.height(), COVERAGE_TILE), refineThresholdPx, collector);
+                view, new CoverageGrid(screen.width(), screen.height(), COVERAGE_TILE), chunkSize, collector);
         traversal.collect(_root);
         return new RenderStats(traversal.collected, traversal.occlusionCulled);
     }
@@ -553,19 +555,21 @@ public final class World
     {
         private final ViewInfo view;
         private final CoverageGrid coverage;
-        private final double refineThresholdPx;
+        private final double chunkSize;
         private final SectorDrawCollector collector;
         private int collected;
         private int occlusionCulled;
 
-        RenderTraversal( ViewInfo view, CoverageGrid coverage, double refineThresholdPx, SectorDrawCollector collector ) {
+        RenderTraversal( ViewInfo view, CoverageGrid coverage, double chunkSize, SectorDrawCollector collector ) {
             this.view = view;
             this.coverage = coverage;
-            this.refineThresholdPx = refineThresholdPx;
+            this.chunkSize = chunkSize;
             this.collector = collector;
         }
 
         void collect( WorldSector sector ) {
+            if ( sector.isVoid() )
+                return; // empty air sub-tree: nothing to draw.
             if ( !view.frustum().intersects(sector.bounds()) )
                 return; // outside the view: prune this sector and its whole sub-tree.
 
@@ -577,28 +581,24 @@ public final class World
             }
 
             if ( sector.isSolidOpaque() ) {
-                // A perfect occluder: collect it as a single box (its mesh would just be the
-                // shell anyway) and record its silhouette so it blocks what is behind.
-                collector.collect(sector, false, view);
+                // A perfect occluder: collect it as one render unit (its mesh is just the
+                // shell) and record its silhouette so it blocks whatever is behind.
+                collector.collect(sector, view);
                 collected++;
                 if ( corners != null )
                     coverage.markOccluder(corners);
                 return;
             }
 
-            double distance = view.camera().position().distance(sector.bounds().center());
-            boolean wantsDetail = projectedEdgePixels(maxEdge(sector.bounds()), distance, view.focalLengthPx()) > refineThresholdPx;
-
-            collector.collect(sector, wantsDetail, view);
-            collected++;
-
-            if ( sector.isLeaf() )
+            if ( sector.isLeaf() || maxEdge(sector.bounds()) <= chunkSize ) {
+                // Small enough on its own: hand the whole sub-tree over as one chunk to mesh.
+                collector.collect(sector, view);
+                collected++;
                 return;
-            if ( sector.hasOnlyLeafChildren() )
-                return;
+            }
 
-            // Recurse, nearest child first, so nearer occluders are marked before farther
-            // siblings are tested.
+            // Too big to be one chunk: recurse, nearest child first, so nearer occluders are
+            // marked before farther siblings are tested.
             WorldTreeNode node = sector.children();
             Integer[] order = new Integer[WorldTreeNode.SECTOR_COUNT];
             double[] dist = new double[WorldTreeNode.SECTOR_COUNT];

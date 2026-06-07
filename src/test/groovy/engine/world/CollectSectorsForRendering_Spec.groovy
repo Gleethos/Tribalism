@@ -37,13 +37,11 @@ class CollectSectorsForRendering_Spec extends Specification
                     .bindScreenToCamera(SCREEN, 1L)
     }
 
-    /** Collects every sector the world hands out, remembering each sector's wantsDetail flag. */
+    /** Collects every render unit the world hands out. */
     private static final class Capture implements SectorDrawCollector {
         final List<WorldSector> sectors = []
-        final Map<WorldSector, Boolean> wantsDetail = [:]
-        @Override void collect( WorldSector sector, boolean detail, app.engine.world.ViewInfo view ) {
+        @Override void collect( WorldSector sector, app.engine.world.ViewInfo view ) {
             sectors << sector
-            wantsDetail[sector] = detail
         }
     }
 
@@ -56,8 +54,8 @@ class CollectSectorsForRendering_Spec extends Specification
             var seen = new Capture()
             var none = new Capture()
         when:
-            var seenStats = onScreen(world, facing, 240, 160).collectSectorsForRendering(SCREEN, 28.0, seen)
-            var noneStats = onScreen(world, away,   240, 160).collectSectorsForRendering(SCREEN, 28.0, none)
+            var seenStats = onScreen(world, facing, 240, 160).collectSectorsForRendering(SCREEN, 64.0, seen)
+            var noneStats = onScreen(world, away,   240, 160).collectSectorsForRendering(SCREEN, 64.0, none)
         then: 'Facing the world yields visible sectors...'
             seenStats.sectorsCollected() > 0
             seen.sectors.size() == seenStats.sectorsCollected()
@@ -85,32 +83,31 @@ class CollectSectorsForRendering_Spec extends Specification
             var facing = new CameraF64(VecF64.of(-100, 8, 8), VecF64.of(0, 8, 8), VecF64.of(0, 1, 0), Math.toRadians(60), 1.0, 0.5, 2000)
             var away   = new CameraF64(VecF64.of(-100, 8, 8), VecF64.of(-200, 8, 8), VecF64.of(0, 1, 0), Math.toRadians(60), 1.0, 0.5, 2000)
         when:
-            var facingStats = onScreen(world, facing, 200, 200).collectSectorsForRendering(SCREEN, 28.0, new Capture())
+            var facingStats = onScreen(world, facing, 200, 200).collectSectorsForRendering(SCREEN, 64.0, new Capture())
         then: 'At least one sector behind the near block is occlusion-culled.'
             facingStats.occlusionCulledSectors() > 0
         when:
-            var awayStats = onScreen(world, away, 200, 200).collectSectorsForRendering(SCREEN, 28.0, new Capture())
+            var awayStats = onScreen(world, away, 200, 200).collectSectorsForRendering(SCREEN, 64.0, new Capture())
         then: 'Facing away, frustum culling removes everything before occlusion even applies.'
             awayStats.sectorsCollected() == 0
             awayStats.occlusionCulledSectors() == 0
     }
 
-    def "The level-of-detail flag follows on-screen size: detail up close, coarse from afar."()
+    def "A larger chunk size yields fewer, bigger render units (the batching knob)."()
     {
-        given: 'A non-solid branch (rock below, air above) so it is refined rather than treated as a solid occluder.'
+        given: 'A non-solid branch (rock below, air above) and a camera looking straight at it.'
             var bounds = BoundsF64.cube(VecF64.zero(), 128)
             var root = branch(bounds) { int x, int y, int z -> y < 4 ? Material.ROCK : Material.AIR }
             var world = World.of(root)
-            var near = new CameraF64(VecF64.of(0, 0, 140),  VecF64.zero(), VecF64.of(0, 1, 0), Math.toRadians(60), 1.0, 0.5, 4000)
-            var far  = new CameraF64(VecF64.of(0, 0, 3500), VecF64.zero(), VecF64.of(0, 1, 0), Math.toRadians(60), 1.0, 0.5, 8000)
-            var up = new Capture()
-            var off = new Capture()
-        when:
-            onScreen(world, near, 600, 600).collectSectorsForRendering(SCREEN, 28.0, up)
-            onScreen(world, far,  600, 600).collectSectorsForRendering(SCREEN, 28.0, off)
-        then: 'Up close the root wants detail; from far away it is collected as one coarse box.'
-            up.wantsDetail[root] == true
-            off.wantsDetail[root] == false
+            var camera = new CameraF64(VecF64.of(0, 0, 140), VecF64.zero(), VecF64.of(0, 1, 0), Math.toRadians(60), 1.0, 0.5, 4000)
+            var coarse = new Capture()
+            var fine = new Capture()
+        when: 'A chunk size of the whole world meshes it as one unit; a small one splits it up.'
+            onScreen(world, camera, 600, 600).collectSectorsForRendering(SCREEN, 128.0, coarse)
+            onScreen(world, camera, 600, 600).collectSectorsForRendering(SCREEN, 16.0, fine)
+        then: 'The coarse pass hands over a single big chunk; the fine pass many small ones.'
+            coarse.sectors.size() == 1
+            fine.sectors.size() > coarse.sectors.size()
     }
 
     /** An aggregated 8x8x8 branch over {@code bounds} whose leaves come from a (x,y,z)->Material function. */

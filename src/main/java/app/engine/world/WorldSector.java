@@ -47,6 +47,7 @@ public final class WorldSector {
     private final Lazy<SideInsets> _insets;
     private final Lazy<Boolean> _solidOpaque;
     private final Lazy<Boolean> _hasOnlyLeafChildren;
+    private final Lazy<Boolean> _void;
 
     // Cached hash. The value equals/hashCode are deep (they walk the whole sub-tree),
     // so memoizing the hash makes a sector a cheap key for value-keyed maps (e.g. the
@@ -70,6 +71,7 @@ public final class WorldSector {
         _insets      = Lazy.of(this::computeInsets);
         _solidOpaque = Lazy.of(this::computeSolidOpaque);
         _hasOnlyLeafChildren = Lazy.of(this::computeHasOnlyLeafChildren);
+        _void        = Lazy.of(this::computeVoid);
     }
 
     public BoundsF64 bounds()                     { return _bounds; }
@@ -124,6 +126,19 @@ public final class WorldSector {
     /** @return {@code true} if this sector is empty space &mdash; invisible on every face. */
     public boolean isFullyTransparent() {
         return _ether.isInvisible();
+    }
+
+    /**
+     *  @return {@code true} if this entire sub-tree is empty space &mdash; every voxel
+     *          within it is invisible. Unlike {@link #isFullyTransparent()} (which only
+     *          inspects this sector's <i>own</i> ether, and so is only meaningful on an
+     *          {@link #aggregated() aggregated} sector), this descends to the leaves, so it
+     *          is a correct "nothing to draw here" test on any tree. Derived bottom-up and
+     *          memoized, like {@link #isSolidOpaque()}: the renderer's traversal uses it to
+     *          prune empty sub-trees (e.g. open sky) without descending into them.
+     */
+    public boolean isVoid() {
+        return _void.get();
     }
 
     /**
@@ -296,6 +311,15 @@ public final class WorldSector {
             ether = ether.withSide(side, TextureProfile.average(faces));
         }
         return withChildren(aggregatedNode).withEther(ether);
+    }
+
+    private boolean computeVoid() {
+        if ( _children == null )
+            return _ether.isInvisible();
+        for ( int i = 0; i < WorldTreeNode.SECTOR_COUNT; i++ )
+            if ( !_children.sector(i).isVoid() )
+                return false;
+        return true;
     }
 
     private boolean computeSolidOpaque() {

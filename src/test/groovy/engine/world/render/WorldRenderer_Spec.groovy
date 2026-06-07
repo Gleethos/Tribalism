@@ -68,7 +68,7 @@ class WorldRenderer_Spec extends Specification
             var image = new BufferedImage(w, h, BufferedImage.TYPE_INT_RGB)
             var g = image.createGraphics()
         when:
-            new WorldRenderer(28.0, VecF64.of(-0.4, -1.0, -0.3), skyColor).render(g, onScreen(world, camera, w, h), ScreenId.of(1L))
+            new WorldRenderer(64.0, VecF64.of(-0.4, -1.0, -0.3), skyColor).render(g, onScreen(world, camera, w, h), ScreenId.of(1L))
             g.dispose()
         then: 'A meaningful fraction of pixels differ from the sky colour (terrain was drawn).'
             countNonSky(image, skyColor) > (w * h) * 0.05
@@ -85,7 +85,7 @@ class WorldRenderer_Spec extends Specification
             var image = new BufferedImage(w, h, BufferedImage.TYPE_INT_RGB)
             var g = image.createGraphics()
         when:
-            new WorldRenderer(28.0, VecF64.of(-0.4, -1.0, -0.3), skyColor).render(g, onScreen(world, lookingAway, w, h), ScreenId.of(1L))
+            new WorldRenderer(64.0, VecF64.of(-0.4, -1.0, -0.3), skyColor).render(g, onScreen(world, lookingAway, w, h), ScreenId.of(1L))
             g.dispose()
         then: 'The whole world is behind the camera, so every sector is culled and nothing is drawn.'
             countNonSky(image, skyColor) == 0

@@ -30,8 +30,8 @@ import java.util.List;
  */
 public final class WorldRenderer
 {
-    /** The on-screen edge size, in pixels, above which a sector is refined into its children. */
-    private final double _refineThresholdPx;
+    /** The world-space edge size at or below which a sub-tree is meshed as one render unit. */
+    private final double _chunkSize;
     private final VecF64 _lightDirection;
     private final Color _skyColor;
     private final SectorMeshCache _meshCache = new SectorMeshCache();
@@ -41,11 +41,11 @@ public final class WorldRenderer
     private int _occlusionCulled;
 
     public WorldRenderer() {
-        this(28.0, VecF64.of(-0.4, -1.0, -0.3).normalize(), new Color(135, 180, 235));
+        this(64.0, VecF64.of(-0.4, -1.0, -0.3).normalize(), new Color(135, 180, 235));
     }
 
-    public WorldRenderer( double refineThresholdPx, VecF64 lightDirection, Color skyColor ) {
-        _refineThresholdPx = refineThresholdPx;
+    public WorldRenderer( double chunkSize, VecF64 lightDirection, Color skyColor ) {
+        _chunkSize = chunkSize;
         _lightDirection = lightDirection.normalize();
         _skyColor = skyColor;
     }
@@ -67,10 +67,10 @@ public final class WorldRenderer
 
         List<ScreenFace> faces = new ArrayList<>();
         World.RenderStats stats = world.collectSectorsForRendering(
-                screenId, _refineThresholdPx,
-                ( sector, wantsDetail, view ) ->
-                        SectorGeometry.emit(sector, wantsDetail, _meshCache,
-                                            quad -> emitQuad(quad, view, _lightDirection, faces)));
+                screenId, _chunkSize,
+                ( sector, view ) ->
+                        SectorGeometry.emitChunk(sector, _meshCache,
+                                                 quad -> emitQuad(quad, view, _lightDirection, faces)));
         _occlusionCulled = stats.occlusionCulledSectors();
 
         // Painter's algorithm: draw far faces first so near ones cover them.

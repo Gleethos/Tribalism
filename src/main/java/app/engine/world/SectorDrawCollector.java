@@ -1,26 +1,23 @@
 package app.engine.world;
 
 /**
- *  The sink that {@link World#collectSectorsForRendering} hands every sector it has
- *  decided is worth drawing for a frame, after frustum culling, occlusion culling and
- *  the level-of-detail decision have all been applied.
+ *  The sink that {@link World#collectSectorsForRendering} hands every <i>render unit</i>
+ *  it has decided is worth drawing for a frame, after frustum and occlusion culling.
  *  <p>
- *  This is the seam between the world (which knows <i>what</i> is visible) and a
- *  renderer (which knows <i>how</i> to draw it). A renderer implements this to turn
- *  each surviving sector into pixels; it never has to traverse the world tree itself.
+ *  A render unit is a chunk-sized sector (or a solid occluder, or a lone leaf): a whole
+ *  sub-tree the renderer should turn into one mesh. This is the seam between the world
+ *  (which knows <i>what</i> is visible) and a renderer (which knows <i>how</i> to draw
+ *  it); a renderer implements this to mesh each surviving unit, and never traverses the
+ *  world tree itself.
  */
 @FunctionalInterface
 public interface SectorDrawCollector
 {
     /**
-     *  Accepts one sector the world has determined is (potentially) visible.
+     *  Accepts one render unit the world has determined is (potentially) visible.
      *
-     *  @param sector      The sector to draw.
-     *  @param wantsDetail {@code true} if the sector is large enough on screen to be
-     *                     worth drawing in detail; {@code false} if it should be drawn
-     *                     as a single coarse, level-of-detail box. (For a fully-solid
-     *                     occluder this is {@code false}: it is always one box.)
-     *  @param view        The camera/projection context for this frame.
+     *  @param sector The chunk-sized sector (sub-tree) to mesh and draw.
+     *  @param view   The camera/projection context for this frame.
      */
-    void collect( WorldSector sector, boolean wantsDetail, ViewInfo view );
+    void collect( WorldSector sector, ViewInfo view );
 }
