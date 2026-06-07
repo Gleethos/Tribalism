@@ -294,23 +294,51 @@ public final class WorldSector {
             return this;
 
         WorldSector[] aggregatedChildren = new WorldSector[WorldTreeNode.SECTOR_COUNT];
+        for ( int i = 0; i < WorldTreeNode.SECTOR_COUNT; i++ )
+            aggregatedChildren[i] = _children.sector(i).aggregated();
+        return withAggregatedChildren(new WorldTreeNode(aggregatedChildren));
+    }
+
+    /**
+     *  Adopts {@code children} as this sector's sub-tree and recomputes <i>only this sector's own</i>
+     *  level-of-detail ether from them &mdash; the per-side boundary {@link #aggregateEtherOf average}
+     *  and merged material described on {@link #aggregated()}, computed once for this one level.
+     *  <p>
+     *  This is the incremental counterpart to {@link #aggregated()}: where that recursively rebuilds
+     *  the whole sub-tree (every descendant a new instance), this assumes {@code children} are
+     *  <i>already</i> aggregated and reuses them <b>by reference</b>, touching nothing below this node.
+     *  Splicing a freshly-generated chunk into the tree therefore only re-aggregates the ancestors on
+     *  its path while every off-path sub-tree keeps its identity &mdash; which both bounds the work to
+     *  {@code O(depth)} and lets value-keyed caches (e.g. the renderer's chunk meshes) keep hitting on
+     *  identity instead of falling back to deep {@code equals}.
+     *
+     *  @param children The already-aggregated sub-tree to adopt.
+     *  @return A copy of this sector over {@code children} with its ether aggregated from them.
+     */
+    public WorldSector withAggregatedChildren( WorldTreeNode children ) {
+        return new WorldSector(_bounds, aggregateEtherOf(children), _entities, _lights, _lightTraces, children);
+    }
+
+    /**
+     *  @return The aggregated ether of a branch from its (already-aggregated) {@code children}: each
+     *          face is the {@link TextureProfile#average average} of that face of only the children on
+     *          the matching {@link WorldTreeNode#boundaryCells boundary layer}, and the material is the
+     *          children's {@link MaterialId#merge merged} id.
+     */
+    private static WorldSectorEtherData aggregateEtherOf( WorldTreeNode children ) {
         List<MaterialId> childMaterials = new ArrayList<>(WorldTreeNode.SECTOR_COUNT);
-        for ( int i = 0; i < WorldTreeNode.SECTOR_COUNT; i++ ) {
-            WorldSector child = _children.sector(i).aggregated();
-            aggregatedChildren[i] = child;
-            childMaterials.add(child.ether().material());
-        }
-        WorldTreeNode aggregatedNode = new WorldTreeNode(aggregatedChildren);
+        for ( int i = 0; i < WorldTreeNode.SECTOR_COUNT; i++ )
+            childMaterials.add(children.sector(i).ether().material());
 
         WorldSectorEtherData ether = WorldSectorEtherData.empty().withMaterial(MaterialId.merge(childMaterials));
         for ( Side side : Side.values() ) {
             int[] boundary = WorldTreeNode.boundaryCells(side);
             List<TextureProfile> faces = new ArrayList<>(boundary.length);
             for ( int cell : boundary )
-                faces.add(aggregatedNode.sector(cell).ether().sideOf(side));
+                faces.add(children.sector(cell).ether().sideOf(side));
             ether = ether.withSide(side, TextureProfile.average(faces));
         }
-        return withChildren(aggregatedNode).withEther(ether);
+        return ether;
     }
 
     private boolean computeVoid() {
