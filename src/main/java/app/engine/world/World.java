@@ -298,14 +298,19 @@ public final class World
     // ---- Level-of-detail refinement (the infinite, streaming world) -------------
 
     /** How far around each camera the root is grown so coarse terrain exists out to here (world units). */
-    private static final double VIEW_DISTANCE = 4096.0;
+    private static final double VIEW_DISTANCE = 2048.0;
 
     /**
      *  How close a camera must be, as a multiple of a sector's own edge, for that sector to be refined
-     *  into finer children. Larger carries finer detail further out (more nodes / memory); the cone of
-     *  refined sectors around each camera is what bounds both cost and memory.
+     *  into finer children. It is set <b>larger than the renderer's draw threshold</b> (a node is drawn
+     *  when it spans ~{@link #LOD_COLLAPSE_CELLS} {@link #TARGET_CELL_PX}-cells, i.e. at
+     *  {@code dist ≈ edge × focal / (LOD_COLLAPSE_CELLS × TARGET_CELL_PX)}) so that the coarse sector the
+     *  renderer actually <b>draws still has children</b> &mdash; and is therefore greedy-meshed at res-8
+     *  <i>from its sub-sectors</i> (showing the surface shape) instead of as a single flat box. Affordable
+     *  at this size only because refinement is restricted to {@link WorldGenerator#isHomogeneous
+     *  non-homogeneous} (surface) sectors, which bounds the cone to the 2D terrain surface.
      */
-    private static final double REFINE_FACTOR = 2.0;
+    private static final double REFINE_FACTOR = 7.0;
 
     /** Collapse hysteresis: a refined sector is only dropped once a camera is this much past {@link #REFINE_FACTOR}. */
     private static final double COLLAPSE_HYSTERESIS = 1.5;
@@ -393,8 +398,11 @@ public final class World
             return node;
         }
 
-        // Above the chunk level: refine into coarse children when close, collapse when far.
-        if ( dist < edge * REFINE_FACTOR ) {
+        // Above the chunk level: refine into coarse children when close — but ONLY a non-homogeneous
+        // (surface-straddling) sector, since a uniform region is identical at every level of detail.
+        // This keeps refinement on the 2D terrain surface, not the 3D solid/empty volume, so the cone
+        // stays bounded even with a large REFINE_FACTOR. Collapse when far.
+        if ( dist < edge * REFINE_FACTOR && !generator.isHomogeneous(node.bounds()) ) {
             if ( node.isLeaf() ) {
                 if ( budget[0] <= 0 )
                     return node; // out of budget; subdivided next tick.
@@ -560,7 +568,7 @@ public final class World
      *  sector small on screen is drawn from a few coarse cells and a near one finely. Smaller = more
      *  detail (and more quads); larger = coarser.
      */
-    private static final double TARGET_CELL_PX = 6.0;
+    private static final double TARGET_CELL_PX = 12.0;
 
     /**
      *  The cap on the grid resolution a single render unit is meshed at. A power of

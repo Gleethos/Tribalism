@@ -88,8 +88,8 @@ class WorldGeneration_Spec extends Specification
         expect: 'The sector at the camera is refined down to chunk detail, and is solid rock...'
             detailWidth(built, VecF64.of(0, -50, 0)) <= CHUNK
             built.sectorAt(VecF64.of(0, -50, 0)).get().isSolidOpaque()
-        and: '...while a far-away location is left coarse (a much larger sector).'
-            detailWidth(built, VecF64.of(3000, -50, 3000)) >= 512
+        and: '...while a deep, uniform region (no surface to detail) is left as one coarse sector.'
+            detailWidth(built, VecF64.of(1500, -1500, 1500)) >= 512
     }
 
     def "A larger reach refines detail further out than a small one does."()

@@ -438,22 +438,28 @@ around every camera** (`refineAroundCameras`), and the world is effectively **un
   spans the view range); then
 - the tree is walked and each sector, by its **distance relative to its own edge**, is **refined**,
   **kept**, or **collapsed**:
-  - *refine* — a coarse sector a camera is within `REFINE_FACTOR ×` its edge of is subdivided into
-    eight finer **coarse-leaf children** (each described top-down, cheaply, by
-    `generator.representativeEtherOf`); at the **chunk level** (`chunkSize`) it is instead
-    `generator.generate`d to full voxel detail (a homogeneous region needs no generation — its
-    coarse leaf already *is* the full detail, so it is kept as-is, which is what makes the walk
-    settle);
+  - *refine* — a **non-homogeneous** (surface-straddling) sector a camera is within `REFINE_FACTOR ×`
+    its edge of is subdivided into eight finer **coarse-leaf children** (each described top-down,
+    cheaply, by `generator.representativeEtherOf`); at the **chunk level** (`chunkSize`) it is instead
+    `generator.generate`d to full voxel detail. A **homogeneous** region (`generator.isHomogeneous` —
+    solid rock, open air) is *never* refined: it is identical at every level of detail, so its coarse
+    leaf already *is* the full detail. This restriction is what keeps refinement on the **2D terrain
+    surface** rather than the 3D solid/empty volume — which both bounds memory and is what makes a
+    `REFINE_FACTOR` large enough to matter affordable;
   - *keep* — within the hysteresis band, unchanged;
   - *collapse* — a refined sector no camera is near (past `REFINE_FACTOR × COLLAPSE_HYSTERESIS`)
     drops its sub-tree back to one coarse leaf, freeing memory.
 
-The materialized sectors form a **cone of detail** around each camera — full voxels up close,
-progressively coarser `etherOf`/`representativeEtherOf` leaves outward — so **memory is bounded by
-the cone, not the distance travelled**, and the renderer (§7) draws far terrain coarsely instead
-of not at all. Materializations are **budgeted** (`REFINE_BUDGET_PER_UPDATE`, nearest-first), so a
-tick never stalls and detail streams in over following ticks; an already-settled world is returned
-by **identity** (so the renderer's caches keep hitting). Because terrain is a deterministic
+`REFINE_FACTOR` is deliberately set **larger than the renderer's draw threshold** (§7), so the coarse
+sector the renderer actually *draws* still has children and is therefore **greedy-meshed at res-8
+from its sub-sectors** — showing the terrain's *shape* — instead of as one flat box. (`TARGET_CELL_PX`
+trades cell size against how far that detail reaches.) The materialized sectors form a **cone of
+detail along the surface** around each camera — full voxels up close, progressively coarser surface
+sectors outward, with uniform interiors left as single coarse boxes — so **memory is bounded by the
+surface cone, not the distance travelled**, and the renderer draws far terrain as shaped surface
+instead of not at all. Materializations are **budgeted** (`REFINE_BUDGET_PER_UPDATE`, nearest-first),
+so a tick never stalls and detail streams in over following ticks; an already-settled world is
+returned by **identity** (so the renderer's caches keep hitting). Because terrain is a deterministic
 function of the seed, collapse is **lossless** — approaching again re-refines it byte-for-byte.
 
 So a generator world is the unified LoD octree: refine toward cameras, collapse away, grow to
@@ -858,10 +864,13 @@ the real renderer to come:
   nodes exist childless (described by `etherOf`/`representativeEtherOf`), the walk refines toward
   cameras and collapses away (subsuming the old chunk-grid streaming + eviction). `aggregated()` now
   remains only for *edited* sub-trees the generator can't describe — which dovetails with persistence.
-  *Tuning follow-ups:* coarse far terrain is currently drawn as **boxes** (a childless coarse leaf
-  meshes at res 1); making mid/far terrain less blocky means refining one extra level for res-8
-  meshing (bounded by `REFINE_FACTOR`) or baking a small per-node LoD mesh, and smoothing LoD
-  pop (geomorph). `REFINE_FACTOR` / `VIEW_DISTANCE` / `TARGET_CELL_PX` are the knobs.
+  Refinement is restricted to **non-homogeneous (surface) sectors** so the cone follows the 2D terrain
+  surface, not the 3D volume; and `REFINE_FACTOR` is set above the renderer's draw threshold so drawn
+  coarse sectors keep children and are **greedy-meshed at res-8 from their sub-sectors** (surface
+  shape), not flat boxes. *Tuning follow-ups:* the cost of res-8 coarse terrain is the 512-branching
+  (each surface sector drags 512 children, mostly homogeneous) — a compact per-node baked LoD grid
+  would cut that; LoD-pop smoothing (geomorph) is open. `REFINE_FACTOR` / `TARGET_CELL_PX` /
+  `VIEW_DISTANCE` / `REFINE_BUDGET_PER_UPDATE` are the knobs (quality vs memory).
 - **Disk persistence for *edited* sectors (when edits exist).** Refinement + deterministic
   regeneration bound memory today, so pristine terrain needs no disk — regeneration *is* the
   persistence. The remaining step lands once a sector can carry changes **not** reproducible from

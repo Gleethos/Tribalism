@@ -161,6 +161,17 @@ public record WorldGenerator(
         return WorldSectorEtherData.of(dominantMaterial(bounds));
     }
 
+    /**
+     *  @return {@code true} if {@code bounds} samples as a single uniform material (it does not straddle
+     *          a surface or material boundary). Such a region is identical at every level of detail, so
+     *          there is nothing to gain by refining it &mdash; the level-of-detail walk subdivides only
+     *          <i>non</i>-homogeneous regions, which keeps refinement bounded to the (2D) terrain surface
+     *          rather than the (3D) solid/empty volume around it.
+     */
+    public boolean isHomogeneous( BoundsF64 bounds ) {
+        return homogeneousMaterial(bounds) != null;
+    }
+
     public WorldSectorEtherData etherOf( BoundsF64 bounds ) {
         Material homogeneous = homogeneousMaterial(bounds);
         if ( homogeneous != null )
