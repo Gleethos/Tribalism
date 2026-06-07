@@ -121,4 +121,41 @@ class WorldGeneration_Spec extends Specification
         then:
             twice == once
     }
+
+    def "A stationary camera's nearby chunks are never evicted."()
+    {
+        given:
+            var eye = VecF64.of(0, -50, 0)
+            var world = builtAround(eye, 96)
+        expect: 'Once settled, further updates change nothing - eviction leaves the working set alone.'
+            settled(world).is(world)
+            world.isGenerated(eye)
+    }
+
+    def "Chunks far behind a moved camera are evicted, and regenerate losslessly on return."()
+    {
+        given: 'Terrain generated around a camera deep underground at the origin (solid rock).'
+            var origin = VecF64.of(0, -50, 0)
+            var world = builtAround(origin, 20)
+        expect:
+            world.isGenerated(origin)
+            world.sectorAt(origin).get().isSolidOpaque()
+
+        when: 'The camera flies far away and the world settles there.'
+            var far = VecF64.of(5000, -50, 5000)
+            world = settled(world.createCamera(CAMERA, cameraAt(far)))
+        then: 'The far terrain is now generated solid rock...'
+            world.isGenerated(far)
+            world.sectorAt(far).get().isSolidOpaque()
+        and: '...while the origin chunk, now far behind, has been evicted.'
+            !world.isGenerated(origin)
+
+        when: 'The camera returns to the origin and the world settles again.'
+            world = settled(world.createCamera(CAMERA, cameraAt(origin)))
+        then: 'The origin chunk is regenerated - identical solid rock, so eviction was lossless.'
+            world.isGenerated(origin)
+            world.sectorAt(origin).get().isSolidOpaque()
+        and: 'And the far chunk is in turn evicted.'
+            !world.isGenerated(far)
+    }
 }

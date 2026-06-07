@@ -453,9 +453,23 @@ so the renderer's per-chunk GPU cache keeps hitting instead of re-meshing the wh
 
 So the root starts as a single empty chunk at the origin and grows without bound as cameras
 roam; terrain streams in around them while distant, unvisited chunks cost nothing, and a
-generated chunk coordinate is remembered so it is never rebuilt. A world built without a
-generator (`World.of(root)`) skips this step. Two point queries support all this: `isGenerated(p)`
-(has the chunk at `p` been built?) and `sectorAt(p)` (the deepest sector at a world point).
+generated chunk coordinate is remembered so it is not rebuilt while it stays loaded. A world
+built without a generator (`World.of(root)`) skips this step. Two point queries support all
+this: `isGenerated(p)` (is the chunk at `p` currently loaded?) and `sectorAt(p)` (the deepest
+sector at a world point).
+
+**Eviction — bounding memory (`evictDistantChunks`).** The counterpart to generation, and what
+keeps a long flight from growing memory without bound. After generating, `update` drops every
+loaded chunk that has drifted farther than an **unload radius** from *all* cameras (a multiple of
+`generationDistance`, with a minimum gap, so there is a **hysteresis** band and chunks don't
+flip-flop at the boundary): its tree slot becomes empty air again (`removeChunk`, re-aggregating
+the splice path the same incremental way), and its coordinate is forgotten from the generated set.
+Because terrain is a **deterministic** function of the seed, this is **lossless** — fly back and
+the chunk regenerates byte-for-byte. So the working set is bounded to a shell around the cameras,
+and regeneration *is* the persistence for now. (Once chunks can carry **edits** that are not
+reproducible from the seed, `removeChunk` is exactly the seam where they would instead be written
+to disk before being dropped — see §10. The GPU backend independently evicts the VBOs of chunks it
+stops being handed, so VRAM is bounded too.)
 
 `World` is also the **query API** for everything that interrogates the world rather than
 mutating it — most importantly the per-frame visibility walk `collectSectorsForRendering`
@@ -734,7 +748,7 @@ structure:
 | `world/World_Spec`          | add/remove/move keeping tree + lookup in sync |
 | `world/WorldScreens_Spec`   | screen/camera lifecycle, one-way binding, resize, cameras stay out of the tree |
 | `world/WorldUpdate_Spec`    | inputs → camera mutations, held keys remembered between updates, unbound no-op |
-| `world/WorldGeneration_Spec`| infinite generation: chunks streamed (budgeted) around cameras, root grows to follow a far camera, reach, idempotent once settled, no-generator skip |
+| `world/WorldGeneration_Spec`| infinite generation: chunks streamed (budgeted) around cameras, root grows to follow a far camera, reach, idempotent once settled, no-generator skip, far chunks evicted + losslessly regenerated on return |
 | `world/CameraFlight_Spec`   | pure free-fly math: move/strafe/sprint/look, dt scaling, no-input identity |
 | `world/CollectSectorsForRendering_Spec` | the visibility walk (frustum + occlusion + chunk-size descent) tested with no renderer |
 | `world/CoverageGrid_Spec`   | conservative mark/test, off-screen handling, occlusion of covered rects |
@@ -767,8 +781,9 @@ event-based input model (`EngineInputs` → per-screen `ScreenInputs` event logs
 controls (held state remembered between updates); a **`WorldGenerator` owned by the world**
 that `update` uses to **stream** terrain in chunks around cameras within a configured
 `generationDistance` — **budgeted** (a bounded number of nearest chunks per tick) so flying
-never stalls — an effectively **infinite world** whose octree root grows outward (re-roots)
-to follow cameras wherever they fly. Rendering is a swappable **`Renderer` SPI** with two
+never stalls, and **evicted** again past an unload radius (deterministic regeneration makes this
+lossless) so memory stays bounded — an effectively **infinite world** whose octree root grows
+outward (re-roots) to follow cameras wherever they fly. Rendering is a swappable **`Renderer` SPI** with two
 backends: a software **`Graphics2D`** path (frustum + near→far occlusion culling, chunk-sized
 greedy-meshed surfaces, painter's sort — the dependable fallback) and a real **OpenGL**
 backend (`GlRenderer`: a true z-buffer, retained per-chunk VBOs keyed by the immutable sector,
@@ -803,14 +818,20 @@ the real renderer to come:
 
 **Not yet built (future steps):**
 
-- **Lazy chunk materialization + disk persistence (the next world-streaming step).** Wrap a
-  `WorldTreeNode`'s children in a lazy value capturing the `WorldGenerator`, so a sub-tree is a
-  *recipe* materialized (or read back from disk) on demand rather than eagerly; the render walk
-  would collect only already-materialized nodes. This is the planned seam for **persisting
-  sectors to disk** and for **evicting/bounding chunks** far behind the camera (today the world
-  keeps every chunk it has ever generated — CPU memory grows over a long flight, even though the
-  GPU backend already evicts cold chunk VBOs). With that foundation, **parallel generation** on
-  a worker pool is the follow-on (it only pays off now that a tick no longer redoes O(world) work).
+- **Disk persistence for *edited* chunks (when edits exist).** Distance-based **eviction** with
+  deterministic regeneration is now in place (§5), so memory is bounded and pristine terrain needs
+  no disk — regeneration *is* the persistence. The remaining step lands once a chunk can carry
+  changes that are **not** reproducible from the seed (player/AI edits): tag chunks pristine vs
+  modified, and have `removeChunk` write only *modified* chunks before dropping them, reading them
+  back on return. Planned design: persist at **chunk granularity** keyed by the integer
+  `ChunkCoord` (not float bounds — fragile in filenames), bucketed into **region files**; store
+  only the sub-tree *shape* + **leaf material ids** (branch ether is recomputed via
+  `aggregateEtherOf`, bounds from tree position), so a chunk is a tiny, compressible stream; do the
+  I/O **async** off the update thread (the update loop only splices in completed loads, exactly as
+  it splices completed generations). A natural companion is making the chunk slot a **lazy/loadable
+  handle** (*materialized | evicted | on-disk*) the render walk respects.
+- **Parallel generation** on a worker pool — now worthwhile, since a tick no longer redoes O(world)
+  work; generation requests fan out and completed chunks splice in over following ticks.
 - Distance **level-of-detail from the aggregated coarse levels** (the walk currently stops at
   the chunk size; `projectedEdgePixels`/`focalLengthPx` are ready to drive choosing a coarser
   aggregate for far terrain).

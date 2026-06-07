@@ -302,7 +302,7 @@ public final class World
         World result = this;
         for ( Pair<ScreenId, ScreenInputs> entry : inputs.screens() )
             result = result.applyScreenInputs(entry.first(), entry.second(), inputs.dtSeconds());
-        return result.generateAroundCameras();
+        return result.generateAroundCameras().evictDistantChunks();
     }
 
     /**
@@ -383,6 +383,67 @@ public final class World
     /** A chunk awaiting generation: its grid coordinate, world bounds, and distance to the nearest camera. */
     private record ChunkRequest(ChunkCoord coord, BoundsF64 bounds, double distance) {}
 
+    /**
+     *  The unload radius, as a multiple of the generator's {@link WorldGenerator#generationDistance() reach}.
+     *  A chunk is evicted once it is farther than this from <i>every</i> camera. It is deliberately larger
+     *  than the (1&times;) generation reach so there is a <b>hysteresis</b> band: a chunk does not flip-flop
+     *  between generated and evicted as a camera hovers near the boundary. (A minimum gap of a couple of
+     *  chunk widths is also enforced, so the band never collapses for a small reach.)
+     */
+    private static final double UNLOAD_REACH_FACTOR = 1.5;
+
+    /**
+     *  Drops generated chunks that have drifted far from every camera, so a long flight does not grow
+     *  memory without bound &mdash; the counterpart to {@link #generateAroundCameras}.
+     *  <p>
+     *  A chunk farther than the {@link #UNLOAD_REACH_FACTOR unload radius} from all cameras is removed
+     *  from the tree (its slot becomes empty air again, the splice path re-aggregated incrementally via
+     *  {@link #removeChunk}) <b>and</b> forgotten from {@link #_generatedChunks}. Because terrain is a
+     *  deterministic function of the generator's seed, this is <b>lossless</b>: if a camera returns, the
+     *  chunk is simply regenerated, byte-for-byte, by {@link #generateAroundCameras}. (Once chunks can
+     *  carry edits that are <i>not</i> reproducible from the seed, this is the seam where they would
+     *  instead be persisted to disk before being dropped.) A world with no generator, no generated
+     *  chunks, or no cameras to anchor the working set is returned unchanged.
+     */
+    private World evictDistantChunks() {
+        if ( _generator == null || _generatedChunks.isEmpty() )
+            return this;
+
+        List<VecF64> eyes = new ArrayList<>();
+        for ( Entity entity : _entities.values() )
+            if ( entity instanceof Entity.CameraEntity cameraEntity )
+                eyes.add(cameraEntity.camera().position());
+        if ( eyes.isEmpty() )
+            return this; // nothing to anchor the working set to: keep everything rather than drop it all.
+
+        double chunk = _generator.chunkSize();
+        double unloadReach = Math.max(_generator.generationDistance() * UNLOAD_REACH_FACTOR,
+                                      _generator.generationDistance() + 2 * chunk);
+
+        WorldSector root = _root;
+        ValueSet<ChunkCoord> generated = _generatedChunks;
+        boolean changed = false;
+        for ( ChunkCoord coord : _generatedChunks ) {
+            BoundsF64 bounds = chunkBounds(coord.x(), coord.y(), coord.z(), chunk);
+            if ( withinAny(eyes, bounds, unloadReach) )
+                continue; // still near a camera: keep it loaded.
+            root = removeChunk(root, bounds, chunk);
+            generated = generated.remove(coord);
+            changed = true;
+        }
+        if ( !changed )
+            return this;
+        return new World(root, _entities, _screens, _inputStates, _generator, generated);
+    }
+
+    /** @return {@code true} if {@code bounds} lies within {@code reach} of any of the camera {@code eyes}. */
+    private static boolean withinAny( List<VecF64> eyes, BoundsF64 bounds, double reach ) {
+        for ( VecF64 eye : eyes )
+            if ( distanceToBounds(eye, bounds) <= reach )
+                return true;
+        return false;
+    }
+
     /** @return The distance from {@code point} to the nearest point of {@code bounds} (0 if inside). */
     private static double distanceToBounds( VecF64 point, BoundsF64 bounds ) {
         return point.distance(point.clamp(bounds.min(), bounds.max()));
@@ -443,6 +504,31 @@ public final class World
         int cell = cellContaining(branched.bounds(), bounds.center());
         WorldTreeNode spliced = node.withSector(cell, placeChunk(node.sector(cell), bounds, chunk, chunkSize));
         return branched.withAggregatedChildren(spliced);
+    }
+
+    /**
+     *  Removes the chunk at {@code bounds} from the tree, the inverse of {@link #placeChunk}: it descends
+     *  to the chunk-sized slot and replaces it with empty air, re-aggregating each ancestor on the path
+     *  via {@link WorldSector#withAggregatedChildren} while reusing every off-path sub-tree by reference.
+     *  Already-empty paths (a leaf reached before the slot, or an already-void slot) are returned by
+     *  identity, so removing a chunk that is not present (or was empty) is a cheap no-op that preserves
+     *  structural sharing.
+     */
+    private static WorldSector removeChunk( WorldSector sector, BoundsF64 bounds, double chunkSize ) {
+        if ( sector.bounds().width() <= chunkSize * 1.5 ) {
+            if ( sector.isLeaf() && sector.isVoid() )
+                return sector; // the slot is already empty air: nothing to drop, keep identity.
+            return WorldSector.empty(sector.bounds()); // this cell is the chunk slot: clear it.
+        }
+        if ( sector.isLeaf() )
+            return sector; // an empty cell above the slot: the chunk is not here.
+        WorldTreeNode node = sector.children();
+        int cell = cellContaining(sector.bounds(), bounds.center());
+        WorldSector child = node.sector(cell);
+        WorldSector cleared = removeChunk(child, bounds, chunkSize);
+        if ( cleared == child )
+            return sector; // nothing changed below: keep this sub-tree's identity.
+        return sector.withAggregatedChildren(node.withSector(cell, cleared));
     }
 
     /** @return The linear index of the {@value WorldTreeNode#RESOLUTION}-cubed sub-cell of {@code bounds} that contains {@code point}. */
