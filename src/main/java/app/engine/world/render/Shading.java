@@ -21,12 +21,26 @@ public final class Shading
      *  @return The lit colour, clamped to valid component values.
      */
     public static Color shade( Color base, VecF64 normal, VecF64 lightDirection ) {
-        double diffuse = Math.max(0, normal.dot(lightDirection.negate()));
-        double brightness = 0.45 + 0.55 * diffuse;
+        double brightness = brightness(normal, lightDirection);
         int r = clamp((int) Math.round(base.getRed()   * brightness));
         int g = clamp((int) Math.round(base.getGreen() * brightness));
         int b = clamp((int) Math.round(base.getBlue()  * brightness));
         return new Color(r, g, b);
+    }
+
+    /**
+     *  The brightness multiplier for a face at the given orientation: an ambient floor
+     *  plus a diffuse term. The GPU path bakes this into a per-vertex scalar and multiplies
+     *  the sampled texture by it; the software path applies it to a flat colour via
+     *  {@link #shade}.
+     *
+     *  @param normal         The outward face normal.
+     *  @param lightDirection The direction the light travels (normalized).
+     *  @return A multiplier in {@code [0.45, 1.0]}.
+     */
+    public static double brightness( VecF64 normal, VecF64 lightDirection ) {
+        double diffuse = Math.max(0, normal.dot(lightDirection.negate()));
+        return 0.45 + 0.55 * diffuse;
     }
 
     private static int clamp( int v ) {

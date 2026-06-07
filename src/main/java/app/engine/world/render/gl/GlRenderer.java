@@ -3,6 +3,7 @@ package app.engine.world.render.gl;
 import app.engine.primitives.Mat4F64;
 import app.engine.primitives.VecF64;
 import app.engine.world.ScreenId;
+import app.engine.world.TextureProfile;
 import app.engine.world.World;
 import app.engine.world.WorldSector;
 import app.engine.world.render.FrameStats;
@@ -11,9 +12,11 @@ import app.engine.world.render.Renderer;
 import app.engine.world.render.SectorGeometry;
 import app.engine.world.render.SectorMeshCache;
 import app.engine.world.render.Shading;
-import app.engine.world.render.TexturePalette;
+import app.engine.world.render.TextureBaker;
 import org.jspecify.annotations.Nullable;
 import org.lwjgl.opengl.GL11;
+import org.lwjgl.opengl.GL12;
+import org.lwjgl.opengl.GL13;
 import org.lwjgl.opengl.GL15;
 import org.lwjgl.opengl.GL20;
 import org.lwjgl.opengl.GL30;
@@ -21,7 +24,7 @@ import org.lwjgl.opengl.awt.AWTGLCanvas;
 import org.lwjgl.opengl.awt.GLData;
 import org.lwjgl.system.MemoryUtil;
 
-import java.awt.Color;
+import java.nio.ByteBuffer;
 import java.awt.Component;
 import java.nio.FloatBuffer;
 import java.util.ArrayList;
@@ -38,24 +41,27 @@ import static org.lwjgl.opengl.GL.createCapabilities;
 /**
  *  The OpenGL rendering backend (behind the {@link Renderer} SPI), drawing the world
  *  directly into a heavyweight {@code AWTGLCanvas} &mdash; no read-back, a real depth
- *  buffer (so no painter's sort and no overdraw cost beyond the depth test).
+ *  buffer, retained per-chunk geometry, and <b>procedural textures</b>.
+ *  <p>
+ *  <b>Texturing.</b> Each distinct appearance ({@link TextureProfile}) is baked once by
+ *  {@link TextureBaker} into a seamless tile and uploaded into one layer of a
+ *  {@code GL_TEXTURE_2D_ARRAY} (so a single texture is bound for the whole frame). Vertices
+ *  carry world-space UVs taken from the quad's in-plane axes, divided by
+ *  {@link #TILE_WORLD_SIZE}, and {@code GL_REPEAT} tiles the layer across the surface
+ *  continuously (adjacent quads line up because the UVs are absolute world coordinates).
+ *  The flat directional {@link Shading#brightness shade} rides along as a per-vertex scalar
+ *  that the fragment shader multiplies the sampled texel by. Layers are assigned lazily on
+ *  the render thread the first time an appearance is seen, and cached.
  *  <p>
  *  <b>Retained chunk meshes.</b> {@link World#collectSectorsForRendering} hands down
- *  chunk-sized render units (sub-trees no larger than {@link #CHUNK_SIZE}); each is meshed
- *  in full by {@link SectorGeometry#emitChunk} and uploaded to its own VBO, kept on the
- *  GPU and keyed by the immutable {@link WorldSector} that produced it (the GPU mirror of
- *  {@link SectorMeshCache}). Because the octree is persistent and structurally shared, the
- *  same chunk instance recurs frame after frame and hits the cache &mdash; so static
- *  terrain is never re-meshed or re-uploaded; a frame is one {@code glDrawArrays} per
- *  visible chunk. There is no per-frame box geometry at all. Chunks not drawn for
- *  {@link #EVICT_AFTER_FRAMES} frames are freed, bounding GPU memory as the camera roams.
+ *  chunk-sized render units; each is greedy-meshed by {@link SectorMeshCache}, uploaded to
+ *  its own VBO, and kept on the GPU keyed by the immutable {@link WorldSector} (structural
+ *  sharing ⇒ static terrain is never re-meshed or re-uploaded). Chunks unused for
+ *  {@link #EVICT_AFTER_FRAMES} frames are freed.
  *  <p>
- *  <b>Threading:</b> a single {@code gl-renderer} thread owns rendering and calls
- *  {@link AWTGLCanvas#render()} on each viewport in turn (each call makes that viewport's
- *  context current and runs {@code initGL}/{@code paintGL}); GL object creation, drawing
- *  and deletion therefore all happen on this thread, with a context current. A
- *  {@code World} is a deeply immutable value, so {@link #setWorld} hands it across threads
- *  without locking. The shared mesh cache is touched only on this thread.
+ *  <b>Threading:</b> a single {@code gl-renderer} thread owns rendering (and all GL object
+ *  creation/upload/deletion), via {@link AWTGLCanvas#render()} per viewport. A {@code World}
+ *  is a deeply immutable value, so {@link #setWorld} crosses threads without locking.
  */
 public final class GlRenderer implements Renderer
 {
@@ -66,32 +72,46 @@ public final class GlRenderer implements Renderer
 
     /** World-space edge size at or below which a sub-tree is meshed as one retained chunk. */
     private static final double CHUNK_SIZE = 64.0;
+    /** World-space edge over which one texture tile repeats. */
+    private static final double TILE_WORLD_SIZE = 8.0;
     private static final VecF64 LIGHT = VecF64.of(-0.4, -1.0, -0.3).normalize();
 
     /** A cached chunk VBO is freed once it has not been drawn for this many frames. */
     private static final int EVICT_AFTER_FRAMES = 240;
 
-    private static final int FLOATS_PER_VERTEX = 6; // x,y,z, r,g,b
+    private static final int TILE_PX = 64;     // baked texture-tile resolution
+    private static final int MAX_LAYERS = 64;  // distinct appearances the texture array holds
+
+    private static final int FLOATS_PER_VERTEX = 7; // x,y,z, u,v, layer, brightness
     private static final int VERTICES_PER_QUAD = 6; // two triangles
     private static final int FLOATS_PER_QUAD = FLOATS_PER_VERTEX * VERTICES_PER_QUAD;
 
     private static final String VERTEX_SHADER =
             "#version 330 core\n" +
             "layout(location=0) in vec3 aPos;\n" +
-            "layout(location=1) in vec3 aColor;\n" +
+            "layout(location=1) in vec2 aUv;\n" +
+            "layout(location=2) in vec2 aAux;\n" + // x = texture layer, y = brightness
             "uniform mat4 uMvp;\n" +
-            "out vec3 vColor;\n" +
+            "out vec2 vUv;\n" +
+            "flat out float vLayer;\n" +
+            "out float vBright;\n" +
             "void main() {\n" +
             "    gl_Position = uMvp * vec4(aPos, 1.0);\n" +
-            "    vColor = aColor;\n" +
+            "    vUv = aUv;\n" +
+            "    vLayer = aAux.x;\n" +
+            "    vBright = aAux.y;\n" +
             "}\n";
 
     private static final String FRAGMENT_SHADER =
             "#version 330 core\n" +
-            "in vec3 vColor;\n" +
+            "in vec2 vUv;\n" +
+            "flat in float vLayer;\n" +
+            "in float vBright;\n" +
+            "uniform sampler2DArray uTex;\n" +
             "out vec4 fragColor;\n" +
             "void main() {\n" +
-            "    fragColor = vec4(vColor, 1.0);\n" +
+            "    vec4 texel = texture(uTex, vec3(vUv, vLayer));\n" +
+            "    fragColor = vec4(texel.rgb * vBright, 1.0);\n" +
             "}\n";
 
     private final AtomicReference<@Nullable World> _world = new AtomicReference<>();
@@ -199,6 +219,9 @@ public final class GlRenderer implements Renderer
 
         private int _program;
         private int _mvpLocation;
+        private int _texLocation;
+        private int _textureArray;
+        private final Map<TextureProfile, Integer> _layers = new HashMap<>(); // appearance -> texture-array layer
         private FloatBuffer _scratch = MemoryUtil.memAllocFloat(FLOATS_PER_QUAD * 1024); // building a chunk before upload
 
         private final Map<WorldSector, GpuChunk> _chunks = new HashMap<>(); // retained chunk VBOs
@@ -219,8 +242,19 @@ public final class GlRenderer implements Renderer
             GL11.glClearColor(SKY_R, SKY_G, SKY_B, 1f);
             GL11.glEnable(GL11.GL_DEPTH_TEST);
             GL11.glDepthFunc(GL11.GL_LESS);
+
             _program = linkProgram(VERTEX_SHADER, FRAGMENT_SHADER);
             _mvpLocation = GL20.glGetUniformLocation(_program, "uMvp");
+            _texLocation = GL20.glGetUniformLocation(_program, "uTex");
+
+            _textureArray = GL11.glGenTextures();
+            GL11.glBindTexture(GL30.GL_TEXTURE_2D_ARRAY, _textureArray);
+            GL12.glTexImage3D(GL30.GL_TEXTURE_2D_ARRAY, 0, GL11.GL_RGBA8, TILE_PX, TILE_PX, MAX_LAYERS,
+                              0, GL11.GL_RGBA, GL11.GL_UNSIGNED_BYTE, (ByteBuffer) null);
+            GL11.glTexParameteri(GL30.GL_TEXTURE_2D_ARRAY, GL11.GL_TEXTURE_WRAP_S, GL11.GL_REPEAT);
+            GL11.glTexParameteri(GL30.GL_TEXTURE_2D_ARRAY, GL11.GL_TEXTURE_WRAP_T, GL11.GL_REPEAT);
+            GL11.glTexParameteri(GL30.GL_TEXTURE_2D_ARRAY, GL11.GL_TEXTURE_MIN_FILTER, GL11.GL_LINEAR);
+            GL11.glTexParameteri(GL30.GL_TEXTURE_2D_ARRAY, GL11.GL_TEXTURE_MAG_FILTER, GL11.GL_LINEAR);
         }
 
         @Override
@@ -252,6 +286,9 @@ public final class GlRenderer implements Renderer
                 if ( _mvpReady ) {
                     GL20.glUseProgram(_program);
                     GL20.glUniformMatrix4fv(_mvpLocation, false, _mvp);
+                    GL13.glActiveTexture(GL13.GL_TEXTURE0);
+                    GL11.glBindTexture(GL30.GL_TEXTURE_2D_ARRAY, _textureArray);
+                    GL20.glUniform1i(_texLocation, 0);
                     for ( GpuChunk chunk : _toDraw ) {
                         GL30.glBindVertexArray(chunk.vao);
                         GL11.glDrawArrays(GL11.GL_TRIANGLES, 0, chunk.vertexCount);
@@ -280,7 +317,7 @@ public final class GlRenderer implements Renderer
             SectorGeometry.emitChunk(chunk, _meshCache, quads::add);
             ensureScratch(quads.size() * FLOATS_PER_QUAD);
             for ( Quad quad : quads )
-                putQuad(_scratch, quad);
+                putQuad(quad);
             _scratch.flip();
 
             int vao = GL30.glGenVertexArrays();
@@ -291,6 +328,53 @@ public final class GlRenderer implements Renderer
             configureVertexFormat();
             GL30.glBindVertexArray(0);
             return new GpuChunk(vao, vbo, quads.size() * VERTICES_PER_QUAD, _frame);
+        }
+
+        /** Appends a quad as two triangles, with world-space UVs, its appearance's layer, and its baked shade. */
+        private void putQuad( Quad quad ) {
+            int layer = layerFor(quad.profile());
+            float brightness = (float) Shading.brightness(quad.normal(), LIGHT);
+            int axis = dominantAxis(quad.normal());
+            int u = otherAxis(axis, 0), v = otherAxis(axis, 1);
+            putVertex(quad.c0(), u, v, layer, brightness);
+            putVertex(quad.c1(), u, v, layer, brightness);
+            putVertex(quad.c2(), u, v, layer, brightness);
+            putVertex(quad.c0(), u, v, layer, brightness);
+            putVertex(quad.c2(), u, v, layer, brightness);
+            putVertex(quad.c3(), u, v, layer, brightness);
+        }
+
+        private void putVertex( VecF64 p, int u, int v, int layer, float brightness ) {
+            _scratch.put((float) p.x()).put((float) p.y()).put((float) p.z());
+            _scratch.put((float) (component(p, u) / TILE_WORLD_SIZE)).put((float) (component(p, v) / TILE_WORLD_SIZE));
+            _scratch.put((float) layer).put(brightness);
+        }
+
+        /** The texture-array layer for an appearance, baking and uploading it on first use (cached). */
+        private int layerFor( TextureProfile profile ) {
+            Integer layer = _layers.get(profile);
+            if ( layer != null )
+                return layer;
+            if ( _layers.size() >= MAX_LAYERS )
+                return 0; // out of layers: fall back to the first appearance rather than fail
+            int assigned = _layers.size();
+            uploadLayer(assigned, TextureBaker.bake(profile, TILE_PX));
+            _layers.put(profile, assigned);
+            return assigned;
+        }
+
+        private void uploadLayer( int layer, int[] argb ) {
+            ByteBuffer pixels = MemoryUtil.memAlloc(argb.length * 4);
+            for ( int p : argb )
+                pixels.put((byte) ((p >> 16) & 0xFF))  // R
+                      .put((byte) ((p >> 8) & 0xFF))   // G
+                      .put((byte) (p & 0xFF))          // B
+                      .put((byte) ((p >>> 24) & 0xFF)); // A
+            pixels.flip();
+            GL11.glBindTexture(GL30.GL_TEXTURE_2D_ARRAY, _textureArray);
+            GL12.glTexSubImage3D(GL30.GL_TEXTURE_2D_ARRAY, 0, 0, 0, layer, TILE_PX, TILE_PX, 1,
+                                 GL11.GL_RGBA, GL11.GL_UNSIGNED_BYTE, pixels);
+            MemoryUtil.memFree(pixels);
         }
 
         private void evictStaleChunks() {
@@ -319,31 +403,33 @@ public final class GlRenderer implements Renderer
         }
     }
 
-    /** Appends a quad as two triangles (c0,c1,c2 / c0,c2,c3), its flat shade baked into the colour. */
-    private static void putQuad( FloatBuffer buffer, Quad quad ) {
-        Color color = Shading.shade(TexturePalette.colorOf(quad.profile()), quad.normal(), LIGHT);
-        float r = color.getRed()   / 255f;
-        float g = color.getGreen() / 255f;
-        float b = color.getBlue()  / 255f;
-        putVertex(buffer, quad.c0(), r, g, b);
-        putVertex(buffer, quad.c1(), r, g, b);
-        putVertex(buffer, quad.c2(), r, g, b);
-        putVertex(buffer, quad.c0(), r, g, b);
-        putVertex(buffer, quad.c2(), r, g, b);
-        putVertex(buffer, quad.c3(), r, g, b);
+    /** @return The axis (0=x, 1=y, 2=z) the normal points most strongly along. */
+    private static int dominantAxis( VecF64 normal ) {
+        double ax = Math.abs(normal.x()), ay = Math.abs(normal.y()), az = Math.abs(normal.z());
+        if ( ax >= ay && ax >= az ) return 0;
+        if ( ay >= az ) return 1;
+        return 2;
     }
 
-    private static void putVertex( FloatBuffer buffer, VecF64 p, float r, float g, float b ) {
-        buffer.put((float) p.x()).put((float) p.y()).put((float) p.z()).put(r).put(g).put(b);
+    /** @return The {@code which}-th (0 or 1) axis other than {@code a}, in ascending order. */
+    private static int otherAxis( int a, int which ) {
+        int[] others = a == 0 ? new int[]{ 1, 2 } : a == 1 ? new int[]{ 0, 2 } : new int[]{ 0, 1 };
+        return others[which];
     }
 
-    /** Declares the interleaved {@code (vec3 position, vec3 colour)} layout on the bound VAO/VBO. */
+    private static double component( VecF64 p, int axis ) {
+        return axis == 0 ? p.x() : (axis == 1 ? p.y() : p.z());
+    }
+
+    /** Declares the interleaved {@code (vec3 position, vec2 uv, vec2 layer+brightness)} layout on the bound VAO/VBO. */
     private static void configureVertexFormat() {
         int stride = FLOATS_PER_VERTEX * Float.BYTES;
         GL20.glVertexAttribPointer(0, 3, GL11.GL_FLOAT, false, stride, 0L);
         GL20.glEnableVertexAttribArray(0);
-        GL20.glVertexAttribPointer(1, 3, GL11.GL_FLOAT, false, stride, 3L * Float.BYTES);
+        GL20.glVertexAttribPointer(1, 2, GL11.GL_FLOAT, false, stride, 3L * Float.BYTES);
         GL20.glEnableVertexAttribArray(1);
+        GL20.glVertexAttribPointer(2, 2, GL11.GL_FLOAT, false, stride, 5L * Float.BYTES);
+        GL20.glEnableVertexAttribArray(2);
     }
 
     private static int linkProgram( String vertexSource, String fragmentSource ) {
