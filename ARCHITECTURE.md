@@ -463,7 +463,14 @@ returned by **identity** (so the renderer's caches keep hitting). The nearest-fi
 only to aim that budget, so the walk **skips the per-node sort once the budget is spent** (the bulk
 of the walk only detects far-collapses, which are order-independent); the sorts that remain pack
 distance+index into a `long[]` and use the primitive `Arrays.sort` — no boxed `Integer[]`, no
-`Comparator` — keeping the refinement walk off the GC and out of the flame graph. Because terrain is a deterministic
+`Comparator` — keeping the refinement walk off the GC and out of the flame graph. On top of that, a
+**movement gate** avoids the walk altogether when it would change nothing: once a walk *settles*
+(changes nothing) the world records the camera positions (`_settledEyes`, a derived hint excluded
+from `equals`/`hashCode`), and later updates return by **identity without walking** until some camera
+drifts past `chunkSize × REFINE_REANCHOR_FRACTION` of that anchor — so a near-stationary or slowly
+drifting camera costs nothing, and a fast one re-walks roughly once per re-anchor distance travelled
+instead of every tick. The gate only engages *after* settling, so budgeted detail still streams to
+completion while a freshly-arrived camera holds still. Because terrain is a deterministic
 function of the seed, collapse is **lossless** — approaching again re-refines it byte-for-byte.
 
 So a generator world is the unified LoD octree: refine toward cameras, collapse away, grow to

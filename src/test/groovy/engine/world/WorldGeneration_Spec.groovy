@@ -135,6 +135,94 @@ class WorldGeneration_Spec extends Specification
             world.sectorAt(origin).get().isSolidOpaque()
     }
 
+    def "A tiny camera move on a settled world skips the whole refinement walk."()
+    {
+        given: 'A world refined and settled around a camera deep underground at the origin.'
+            var world = builtAround(VecF64.of(0, -50, 0), 96)
+        when: 'The camera nudges only a few units - far less than a chunk.'
+            var nudged = world.createCamera(CAMERA, cameraAt(VecF64.of(3, -50, 2)))
+            var after = nudged.update(EngineInputs.of(0.0))
+        then: 'The movement gate skips the walk entirely: update returns the same instance by identity.'
+            after.is(nudged)
+    }
+
+    def "A camera move past the re-anchor distance re-triggers refinement."()
+    {
+        given: 'A world refined and settled around a camera at the origin.'
+            var world = builtAround(VecF64.of(0, -50, 0), 96)
+        when: 'The camera jumps many chunks away.'
+            var moved = world.createCamera(CAMERA, cameraAt(VecF64.of(2000, -50, 2000)))
+            var after = moved.update(EngineInputs.of(0.0))
+        then: 'The gate does not skip: the walk runs again and produces a new world.'
+            !after.is(moved)
+    }
+
+    def "A settled world stays settled across many idle updates (the gate keeps returning identity)."()
+    {
+        given: 'A world refined and settled around a camera at the origin.'
+            var world = builtAround(VecF64.of(0, -50, 0), 96)
+        when: 'It is updated many times with nothing moving.'
+            var w = world
+            for ( int i in 1..20 )
+                w = w.update(EngineInputs.of(0.0))
+        then: 'Every update was skipped by identity - the world never churned.'
+            w.is(world)
+    }
+
+    def "Drift stays gated until it accumulates past the re-anchor distance from the settle point."()
+    {
+        given: 'A settled world; the re-anchor distance is half a chunk (=32 units).'
+            var world = builtAround(VecF64.of(0, -50, 0), 96)
+        expect: 'A move of 30 units (still within 32 of the settle point) is skipped...'
+            var near = world.createCamera(CAMERA, cameraAt(VecF64.of(30, -50, 0)))
+            near.update(EngineInputs.of(0.0)).is(near)
+        and: '...while a move of 40 units (past 32) re-triggers the walk.'
+            var far = world.createCamera(CAMERA, cameraAt(VecF64.of(40, -50, 0)))
+            !far.update(EngineInputs.of(0.0)).is(far)
+    }
+
+    def "With two cameras, the world stays settled while both barely move and re-refines when one jumps."()
+    {
+        given: 'A world refined around two cameras.'
+            var world = settled(
+                World.of(generator(96))
+                     .createCamera(1L, cameraAt(VecF64.of(0, -50, 0)))
+                     .createCamera(2L, cameraAt(VecF64.of(1500, -50, 1500))))
+        expect: 'An idle update with neither camera moving is skipped by identity.'
+            world.update(EngineInputs.of(0.0)).is(world)
+        when: 'One camera nudges within the re-anchor distance, the other unchanged.'
+            var nudged = world.createCamera(1L, cameraAt(VecF64.of(4, -50, 4)))
+        then: 'Still skipped - no camera drifted far enough.'
+            nudged.update(EngineInputs.of(0.0)).is(nudged)
+        when: 'That camera now jumps many chunks away.'
+            var jumped = world.createCamera(1L, cameraAt(VecF64.of(6000, -50, 6000)))
+        then: 'The walk runs again.'
+            !jumped.update(EngineInputs.of(0.0)).is(jumped)
+    }
+
+    def "Adding a camera to a settled world forces refinement (the gate cannot skip a changed camera set)."()
+    {
+        given: 'A world settled around a single camera at the origin.'
+            var world = builtAround(VecF64.of(0, -50, 0), 96)
+        expect: 'An idle update is skipped.'
+            world.update(EngineInputs.of(0.0)).is(world)
+        when: 'A second camera appears at the surface somewhere new.'
+            var withSecond = world.createCamera(2L, cameraAt(VecF64.of(800, 0, 800)))
+        then: 'The camera count changed, so the gate cannot skip - the walk runs.'
+            !withSecond.update(EngineInputs.of(0.0)).is(withSecond)
+    }
+
+    def "Removing the last camera leaves the world unchanged on update."()
+    {
+        given:
+            var world = builtAround(VecF64.of(0, -50, 0), 96)
+        when: 'The only camera is destroyed, then the world is updated.'
+            var headless = world.destroyCamera(CAMERA)
+            var after = headless.update(EngineInputs.of(0.0))
+        then: 'With no camera to anchor a detail cone, update is a no-op (returned by identity).'
+            after.is(headless)
+    }
+
     def "The world grows its root outward to follow a camera far beyond it."()
     {
         given: 'A camera tens of thousands of units away - far outside the initial coarse root.'

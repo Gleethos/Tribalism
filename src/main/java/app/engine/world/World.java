@@ -51,29 +51,42 @@ public final class World
     private final Association<ScreenId, Screen> _screens;
     private final Association<ScreenId, ScreenInputState> _inputStates;
     private final @Nullable WorldGenerator _generator;
+    /**
+     *  The camera positions at which the last refinement walk <b>settled</b> (changed nothing), or
+     *  {@code null} if the world is not (yet) settled. It is the anchor for the cheap movement gate in
+     *  {@link #refineAroundCameras}, and is a derived <i>optimization hint</i> only &mdash; deliberately
+     *  excluded from {@link #equals}/{@link #hashCode}, like the lazily-cached matrices on a camera.
+     */
+    private final @Nullable Tuple<VecF64> _settledEyes;
 
     private World(
         WorldSector root,
         Association<Long, Entity> entities,
         Association<ScreenId, Screen> screens,
         Association<ScreenId, ScreenInputState> inputStates,
-        @Nullable WorldGenerator generator
+        @Nullable WorldGenerator generator,
+        @Nullable Tuple<VecF64> settledEyes
     ) {
         _root            = Objects.requireNonNull(root);
         _entities        = Objects.requireNonNull(entities);
         _screens         = Objects.requireNonNull(screens);
         _inputStates     = Objects.requireNonNull(inputStates);
         _generator       = generator;
+        _settledEyes     = settledEyes;
     }
 
-    /** @return A copy of this world with the given core state, preserving its generator. */
+    /**
+     *  @return A copy of this world with the given core state, preserving its generator. The settled-eyes
+     *          gate anchor is kept (the gate re-validates it against the live camera positions, so a copy
+     *          that moves or adds a camera is handled correctly there, not here).
+     */
     private World copy(
         WorldSector root,
         Association<Long, Entity> entities,
         Association<ScreenId, Screen> screens,
         Association<ScreenId, ScreenInputState> inputStates
     ) {
-        return new World(root, entities, screens, inputStates, _generator);
+        return new World(root, entities, screens, inputStates, _generator, _settledEyes);
     }
 
     /** @return An empty world whose root covers {@code bounds}, made of nothing, with no generator. */
@@ -88,6 +101,7 @@ public final class World
                 Association.between(Long.class, Entity.class),
                 Association.between(ScreenId.class, Screen.class),
                 Association.between(ScreenId.class, ScreenInputState.class),
+                null,
                 null
         );
     }
@@ -115,7 +129,8 @@ public final class World
                 Association.between(Long.class, Entity.class),
                 Association.between(ScreenId.class, Screen.class),
                 Association.between(ScreenId.class, ScreenInputState.class),
-                generator
+                generator,
+                null
         );
     }
 
@@ -318,6 +333,16 @@ public final class World
     private static final int REFINE_BUDGET_PER_UPDATE = 8;
 
     /**
+     *  Movement gate, as a fraction of a chunk: once a walk has <b>settled</b> (changed nothing), the
+     *  whole tree walk is skipped on later ticks until some camera drifts farther than
+     *  {@code chunkSize ×} this from where it was when the world settled. A small move barely shifts any
+     *  level-of-detail boundary, so re-walking the entire structure every tick for it is wasted work;
+     *  this is what keeps a near-stationary or slowly drifting camera cheap. Larger = cheaper but detail
+     *  lags farther behind a moving camera before it refreshes; smaller = crisper but more frequent walks.
+     */
+    private static final double REFINE_REANCHOR_FRACTION = 0.5;
+
+    /**
      *  Refines the level-of-detail octree around every camera &mdash; the unified "build the world as
      *  you move" step that replaces the old chunk grid, making the world both <b>infinite</b> and
      *  <b>memory-bounded</b>.
@@ -340,6 +365,12 @@ public final class World
      *  cone, not the distance travelled. Materializations are budgeted
      *  ({@link #REFINE_BUDGET_PER_UPDATE}, nearest first) so one tick never stalls; the rest stream in
      *  over following ticks. A world with no generator, or no camera to anchor the cone, is unchanged.
+     *  <p>
+     *  <b>Movement gate.</b> Walking the whole tree every tick is wasted when nothing about the detail
+     *  needs to change. So once a walk <b>settles</b> (changes nothing) the camera positions are
+     *  remembered in {@link #_settledEyes}, and subsequent ticks skip the walk entirely until some camera
+     *  drifts past {@code chunkSize × }{@link #REFINE_REANCHOR_FRACTION}. The gate only engages <i>after</i>
+     *  settling, so budgeted detail still streams to completion while a freshly-arrived camera holds still.
      */
     private World refineAroundCameras() {
         WorldGenerator generator = _generator;
@@ -347,6 +378,12 @@ public final class World
             return this;
         Tuple<VecF64> eyes = cameraEyes();
         if ( eyes.isEmpty() )
+            return this;
+
+        // Settled and no camera has drifted far enough to shift any level-of-detail boundary: skip the
+        // entire walk (returned by identity, so every cache downstream keeps hitting).
+        double reanchor = generator.chunkSize() * REFINE_REANCHOR_FRACTION;
+        if ( _settledEyes != null && withinDistance(eyes, _settledEyes, reanchor) )
             return this;
 
         WorldSector root = _root;
@@ -357,8 +394,23 @@ public final class World
         int[] budget = { REFINE_BUDGET_PER_UPDATE };
         WorldSector refined = refine(generator, root, eyes, budget);
         if ( refined == _root )
-            return this;
-        return new World(refined, _entities, _screens, _inputStates, generator);
+            // Settled at the current camera positions: anchor the gate to them so the next ticks can skip
+            // the walk. Same root instance, so the renderer's sector-keyed caches keep hitting; this is the
+            // one new instance, after which the gate above returns by identity.
+            return new World(_root, _entities, _screens, _inputStates, generator, eyes);
+        // Still streaming detail: clear the anchor so we keep walking next tick until it settles.
+        return new World(refined, _entities, _screens, _inputStates, generator, null);
+    }
+
+    /** @return Whether every camera in {@code eyes} is within {@code maxDistance} of its position in {@code anchor} (false if the counts differ). */
+    private static boolean withinDistance( Tuple<VecF64> eyes, Tuple<VecF64> anchor, double maxDistance ) {
+        if ( eyes.size() != anchor.size() )
+            return false;
+        double maxSq = maxDistance * maxDistance;
+        for ( int i = 0; i < eyes.size(); i++ )
+            if ( eyes.get(i).distanceSquared(anchor.get(i)) > maxSq )
+                return false;
+        return true;
     }
 
     /** @return The positions of all camera entities (the anchors of the detail cone). */
