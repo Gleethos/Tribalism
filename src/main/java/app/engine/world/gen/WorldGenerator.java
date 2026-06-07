@@ -62,14 +62,14 @@ public record WorldGenerator(
                 new PerlinNoise(seed),
                 /* seaLevel           */ -8,
                 /* surfaceLevel       */  0,
-                /* amplitude          */ 24,
+                /* amplitude          */  94,
                 /* frequency          */  0.015,
                 /* soilDepth          */  6,
                 /* grassDepth         */  1.5,
                 /* caveThreshold      */  0.65,
-                /* generationDistance */ 96,
+                /* generationDistance */  96,
                 /* detailDepth        */  2,
-                /* chunkSize          */ 64
+                /* chunkSize          */  64
             );
     }
 
