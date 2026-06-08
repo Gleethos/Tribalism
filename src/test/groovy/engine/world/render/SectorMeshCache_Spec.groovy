@@ -174,44 +174,6 @@ class SectorMeshCache_Spec extends Specification
             ys.max() == 8.0
     }
 
-    /** An (un-aggregated) 8x8x8 block whose leaves come from a (x,y,z)->ether function (so per-cell insets can be set). */
-    private static WorldSector blockOf( Closure<WorldSectorEtherData> etherAt ) {
-        var bounds = cube(0, 8)
-        var cells = bounds.subdivide(WorldTreeNode.RESOLUTION)
-        WorldSector[] kids = new WorldSector[WorldTreeNode.SECTOR_COUNT]
-        for ( int z = 0; z < 8; z++ )
-            for ( int y = 0; y < 8; y++ )
-                for ( int x = 0; x < 8; x++ ) {
-                    int i = WorldTreeNode.indexOf(x, y, z)
-                    kids[i] = WorldSector.leaf(cells.get(i), etherAt(x, y, z) as WorldSectorEtherData)
-                }
-        return WorldSector.empty(bounds).withChildren(new WorldTreeNode(kids))
-    }
-
-    private static List<Double> ysOf( Quad q ) { [q.c0().y(), q.c1().y(), q.c2().y(), q.c3().y()] }
-    private static List<Double> xsOf( Quad q ) { [q.c0().x(), q.c1().x(), q.c2().x(), q.c3().x()] }
-
-    def "Per-cell insets apply at res>1: a recessed half drops its top, and a step wall bridges the gap (no hole)."()
-    {
-        given: 'A single ground layer (y==0). Left half (x<4) flush; right half (x>=4) recessed by half on top.'
-            var ground = blockOf { int x, int y, int z ->
-                if ( y != 0 ) return WorldSectorEtherData.empty()
-                var rock = WorldSectorEtherData.of(Material.ROCK)
-                return x < 4 ? rock : rock.withSide(Side.POS_Y, rock.sideOf(Side.POS_Y).withInset(0.5))
-            }
-        when: 'Meshed at full (sub-block) resolution.'
-            var mesh = new SectorMeshCache().meshOf(ground, 8)
-            var tops = mesh.quads().findAll { it.normal().y() > 0.5 }
-        then: 'The flush half keeps its top at the cell boundary (y=1)...'
-            tops.any { ysOf(it).max() == 1.0 }
-        and: '...the recessed half drops its top to the content surface (y=0.5)...'
-            tops.any { ysOf(it).max() == 0.5 }
-        and: '...and an X-facing step wall reaches up to y=1 at the x=4 seam, so the height step is not a hole.'
-            mesh.quads().any { q ->
-                Math.abs(q.normal().x()) > 0.5 && xsOf(q).every { Math.abs(it - 4.0) < 1e-9 } && ysOf(q).max() == 1.0
-            }
-    }
-
     def "The mesh is memoized: the same immutable sector returns the identical mesh."()
     {
         given:

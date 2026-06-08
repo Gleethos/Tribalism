@@ -360,11 +360,9 @@ out into empty air or, if skipped, leave a hole. The **inset** fixes the shape: 
 face's `TextureProfile` carries, alongside its appearance qualities, an `inset()` in
 `[0, 1]` — the fraction of the sector's extent by which its content is recessed from
 that face. Shape thus lives *in the ether*, not in a separate type or a `WorldSector`
-field; `WorldSectorEtherData.shrink(bounds)` reads the six insets, and the mesher
-applies them at **every resolution** — at res-1 the whole unit shrinks to that box;
-at res>1 **each grid cell** is meshed as the box its own insets shrink it to (see §7),
-so a distant LoD box, *and* a coarse surface meshed from sub-cells, both stop at the
-terrain instead of sticking up as full cubes.
+field; `WorldSectorEtherData.shrink(bounds)` reads the six insets and the renderer
+**meshes that shrunk box** when it draws a unit as a single res-1 box, so a distant
+LoD box stops at the terrain instead of sticking up as a full cube.
 
 The inset is **geometry, not appearance**, so although it is part of value identity
 (`equals`/`hashCode` — the mesh cache key must reflect a box's shape) it is **ignored
@@ -707,16 +705,12 @@ adjacent voxels only to overdraw them. So `SectorMeshCache` meshes a collected u
 **coarser resolution the rasterizer stops higher up and fills each cell with that *branch*
 sector's own (LoD-aggregated) ether** — so a distant unit is greedy-meshed *from big blocks of
 branch sectors, not leaves*, for a few coarse quads instead of thousands (a checkerboard chunk
-that needs hundreds of faces up close collapses to a 6-face box far away). Each cell is meshed as
-the box its per-side **insets** (§4.3) shrink it to, so a recessed face is drawn at its content
-surface, not the cell boundary — at *every* resolution. A flush face is culled only when the
-neighbour's (also shrunk) content **fully covers** it (opaque, flush on the shared side, at least as
-wide on both perpendicular axes); a taller neighbour therefore still emits its exposed **step wall**,
-so height steps between cells of different inset never leave holes. Coplanar adjacent faces that span
-their whole cell (no perpendicular inset) and share both appearance (`TextureProfile.sameAppearance`,
-ignoring inset) *and* recession merge into the largest rectangles — so flush, uniform regions (solid
-interiors, flat ground, voxel chunks) mesh as cheaply as ever. (Valid resolutions are powers of
-`RESOLUTION` — `1, 8, 64` — since each tree level divides the grid by that factor.)
+that needs hundreds of faces up close collapses to a 6-face box far away). For each face direction
+and layer a face is kept only if the neighbouring grid cell is empty (culling **internal faces**
+between adjacent voxels *and* between adjacent sub-blocks), then coplanar adjacent faces of the
+same appearance (`TextureProfile`) merge into the largest rectangles. Merging stops at appearance
+boundaries. (Valid resolutions are powers of `RESOLUTION` — `1, 8, 64` — since each tree level
+divides the grid by that factor.)
 
 Meshing is relatively expensive — but a `WorldSector` is an **immutable value**, the perfect cache
 key. `SectorMeshCache` keys a `WeakHashMap<WorldSector, …>` by sector (so meshes of unreferenced
@@ -847,7 +841,7 @@ structure:
 | `world/gen/PerlinNoise_Spec`| determinism, range, lattice zeros |
 | `world/gen/WorldGenerator_Spec` | material classification, adaptive subdivision, reproducibility, top-down `etherOf` (faithful to a one-level build, coarse description without a sub-tree), top-down insets read from the surface height field (recesses its top, not its solid bottom; gentle-region sides flush; a straddling leaf is drawn as ground recessed onto the surface, not dropped or a cube; uniform region has none; deterministic) |
 | `world/render/WorldRenderer_Spec` | culling maths, frustum culling, majority-opaque, texture→colour, occlusion culling behind solids, render smoke test |
-| `world/render/SectorMeshCache_Spec` | chunk face culling (incl. internal sub-block boundaries), greedy merge (per-appearance, height-independent), coarse meshing from branch sectors at a chosen resolution, per-cell insets at every resolution (res-1 box shrunk to fit; res>1 recessed cell + step-wall so a height step is no hole), mesh memoization |
+| `world/render/SectorMeshCache_Spec` | chunk face culling (incl. internal sub-block boundaries), greedy merge (per-appearance, height-independent), coarse meshing from branch sectors at a chosen resolution, res-1 box shrunk to the ether's per-side insets, mesh memoization |
 | `world/render/TextureBaker_Spec`    | procedural tiles: sized + opaque, deterministic, varied (not flat), per-appearance distinct, air bakes cleanly |
 
 Run them with:
