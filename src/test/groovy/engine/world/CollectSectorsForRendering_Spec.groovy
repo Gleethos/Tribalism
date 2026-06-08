@@ -131,6 +131,28 @@ class CollectSectorsForRendering_Spec extends Specification
             farUnits.resolutions[0] < nearUnits.resolutions[0]
     }
 
+    def "A camera inside a chunk meshes it at the finest detail, not the coarsest (regression: detailCells +Infinity)."()
+    {
+        given: 'A 128-unit branch (rock below, air above), chunk size the whole world so it is always one unit.'
+            var bounds = BoundsF64.cube(VecF64.zero(), 128)
+            var world = World.of(branch(bounds) { int x, int y, int z -> y < 4 ? Material.ROCK : Material.AIR })
+            // One camera sits INSIDE the chunk (distance 0 -> detailCells == +Infinity); one is just outside it.
+            var inside      = new CameraF64(VecF64.of(0, 32, 0), VecF64.of(0, 0, 0),  VecF64.of(0, 1, 0), Math.toRadians(60), 1.0, 0.5, 6000)
+            var nearOutside = new CameraF64(VecF64.of(0, 0, 70), VecF64.zero(),       VecF64.of(0, 1, 0), Math.toRadians(60), 1.0, 0.5, 6000)
+            var insideUnits = new Capture()
+            var nearUnits   = new Capture()
+        when:
+            onScreen(world, inside,      600, 600).collectSectorsForRendering(SCREEN, 128.0, insideUnits)
+            onScreen(world, nearOutside, 600, 600).collectSectorsForRendering(SCREEN, 128.0, nearUnits)
+        then: 'Each hands over the single root unit.'
+            insideUnits.sectors.size() == 1
+            nearUnits.sectors.size() == 1
+        and: 'Being inside meshes at the FINEST resolution, the same as standing right next to it...'
+            insideUnits.resolutions[0] == nearUnits.resolutions[0]
+        and: '...and emphatically not the res-1 single box the +Infinity overflow used to collapse it to.'
+            insideUnits.resolutions[0] > 1
+    }
+
     /** An aggregated 8x8x8 branch over {@code bounds} whose leaves come from a (x,y,z)->Material function. */
     private static WorldSector branch( BoundsF64 bounds, Closure<Material> materialAt ) {
         var cells = bounds.subdivide(WorldTreeNode.RESOLUTION)

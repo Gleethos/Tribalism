@@ -261,6 +261,13 @@ public final class GlRenderer implements Renderer
             GL11.glClearColor(SKY_R, SKY_G, SKY_B, 1f);
             GL11.glEnable(GL11.GL_DEPTH_TEST);
             GL11.glDepthFunc(GL11.GL_LESS);
+            // Back-face culling: the mesher emits only outward-facing shell quads, all wound counter-clockwise
+            // seen from outside (see Cubes.FACE_CORNERS), so the hidden back side of every face is dropped.
+            // This roughly halves the submitted triangles and stops the insides of meshes showing through when
+            // the camera flies within them. (If a visual check shows it culling the wrong side, flip to GL_CW.)
+            GL11.glEnable(GL11.GL_CULL_FACE);
+            GL11.glCullFace(GL11.GL_BACK);
+            GL11.glFrontFace(GL11.GL_CCW);
 
             _program = linkProgram(VERTEX_SHADER, FRAGMENT_SHADER);
             _mvpLocation = GL20.glGetUniformLocation(_program, "uMvp");

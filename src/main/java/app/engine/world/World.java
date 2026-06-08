@@ -781,6 +781,11 @@ public final class World
     private static int meshResolutionFor( double desiredCells ) {
         if ( desiredCells <= 1 )
             return 1;
+        // A camera inside the sector gives desiredCells == +Infinity; clamp first, both to mesh the nearest
+        // terrain at its finest and to avoid (int) Math.round(+Infinity) wrapping to -1 (which collapsed a
+        // chunk to a single res-1 box the instant the camera entered its bounds).
+        if ( desiredCells >= MAX_MESH_RESOLUTION )
+            return MAX_MESH_RESOLUTION;
         int exponent = (int) Math.round(Math.log(desiredCells) / Math.log(WorldTreeNode.RESOLUTION));
         int res = 1;
         for ( int i = 0; i < exponent; i++ )

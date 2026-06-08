@@ -15,15 +15,17 @@ final class Cubes {
 
     private Cubes() {}
 
-    // The four corners of each face, as corner indices into corners(): corner i has
-    // bit 0 = x, bit 1 = y, bit 2 = z (0 = min, 1 = max). Order gives a consistent
-    // outward-facing winding (matching Side.normal()).
+    // The four corners of each face, as corner indices into corner(): corner i has
+    // bit 0 = x, bit 1 = y, bit 2 = z (0 = min, 1 = max). Every row is wound so that
+    // (c1-c0)x(c2-c0) points OUTWARD, i.e. counter-clockwise seen from outside the cube
+    // and agreeing with Side.normal(). This consistency is what lets the GPU back-face
+    // cull by winding (the software path culls by the normal, so it is winding-agnostic).
     private static final int[][] FACE_CORNERS = {
             { 0, 1, 5, 4 }, // NEG_Y
-            { 2, 3, 7, 6 }, // POS_Y
-            { 0, 2, 6, 4 }, // NEG_X
+            { 6, 7, 3, 2 }, // POS_Y
+            { 4, 6, 2, 0 }, // NEG_X
             { 1, 3, 7, 5 }, // POS_X
-            { 0, 1, 3, 2 }, // NEG_Z
+            { 2, 3, 1, 0 }, // NEG_Z
             { 4, 5, 7, 6 }  // POS_Z
     };
 
