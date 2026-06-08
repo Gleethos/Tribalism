@@ -163,6 +163,23 @@ class WorldGenerator_Spec extends Specification
             Side.values().every { faithful.insetOf(it) == coarse.insetOf(it) }
     }
 
+    def "A surface-straddling coarse leaf is drawn as ground recessed to the surface - not dropped, not a full cube."()
+    {
+        given: 'A tall box over a tiny footprint at the lattice origin (surface ~0), spanning a little below to far above it.'
+            var gen = solidGenerator()
+            var box = BoundsF64.of(VecF64.of(-0.5, -4, -0.5), VecF64.of(0.5, 64, 0.5))
+        when:
+            var ether = gen.representativeEtherOf(box)
+        then: 'It is DRAWN as opaque ground - the old volumetric-majority rule would have classed this mostly-air box as air and dropped it...'
+            !ether.isInvisible()
+            ether.isMajorityOpaque()
+        and: '...and its top recesses most of the way down (a thin ground slab), not the ~0 of the old per-layer peel.'
+            ether.insetOf(Side.POS_Y) > 0.8
+        and: 'Concretely, the recessed top lands on the actual surface (~0), not at the box top (64).'
+            var recessedTop = box.max().y() - ether.insetOf(Side.POS_Y) * (box.max().y() - box.min().y())
+            Math.abs(recessedTop - gen.surfaceHeightAt(0, 0)) < 2.0
+    }
+
     def "A homogeneous region has no insets (nothing is recessed)."()
     {
         given:

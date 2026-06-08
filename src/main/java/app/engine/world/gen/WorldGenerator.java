@@ -166,9 +166,14 @@ public record WorldGenerator(
      *          {@value WorldTreeNode#RESOLUTION}&sup3; inset grid.
      */
     public WorldSectorEtherData representativeEtherOf( BoundsF64 bounds ) {
-        WorldSectorEtherData ether = WorldSectorEtherData.of(dominantMaterial(bounds));
-        if ( homogeneousMaterial(bounds) != null )
-            return ether; // uniform: nothing recedes, faces keep their shared inset-0 appearance.
+        Material homogeneous = homogeneousMaterial(bounds);
+        if ( homogeneous != null )
+            return WorldSectorEtherData.of(homogeneous); // uniform: solid fills it, or pure air (never drawn) - no recession.
+        // Straddling the surface: represent the GROUND (the dominant VISIBLE material - not the volumetric
+        // majority, which is often the empty air above and would make the box vanish), recessed on each side
+        // down to where the air begins. So a half-buried region draws its ground shrunk to fit, never a cube
+        // and never nothing.
+        WorldSectorEtherData ether = WorldSectorEtherData.of(dominantVisibleMaterial(bounds));
         return withInsets(ether, insetsBySide(bounds));
     }
 
@@ -190,39 +195,108 @@ public record WorldGenerator(
 
         Tuple<BoundsF64> cells = bounds.subdivide(WorldTreeNode.RESOLUTION);
         Material[] cellMaterials = new Material[WorldTreeNode.SECTOR_COUNT];
-        boolean[] empty = new boolean[WorldTreeNode.SECTOR_COUNT];
         List<MaterialId> ids = new ArrayList<>(WorldTreeNode.SECTOR_COUNT);
         for ( int i = 0; i < WorldTreeNode.SECTOR_COUNT; i++ ) {
             Material material = dominantMaterial(cells.get(i));
             cellMaterials[i] = material;
-            empty[i] = material.texture().isInvisible();
             ids.add(material.materialId());
         }
 
-        // Each face carries BOTH its appearance (the average of the boundary cells on that face) and its
-        // inset (empty cell-layers peeled inward from that face) - the two top-down per-side descriptions.
+        // Each face's APPEARANCE is the average of the boundary cells on that face; its SHAPE (how far the
+        // face recedes to meet the content) is the analytic inset from insetsBySide - the two top-down
+        // per-side descriptions of the region.
         WorldSectorEtherData ether = WorldSectorEtherData.empty().withMaterial(MaterialId.merge(ids));
         for ( Side side : Side.values() ) {
             int[] boundary = WorldTreeNode.boundaryCells(side);
             List<TextureProfile> faces = new ArrayList<>(boundary.length);
             for ( int cell : boundary )
                 faces.add(cellMaterials[cell].texture());
-            double inset = emptyLayersFrom(side, empty) / (double) WorldTreeNode.RESOLUTION;
-            ether = ether.withSide(side, TextureProfile.average(faces).withInset(inset));
+            ether = ether.withSide(side, TextureProfile.average(faces));
         }
-        return ether;
+        return withInsets(ether, insetsBySide(bounds));
     }
 
-    /** @return The per-side insets of {@code bounds} (indexed by {@link Side#ordinal()}), sampled from its {@value WorldTreeNode#RESOLUTION}&sup3; grid. */
+    /**
+     *  @return The per-side insets of {@code bounds} (indexed by {@link Side#ordinal()}), read straight from
+     *          the surface height field. An inset is the fraction of the box, measured inward from a face,
+     *          that is empty (air) before the content begins, so the renderer can shrink the box to fit the
+     *          terrain. Every face is considered, not just the top:
+     *          <ul>
+     *            <li><b>+Y (top)</b> recedes down to the <i>highest</i> terrain over the footprint, so the
+     *                box top sits on the surface and never clips it.</li>
+     *            <li><b>a horizontal face</b> (&plusmn;X, &plusmn;Z) recedes inward as long as the terrain
+     *                there stays below the box floor &mdash; i.e. it fronts only air. This shapes cliffs and
+     *                steep slopes, where the ground enters the box from a side rather than from the top.</li>
+     *            <li><b>-Y (bottom)</b> never recedes: terrain is solid all the way down.</li>
+     *          </ul>
+     *          The content surface is {@code max(surfaceHeightAt, seaLevel)} (air sits above sea level, water
+     *          below). Continuous (the top is exact; a side interpolates the slice where the terrain crosses
+     *          the floor), so neighbouring boxes shrink to their own local terrain and form a terrace; and
+     *          cheap &mdash; an {@value WorldTreeNode#RESOLUTION}&sup2; footprint of {@code surfaceHeightAt}
+     *          samples, not a {@value WorldTreeNode#RESOLUTION}&sup3; material grid.
+     */
     private double[] insetsBySide( BoundsF64 bounds ) {
-        Tuple<BoundsF64> cells = bounds.subdivide(WorldTreeNode.RESOLUTION);
-        boolean[] empty = new boolean[WorldTreeNode.SECTOR_COUNT];
-        for ( int i = 0; i < WorldTreeNode.SECTOR_COUNT; i++ )
-            empty[i] = dominantMaterial(cells.get(i)).texture().isInvisible();
         double[] insets = new double[Side.values().length];
-        for ( Side side : Side.values() )
-            insets[side.ordinal()] = emptyLayersFrom(side, empty) / (double) WorldTreeNode.RESOLUTION;
+        VecF64 lo = bounds.min(), hi = bounds.max();
+        double width = hi.x() - lo.x(), height = hi.y() - lo.y(), depth = hi.z() - lo.z();
+        if ( width <= 0 || height <= 0 || depth <= 0 )
+            return insets;
+
+        int n = WorldTreeNode.RESOLUTION;
+        double maxTop = Double.NEGATIVE_INFINITY;        // highest terrain anywhere over the footprint
+        double[] colMaxX = new double[n];                // per x-slice: highest terrain across z
+        double[] colMaxZ = new double[n];                // per z-slice: highest terrain across x
+        java.util.Arrays.fill(colMaxX, Double.NEGATIVE_INFINITY);
+        java.util.Arrays.fill(colMaxZ, Double.NEGATIVE_INFINITY);
+        for ( int ix = 0; ix < n; ix++ ) {
+            double x = lo.x() + (ix + 0.5) * width / n;
+            for ( int iz = 0; iz < n; iz++ ) {
+                double z = lo.z() + (iz + 0.5) * depth / n;
+                double contentTop = Math.max(surfaceHeightAt(x, z), seaLevel);
+                maxTop = Math.max(maxTop, contentTop);
+                colMaxX[ix] = Math.max(colMaxX[ix], contentTop);
+                colMaxZ[iz] = Math.max(colMaxZ[iz], contentTop);
+            }
+        }
+
+        insets[Side.POS_Y.ordinal()] = clampUnit((hi.y() - maxTop) / height);
+        insets[Side.NEG_X.ordinal()] = emptyFraction(colMaxX, lo.y(), false);
+        insets[Side.POS_X.ordinal()] = emptyFraction(colMaxX, lo.y(), true);
+        insets[Side.NEG_Z.ordinal()] = emptyFraction(colMaxZ, lo.y(), false);
+        insets[Side.POS_Z.ordinal()] = emptyFraction(colMaxZ, lo.y(), true);
         return insets;
+    }
+
+    private static double clampUnit( double v ) {
+        return Math.max(0, Math.min(1, v));
+    }
+
+    /**
+     *  Walks the slices of {@code colMax} (the highest terrain per slice along one horizontal axis) inward
+     *  from one end, summing the slices whose terrain stays below {@code floor} (so the box face there fronts
+     *  only air), plus a fractional slice where the terrain rises through the floor.
+     *
+     *  @param colMax   Highest terrain per slice along the axis.
+     *  @param floor    The box's bottom y; terrain below this is empty air against this side.
+     *  @param fromHigh Walk inward from the high-index (positive) end rather than the low (negative) end.
+     *  @return The empty fraction in {@code [0, 1]} of the axis adjacent to that face.
+     */
+    private static double emptyFraction( double[] colMax, double floor, boolean fromHigh ) {
+        int n = colMax.length;
+        double cells = 0;
+        double previous = Double.NaN;
+        for ( int k = 0; k < n; k++ ) {
+            double current = colMax[fromHigh ? n - 1 - k : k];
+            if ( current < floor ) {       // this whole slice fronts air
+                cells += 1;
+                previous = current;
+                continue;
+            }
+            if ( !Double.isNaN(previous) && current > previous )
+                cells += (floor - previous) / (current - previous); // terrain crosses the floor within this slice
+            break;
+        }
+        return Math.min(1.0, cells / n);
     }
 
     /** @return {@code ether} with each side's appearance recessed by the matching entry of {@code insets}. */
@@ -233,18 +307,6 @@ public record WorldGenerator(
                 ether = ether.withSide(side, ether.sideOf(side).withInset(inset));
         }
         return ether;
-    }
-
-    /** @return How many whole cell-layers, counted inward from {@code side}, are entirely empty before the first layer with content. */
-    private static int emptyLayersFrom( Side side, boolean[] empty ) {
-        int layers = 0;
-        for ( int depth = 0; depth < WorldTreeNode.RESOLUTION; depth++ ) {
-            for ( int idx : WorldTreeNode.layerCells(side, depth) )
-                if ( !empty[idx] )
-                    return layers; // this layer holds content: stop peeling.
-            layers++;
-        }
-        return layers;
     }
 
     private WorldSector build( BoundsF64 bounds, int depth ) {
@@ -297,6 +359,29 @@ public record WorldGenerator(
             }
         }
         return dominant;
+    }
+
+    /**
+     *  @return The most frequently sampled <i>visible</i> (non-air) material across {@code bounds} &mdash; the
+     *          ground a surface-straddling region represents. Falls back to {@link #dominantMaterial} only if
+     *          no sample is visible (which {@link #homogeneousMaterial} already routes to the air short-circuit).
+     */
+    private Material dominantVisibleMaterial( BoundsF64 bounds ) {
+        Map<Material, Integer> counts = new HashMap<>();
+        for ( VecF64 p : samplePoints(bounds) ) {
+            Material m = materialAt(p);
+            if ( !m.texture().isInvisible() )
+                counts.merge(m, 1, Integer::sum);
+        }
+        Material dominant = null;
+        int best = 0;
+        for ( Map.Entry<Material, Integer> entry : counts.entrySet() ) {
+            if ( entry.getValue() > best ) {
+                best = entry.getValue();
+                dominant = entry.getKey();
+            }
+        }
+        return dominant != null ? dominant : dominantMaterial(bounds);
     }
 
     /** The eight corners plus the center of {@code bounds}. */

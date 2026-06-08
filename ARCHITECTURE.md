@@ -374,17 +374,32 @@ recede differently still merge into one rectangle. A material's intrinsic textur
 simply has inset `0`, so shared profiles stay shared (it costs no extra memory until a
 face is actually recessed).
 
-Insets are **always described top-down by the generator**, just like appearance:
-`etherOf` and `representativeEtherOf` sample the region's 8³ grid and, per face, peel
-whole empty (invisible) cell-layers inward, attaching the resulting recess to that
-side's profile via `TextureProfile.withInset`. A uniform region (solid rock, open air)
-recesses nothing (inset `0`); a surface-straddling region yields roughly `POS_Y > 0`,
-`NEG_Y = 0`. `generate` attaches the **same** top-down insets to its aggregated root
-ether, so the faithfulness invariant `etherOf(b) == generate(b, 1).ether()` holds for
-shape as well as appearance (no LoD pop). There is no bottom-up inset derivation any
-more — `aggregated()` (used only for *edited* sub-trees) just averages whatever insets
-its children's faces carry, for free, since `TextureProfile.average` averages the inset
-alongside the qualities.
+Insets are **always described top-down by the generator**, read **analytically from the
+surface height field** (`WorldGenerator.insetsBySide`): an inset is the fraction of the box,
+measured inward from a face, that is empty (air) before the content begins, so the renderer
+can shrink the box to fit the terrain. **Every face is considered, not just the top** — a
+single `+Y` inset cannot describe a cliff:
+- **`+Y` (top)** recedes down to the *highest* terrain over the footprint (`max(surfaceHeightAt, seaLevel)` — air sits above sea level, water below), so the top sits on the surface and never clips it;
+- a **horizontal face** (`±X`, `±Z`) recedes inward as long as the terrain there stays below the box floor — i.e. it fronts only air — which shapes cliffs and steep slopes where the ground enters from a side;
+- **`-Y` (bottom)** never recedes (terrain is solid all the way down).
+
+The top is **continuous** (exact); a side interpolates the footprint slice where the terrain
+crosses the floor — both from an 8² grid of `surfaceHeightAt` samples, not the 8³ material
+grid the appearance average needs. Because adjacent boxes shrink to their *own* local
+terrain, they form a **terrace** rather than a single flat plane.
+
+Crucially, a **surface-straddling coarse leaf draws the *ground*, recessed** —
+`representativeEtherOf` summarises it with its dominant *visible* material (not the
+*volumetric* majority, which is usually the empty air above and would make the box vanish or
+collapse to an un-recessed cube). So a half-buried region renders as its ground shrunk to
+fit, never as nothing and never as a full cube. `etherOf` (the faithful summary) keeps its
+per-face boundary-averaged appearance but takes the **same** `insetsBySide` shape, and
+`generate` attaches it to the aggregated root ether too, so the faithfulness invariant
+`etherOf(b) == generate(b, 1).ether()` holds for shape as well as appearance (no LoD pop). A
+uniform region (solid rock, open air) recesses nothing (inset `0`). There is no bottom-up
+inset derivation — `aggregated()` (used only for *edited* sub-trees) just averages whatever
+insets its children's faces carry, for free, since `TextureProfile.average` averages the
+inset alongside the qualities.
 
 ---
 
@@ -830,7 +845,7 @@ structure:
 | `world/CollectSectorsForRendering_Spec` | the visibility walk (frustum + occlusion + chunk floor + distance-based level-of-detail resolution) tested with no renderer |
 | `world/CoverageGrid_Spec`   | conservative mark/test, off-screen handling, occlusion of covered rects |
 | `world/gen/PerlinNoise_Spec`| determinism, range, lattice zeros |
-| `world/gen/WorldGenerator_Spec` | material classification, adaptive subdivision, reproducibility, top-down `etherOf` (faithful to a one-level build, coarse description without a sub-tree), top-down `insetsOf` (surface region recesses its top, uniform region has none, deterministic) |
+| `world/gen/WorldGenerator_Spec` | material classification, adaptive subdivision, reproducibility, top-down `etherOf` (faithful to a one-level build, coarse description without a sub-tree), top-down insets read from the surface height field (recesses its top, not its solid bottom; gentle-region sides flush; a straddling leaf is drawn as ground recessed onto the surface, not dropped or a cube; uniform region has none; deterministic) |
 | `world/render/WorldRenderer_Spec` | culling maths, frustum culling, majority-opaque, texture→colour, occlusion culling behind solids, render smoke test |
 | `world/render/SectorMeshCache_Spec` | chunk face culling (incl. internal sub-block boundaries), greedy merge (per-appearance, height-independent), coarse meshing from branch sectors at a chosen resolution, per-cell insets at every resolution (res-1 box shrunk to fit; res>1 recessed cell + step-wall so a height step is no hole), mesh memoization |
 | `world/render/TextureBaker_Spec`    | procedural tiles: sized + opaque, deterministic, varied (not flat), per-appearance distinct, air bakes cleanly |
