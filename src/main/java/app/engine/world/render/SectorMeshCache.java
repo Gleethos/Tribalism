@@ -87,11 +87,7 @@ public final class SectorMeshCache
     private static SectorMesh build( WorldSector sector, int res ) {
         WorldSectorEtherData[] grid = new WorldSectorEtherData[res * res * res];
         rasterize(sector, grid, res, 0, 0, 0, res);
-        // At res-1 the whole unit is one box, so shrink it to its content with the ether's per-side insets (a
-        // coarse LoD leaf straddling the surface thus stops at the terrain instead of sticking up as a full
-        // cube). Above res-1 the grid itself carries the shape, so the full bounds are meshed.
-        BoundsF64 meshBounds = res == 1 ? sector.ether().shrink(sector.bounds()) : sector.bounds();
-        return greedyMesh(meshBounds, grid, res);
+        return greedyMesh(sector.bounds(), grid, res);
     }
 
     /** @return {@code cap} reduced to the largest power of {@link WorldTreeNode#RESOLUTION} that is {@code <= cap} (at least 1). */
@@ -149,48 +145,90 @@ public final class SectorMeshCache
                     grid[index(x0 + x, y0 + y, z0 + z, res)] = ether;
     }
 
+    /**
+     *  Greedy-meshes the grid into visible surface quads, applying each cell's per-side
+     *  {@link TextureProfile#inset() insets} at <b>every</b> resolution: a cell is meshed as the box its
+     *  insets shrink it to, so a recessed face is drawn at its content surface rather than the cell
+     *  boundary. The interesting case is two solid neighbours of different inset: the taller one's side
+     *  face is only <i>partly</i> buried, so it must still emit the exposed "step wall". This is handled by
+     *  a <b>coverage</b> cull &mdash; a flush face is dropped only when the neighbour's (also shrunk) content
+     *  fully covers it (opaque, flush on the shared side, and at least as wide on both perpendicular axes);
+     *  otherwise the face is emitted, so steps never leave holes. Faces that span their whole cell (no
+     *  perpendicular inset) and share appearance <i>and</i> recession still merge into maximal rectangles,
+     *  so flush, uniform regions (solid interiors, flat ground, voxel chunks) mesh as cheaply as before.
+     */
     private static SectorMesh greedyMesh( BoundsF64 bounds, WorldSectorEtherData[] grid, int res ) {
         double[] origin = { bounds.min().x(), bounds.min().y(), bounds.min().z() };
-        // Per-axis cell size: usually a cube, but an inset-shrunk res-1 box can be non-cubic.
         double[] cell = { bounds.size().x() / res, bounds.size().y() / res, bounds.size().z() / res };
 
         List<Quad> quads = new ArrayList<>();
-        TextureProfile[][] mask = new TextureProfile[res][res];
+        TextureProfile[][] face = new TextureProfile[res][res]; // this cell's face appearance, or null if none here
+        double[][] depth = new double[res][res];                // its inset along the side's axis, in [0,1]
+        boolean[][] mergeable = new boolean[res][res];           // spans its whole cell (no perpendicular inset)?
+        double[][] uLoI = new double[res][res], uHiI = new double[res][res];
+        double[][] vLoI = new double[res][res], vHiI = new double[res][res];
         boolean[][] used = new boolean[res][res];
 
         for ( Side side : Side.values() ) {
             int a = side.axis();
             int u = otherAxis(a, 0), v = otherAxis(a, 1);
+            Side uNeg = sideFor(u, false), uPos = sideFor(u, true);
+            Side vNeg = sideFor(v, false), vPos = sideFor(v, true);
+            Side opposite = side.opposite();
             int step = side.isPositive() ? 1 : -1;
 
             for ( int la = 0; la < res; la++ ) {
-                // Mask of exposed, opaque faces in this layer, keyed by appearance.
                 for ( int vv = 0; vv < res; vv++ )
                     for ( int uu = 0; uu < res; uu++ ) {
-                        mask[uu][vv] = faceAt(grid, res, side, a, la, u, uu, v, vv, step);
                         used[uu][vv] = false;
+                        face[uu][vv] = null;
+                        WorldSectorEtherData e = cellAt(grid, res, a, u, v, la, uu, vv);
+                        if ( e == null || !e.isMajorityOpaque() )
+                            continue;
+                        double insetA = e.insetOf(side);
+                        if ( insetA == 0 && covered(grid, res, a, u, v, la + step, uu, vv, e, opposite, uNeg, uPos, vNeg, vPos) )
+                            continue; // flush face fully hidden behind the neighbour's content.
+                        face[uu][vv] = WorldRenderer.faceProfile(e, side);
+                        depth[uu][vv] = insetA;
+                        uLoI[uu][vv] = e.insetOf(uNeg); uHiI[uu][vv] = e.insetOf(uPos);
+                        vLoI[uu][vv] = e.insetOf(vNeg); vHiI[uu][vv] = e.insetOf(vPos);
+                        mergeable[uu][vv] = uLoI[uu][vv] == 0 && uHiI[uu][vv] == 0 && vLoI[uu][vv] == 0 && vHiI[uu][vv] == 0;
                     }
-                // Merge equal, adjacent faces into maximal rectangles (greedy).
+
+                double aLo = origin[a] + la * cell[a], aHi = aLo + cell[a];
                 for ( int vv = 0; vv < res; vv++ )
                     for ( int uu = 0; uu < res; uu++ ) {
-                        TextureProfile p = mask[uu][vv];
+                        TextureProfile p = face[uu][vv];
                         if ( p == null || used[uu][vv] )
                             continue;
+                        double d = depth[uu][vv];
+                        double aPlane = side.isPositive() ? aHi - d * cell[a] : aLo + d * cell[a];
+                        if ( !mergeable[uu][vv] ) {
+                            // A face shrunk on a perpendicular axis can't tile with its neighbours: emit it alone.
+                            used[uu][vv] = true;
+                            quads.add(faceQuad(a, u, v, side, p, aPlane,
+                                    origin[u] + (uu + uLoI[uu][vv]) * cell[u], origin[u] + (uu + 1 - uHiI[uu][vv]) * cell[u],
+                                    origin[v] + (vv + vLoI[uu][vv]) * cell[v], origin[v] + (vv + 1 - vHiI[uu][vv]) * cell[v]));
+                            continue;
+                        }
+                        // Merge full faces sharing appearance AND recession into a maximal rectangle.
                         int w = 1;
-                        while ( uu + w < res && !used[uu + w][vv] && sameFace(p, mask[uu + w][vv]) )
+                        while ( uu + w < res && canMerge(face, used, mergeable, depth, p, d, uu + w, vv) )
                             w++;
                         int h = 1;
                         grow:
                         while ( vv + h < res ) {
                             for ( int k = 0; k < w; k++ )
-                                if ( used[uu + k][vv + h] || !sameFace(p, mask[uu + k][vv + h]) )
+                                if ( !canMerge(face, used, mergeable, depth, p, d, uu + k, vv + h) )
                                     break grow;
                             h++;
                         }
                         for ( int dv = 0; dv < h; dv++ )
                             for ( int du = 0; du < w; du++ )
                                 used[uu + du][vv + dv] = true;
-                        quads.add(rectQuad(origin, cell, side, a, u, v, la, uu, vv, w, h, p));
+                        quads.add(faceQuad(a, u, v, side, p, aPlane,
+                                origin[u] + uu * cell[u], origin[u] + (uu + w) * cell[u],
+                                origin[v] + vv * cell[v], origin[v] + (vv + h) * cell[v]));
                     }
             }
         }
@@ -198,51 +236,60 @@ public final class SectorMeshCache
     }
 
     /**
-     *  @return The appearance of the grid cell ({@code la} along axis {@code a}, {@code uu}/{@code vv}
-     *          on the free axes) on {@code side} if that face is opaque <i>and</i> exposed (the
-     *          neighbour in that direction is empty or outside the grid), else {@code null}.
+     *  @return Whether cell {@code e}'s flush face toward the neighbour at {@code (nla,uu,vv)} is fully
+     *          hidden: the neighbour exists, is opaque, reaches the shared boundary ({@code opposite} inset
+     *          {@code 0}), and its content is at least as wide as {@code e}'s on both perpendicular axes.
+     *          When it is only partly covered (a shorter/narrower neighbour), this is {@code false}, so the
+     *          exposed step wall is still emitted.
      */
-    private static @Nullable TextureProfile faceAt(
-        WorldSectorEtherData[] grid, int res, Side side, int a, int la, int u, int uu, int v, int vv, int step
+    private static boolean covered(
+        WorldSectorEtherData[] grid, int res, int a, int u, int v, int nla, int uu, int vv,
+        WorldSectorEtherData e, Side opposite, Side uNeg, Side uPos, Side vNeg, Side vPos
     ) {
-        WorldSectorEtherData ether = grid[index(coord(0, a, la, u, uu, v, vv),
-                                                coord(1, a, la, u, uu, v, vv),
-                                                coord(2, a, la, u, uu, v, vv), res)];
-        if ( ether == null || !ether.isMajorityOpaque() )
-            return null;
-        int nla = la + step;
-        if ( nla >= 0 && nla < res ) {
-            WorldSectorEtherData neighbour = grid[index(coord(0, a, nla, u, uu, v, vv),
-                                                        coord(1, a, nla, u, uu, v, vv),
-                                                        coord(2, a, nla, u, uu, v, vv), res)];
-            if ( neighbour != null && neighbour.isMajorityOpaque() )
-                return null; // buried between two opaque voxels: cull this face
-        }
-        return WorldRenderer.faceProfile(ether, side);
+        if ( nla < 0 || nla >= res )
+            return false; // the unit boundary: always exposed.
+        WorldSectorEtherData n = cellAt(grid, res, a, u, v, nla, uu, vv);
+        if ( n == null || !n.isMajorityOpaque() || n.insetOf(opposite) > 0 )
+            return false;
+        return n.insetOf(uNeg) <= e.insetOf(uNeg) && n.insetOf(uPos) <= e.insetOf(uPos)
+            && n.insetOf(vNeg) <= e.insetOf(vNeg) && n.insetOf(vPos) <= e.insetOf(vPos);
     }
 
-    /** Builds the world-space quad for a merged rectangle, reusing {@link Cubes} for winding/normal. */
-    private static Quad rectQuad(
-        double[] origin, double[] cell, Side side, int a, int u, int v, int la, int u0, int v0, int w, int h, TextureProfile p
+    /** @return Whether the full face at {@code (uu,vv)} can join a merge run: unused, mergeable, present, same recession and appearance. */
+    private static boolean canMerge(
+        TextureProfile[][] face, boolean[][] used, boolean[][] mergeable, double[][] depth,
+        TextureProfile p, double d, int uu, int vv
     ) {
-        double[] lo = new double[3];
-        double[] hi = new double[3];
-        lo[a] = origin[a] + la * cell[a];    hi[a] = lo[a] + cell[a];
-        lo[u] = origin[u] + u0 * cell[u];    hi[u] = lo[u] + w * cell[u];
-        lo[v] = origin[v] + v0 * cell[v];    hi[v] = lo[v] + h * cell[v];
-        BoundsF64 box = BoundsF64.of(VecF64.of(lo[0], lo[1], lo[2]), VecF64.of(hi[0], hi[1], hi[2]));
-        return Cubes.faceQuad(box, side, p);
+        return !used[uu][vv] && mergeable[uu][vv] && face[uu][vv] != null
+            && depth[uu][vv] == d && p.sameAppearance(face[uu][vv]);
     }
 
-    /**
-     *  @return Whether two mask entries should merge into one rectangle: present and of the same
-     *          <i>appearance</i>. Merging compares {@link TextureProfile#sameAppearance appearance}, not
-     *          {@code equals}, so faces that look identical but recede by different
-     *          {@link TextureProfile#inset() insets} still merge &mdash; the per-cell mesh does not use the
-     *          inset (it is consumed only when a sector is drawn as a single box).
-     */
-    private static boolean sameFace( TextureProfile a, @Nullable TextureProfile b ) {
-        return b != null && a.sameAppearance(b);
+    /** @return The ether of the grid cell at ({@code la} along axis {@code a}, {@code uu}/{@code vv} on the free axes). */
+    private static @Nullable WorldSectorEtherData cellAt(
+        WorldSectorEtherData[] grid, int res, int a, int u, int v, int la, int uu, int vv
+    ) {
+        return grid[index(coord(0, a, la, u, uu, v, vv), coord(1, a, la, u, uu, v, vv), coord(2, a, la, u, uu, v, vv), res)];
+    }
+
+    /** @return The {@link Side} on {@code axis} (0=X, 1=Y, 2=Z) in the positive or negative direction. */
+    private static Side sideFor( int axis, boolean positive ) {
+        return switch ( axis ) {
+            case 0  -> positive ? Side.POS_X : Side.NEG_X;
+            case 1  -> positive ? Side.POS_Y : Side.NEG_Y;
+            default -> positive ? Side.POS_Z : Side.NEG_Z;
+        };
+    }
+
+    /** Builds the world-space quad for a face on {@code side} at the plane {@code aPlane} (axis {@code a}), spanning {@code [uLo,uHi]}x{@code [vLo,vHi]}. */
+    private static Quad faceQuad(
+        int a, int u, int v, Side side, TextureProfile p,
+        double aPlane, double uLo, double uHi, double vLo, double vHi
+    ) {
+        double[] lo = new double[3], hi = new double[3];
+        lo[a] = hi[a] = aPlane; // a zero-thickness box: Cubes.faceQuad reads this side's face off it.
+        lo[u] = uLo; hi[u] = uHi;
+        lo[v] = vLo; hi[v] = vHi;
+        return Cubes.faceQuad(BoundsF64.of(VecF64.of(lo[0], lo[1], lo[2]), VecF64.of(hi[0], hi[1], hi[2])), side, p);
     }
 
     private static int index( int x, int y, int z, int res ) {
