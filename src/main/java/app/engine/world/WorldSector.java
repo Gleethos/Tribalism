@@ -30,8 +30,10 @@ import java.util.Objects;
  *  Every operation returns a new sector; nothing is ever mutated. The class still
  *  behaves as a <b>value</b> &mdash; immutable, with {@code equals}/{@code hashCode}
  *  defined purely by its six fields. It is a {@code class} rather than a
- *  {@code record} only so it can encapsulate one derived, lazily-computed field:
- *  its {@link #insets() side insets}, summarized from its sub-sectors.
+ *  {@code record} only so it can encapsulate its derived, lazily-computed predicates
+ *  ({@link #isSolidOpaque()}, {@link #isVoid()}, {@link #hasOnlyLeafChildren()}) and a
+ *  memoized hash. A sector's <i>shape</i> (its per-face content recession) lives in its
+ *  {@link WorldSectorEtherData#shrink ether}, not here.
  */
 public final class WorldSector {
 
@@ -44,7 +46,6 @@ public final class WorldSector {
 
     // Derived, memoized. Purely a function of the fields above (specifically the
     // children), so it is excluded from equals/hashCode and computed at most once.
-    private final Lazy<SideInsets> _insets;
     private final Lazy<Boolean> _solidOpaque;
     private final Lazy<Boolean> _hasOnlyLeafChildren;
     private final Lazy<Boolean> _void;
@@ -68,7 +69,6 @@ public final class WorldSector {
         _lights      = Objects.requireNonNull(lights);
         _lightTraces = Objects.requireNonNull(lightTraces);
         _children    = children;
-        _insets      = Lazy.of(this::computeInsets);
         _solidOpaque = Lazy.of(this::computeSolidOpaque);
         _hasOnlyLeafChildren = Lazy.of(this::computeHasOnlyLeafChildren);
         _void        = Lazy.of(this::computeVoid);
@@ -81,7 +81,12 @@ public final class WorldSector {
     public Tuple<LightTrace> lightTraces()        { return _lightTraces; }
     public @Nullable WorldTreeNode children()     { return _children; }
 
-    /** @return An empty leaf sector over {@code bounds} made of the given {@code ether}. */
+    /**
+     *  @return An empty leaf sector over {@code bounds} made of the given {@code ether}. The ether's
+     *          per-side {@link TextureProfile#inset() insets} carry the leaf's shape (how far content is
+     *          recessed from each face), so a coarse generator-described leaf draws as a box shrunk to fit
+     *          its matter rather than a full cube &mdash; there is no separate inset state on the sector.
+     */
     public static WorldSector leaf( BoundsF64 bounds, WorldSectorEtherData ether ) {
         return new WorldSector(
                 bounds,
@@ -151,26 +156,6 @@ public final class WorldSector {
      */
     public boolean isSolidOpaque() {
         return _solidOpaque.get();
-    }
-
-    /**
-     *  The per-face {@link SideInsets insets} of this sector, summarized from its
-     *  sub-sectors and memoized lazily (computed at most once, on first access).
-     *  <p>
-     *  A leaf has no sub-sectors to traverse, so all of its insets are {@code 0}.
-     *  A branch derives each face's inset with an <b>inward-moving</b> algorithm:
-     *  starting at that face it peels off whole child layers while every sub-sector
-     *  in the layer is {@link #isFullyTransparent() fully transparent}, adding one
-     *  full layer of inset each time. At the first layer that holds any content it
-     *  adds the <i>smallest</i> matching-side inset among that layer's non-transparent
-     *  sub-sectors (so the inset refines below child granularity) and stops. The
-     *  result is a fraction in {@code [0, 1]} of this sector's extent: {@code 0} =
-     *  content reaches the face, {@code 1} = that whole half is empty.
-     *
-     *  @return How far content is recessed from each of the six faces.
-     */
-    public SideInsets insets() {
-        return _insets.get();
     }
 
     public WorldSector withEther( WorldSectorEtherData newEther ) {
@@ -282,8 +267,8 @@ public final class WorldSector {
      *          {@link MaterialId#merge merged} &mdash; the shared id if they all
      *          agree, otherwise {@link MaterialId#diverse() Diverse}.</li>
      *  </ul>
-     *  (The per-face {@link #insets() insets} are derived the same way, but lazily on
-     *  demand rather than here.) This is what lets a whole sub-tree collapse into one
+     *  (Each face's {@link TextureProfile#inset() inset} rides along in the per-side profile, so the
+     *  boundary average carries it too.) This is what lets a whole sub-tree collapse into one
      *  visually faithful representative voxel.
      *
      *  @return A sector whose ether (and that of every descendant) reflects the
@@ -357,47 +342,6 @@ public final class WorldSector {
             if ( !_children.sector(i).isSolidOpaque() )
                 return false;
         return true;
-    }
-
-    // ---- Inset computation ------------------------------------------------------
-
-    private SideInsets computeInsets() {
-        if ( _children == null )
-            return SideInsets.none();
-
-        boolean[] transparent = new boolean[WorldTreeNode.SECTOR_COUNT];
-        for ( int i = 0; i < WorldTreeNode.SECTOR_COUNT; i++ )
-            transparent[i] = _children.sector(i).isFullyTransparent();
-
-        SideInsets insets = SideInsets.none();
-        for ( Side side : Side.values() )
-            insets = insets.with(side, insetFromSide(side, transparent));
-        return insets;
-    }
-
-    /** Walks layers inward from {@code side}, accumulating empty layers (and a final partial layer). */
-    private double insetFromSide( Side side, boolean[] transparent ) {
-        int res = WorldTreeNode.RESOLUTION;
-        double layers = 0;
-        for ( int depth = 0; depth < res; depth++ ) {
-            boolean allTransparent = true;
-            double minChildInset = 1.0;
-            for ( int idx : WorldTreeNode.layerCells(side, depth) ) {
-                if ( !transparent[idx] ) {
-                    allTransparent = false;
-                    double childInset = _children.sector(idx).insets().forSide(side);
-                    if ( childInset < minChildInset )
-                        minChildInset = childInset;
-                }
-            }
-            if ( allTransparent ) {
-                layers += 1.0; // a fully empty layer recesses content by a full child cell.
-            } else {
-                layers += minChildInset; // content begins partway into this layer; refine below it.
-                break;
-            }
-        }
-        return layers / res;
     }
 
     /**

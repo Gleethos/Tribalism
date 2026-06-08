@@ -3,6 +3,7 @@ package engine.world.render
 import app.engine.primitives.BoundsF64
 import app.engine.primitives.VecF64
 import app.engine.world.Material
+import app.engine.world.Side
 import app.engine.world.WorldSector
 import app.engine.world.WorldSectorEtherData
 import app.engine.world.WorldTreeNode
@@ -140,6 +141,37 @@ class SectorMeshCache_Spec extends Specification
         expect:
             mesh.quads().every { Quad q -> !q.profile().isInvisible() }
             mesh.faceCount() > 0
+    }
+
+    def "A coarse leaf whose ether recesses a face meshes as a box shrunk to fit its content."()
+    {
+        given: 'A solid leaf over 0..8 whose top face is recessed by half (POS_Y inset 0.5), in the ether.'
+            var ether = WorldSectorEtherData.of(Material.ROCK)
+            ether = ether.withSide(Side.POS_Y, ether.sideOf(Side.POS_Y).withInset(0.5))
+            var leaf = WorldSector.leaf(cube(0, 8), ether)
+        when: 'It is meshed as a single coarse box (res-1).'
+            var mesh = new SectorMeshCache().meshOf(leaf, 1)
+            var ys = mesh.quads().collectMany { [it.c0().y(), it.c1().y(), it.c2().y(), it.c3().y()] }
+            var xs = mesh.quads().collectMany { [it.c0().x(), it.c1().x(), it.c2().x(), it.c3().x()] }
+        then: 'It is still a 6-face box...'
+            mesh.faceCount() == 6
+        and: '...but its top has dropped to the content surface (max y = 4), not the full cube (8)...'
+            ys.max() == 4.0
+            ys.min() == 0.0
+        and: '...while the un-inset axes keep the full 0..8 extent.'
+            xs.min() == 0.0
+            xs.max() == 8.0
+    }
+
+    def "A leaf with no insets meshes as the full unshrunk box."()
+    {
+        given:
+            var leaf = WorldSector.leaf(cube(0, 8), WorldSectorEtherData.of(Material.ROCK))
+        when:
+            var ys = new SectorMeshCache().meshOf(leaf, 1).quads().collectMany { [it.c0().y(), it.c1().y(), it.c2().y(), it.c3().y()] }
+        then: 'No recession: the box spans the full 0..8.'
+            ys.min() == 0.0
+            ys.max() == 8.0
     }
 
     def "The mesh is memoized: the same immutable sector returns the identical mesh."()

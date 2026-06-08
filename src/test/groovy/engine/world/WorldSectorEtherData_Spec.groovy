@@ -1,5 +1,7 @@
 package engine.world
 
+import app.engine.primitives.BoundsF64
+import app.engine.primitives.VecF64
 import app.engine.world.Material
 import app.engine.world.MaterialId
 import app.engine.world.Side
@@ -75,5 +77,40 @@ class WorldSectorEtherData_Spec extends Specification
         and: 'Differing in a face, or in the material, breaks equality.'
             a != WorldSectorEtherData.of(Material.ROCK)
             a != b.withMaterial(MaterialId.diverse())
+    }
+
+    // ---- Shape: per-side insets shrink a box to fit the content ------------------
+
+    def "insetOf reads a face's recession and shrink fits a box to it."()
+    {
+        given: 'Solid rock with its top face recessed by half (top half is air).'
+            var ether = WorldSectorEtherData.of(Material.ROCK)
+            ether = ether.withSide(Side.POS_Y, ether.sideOf(Side.POS_Y).withInset(0.5))
+            var box = BoundsF64.of(VecF64.of(0, 0, 0), VecF64.of(8, 8, 8))
+        expect: 'insetOf surfaces the per-side inset...'
+            ether.insetOf(Side.POS_Y) == 0.5
+            ether.insetOf(Side.NEG_Y) == 0.0
+        and: '...and shrink drops the top to the content surface, leaving the other axes whole.'
+            ether.shrink(box) == BoundsF64.of(VecF64.of(0, 0, 0), VecF64.of(8, 4, 8))
+    }
+
+    def "shrink with no insets returns the bounds unchanged (identity)."()
+    {
+        given:
+            var box = BoundsF64.of(VecF64.of(0, 0, 0), VecF64.of(8, 8, 8))
+        expect:
+            WorldSectorEtherData.of(Material.ROCK).shrink(box).is(box)
+    }
+
+    def "Opposing insets that cross collapse that axis to a slab, never an inverted box."()
+    {
+        given: 'Both Y faces recessed by 0.7 each (1.4 > 1): they would cross.'
+            var ether = WorldSectorEtherData.of(Material.ROCK)
+            ether = ether.withSide(Side.POS_Y, ether.sideOf(Side.POS_Y).withInset(0.7))
+                         .withSide(Side.NEG_Y, ether.sideOf(Side.NEG_Y).withInset(0.7))
+            var shrunk = ether.shrink(BoundsF64.of(VecF64.of(0, 0, 0), VecF64.of(8, 8, 8)))
+        expect: 'The Y axis collapses to the midpoint (4), not below it.'
+            shrunk.min().y() == shrunk.max().y()
+            shrunk.min().y() == 4.0
     }
 }

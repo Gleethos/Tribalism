@@ -51,12 +51,11 @@ app.engine
 │
 └── world               The world data model and its tooling
     ├── Texture                 A visual appearance quality (GRAINY, LIQUID, REFLECTIVE, …)
-    ├── TextureProfile          A set of independent Texture intensities [0,1] (the look of a face)
+    ├── TextureProfile          A face's look: independent Texture intensities [0,1] + an inset [0,1] (content recess)
     ├── MaterialId              Sum type: Specific(int) | Diverse (what a cube is made of)
     ├── Material                Starter substance registry (id + name + default TextureProfile)
     ├── Side                    One of the six cube faces (NEG_X … POS_Z)
-    ├── SideInsets              Per-face content recess [0,1] (lets LoD boxes fit content)
-    ├── WorldSectorEtherData    Ether: one MaterialId per cube + one TextureProfile per Side
+    ├── WorldSectorEtherData    Ether: one MaterialId per cube + one TextureProfile per Side (+ shrink-to-fit)
     ├── WorldTreeEntityId       Positional handle: long id + bounds
     ├── LightSource             Sealed light sum type (Sphere | Cube | Plane)
     ├── LightTrace              A ray of light radiating from a source
@@ -211,8 +210,8 @@ final class WorldSector {           // a value (immutable, value equals/hashCode
     ValueSet<LightSource>       lights;       // lights positioned here
     Tuple<LightTrace>           lightTraces;  // light radiating through here
     @Nullable WorldTreeNode     children;     // null = leaf voxel; else 512 sub-sectors
+    // (a sector's SHAPE — per-face content recess — lives in its ether, not here; see TextureProfile.inset)
     // derived, lazily-memoized (excluded from equals/hashCode):
-    Lazy<SideInsets>            insets;             // how far content is recessed per face
     Lazy<Boolean>               solidOpaque;        // is every voxel inside fully opaque? (a perfect occluder)
     Lazy<Boolean>               hasOnlyLeafChildren;// is this a branch of only leaves? (a full-detail block)
     Lazy<Boolean>               isVoid;             // is the whole sub-tree empty air? (nothing to draw)
@@ -221,10 +220,9 @@ final class WorldSector {           // a value (immutable, value equals/hashCode
 ```
 
 It is a `final class` rather than a `record` for the same reason as `CameraF64`:
-so it can encapsulate its *derived, lazily-memoized* fields — its
-[`SideInsets`](#side-insets) plus the bottom-up predicates the render walk leans on
-(`isSolidOpaque`, `hasOnlyLeafChildren`, `isVoid`) — while still behaving as an immutable
-value (its `equals`/`hashCode` cover only the six defining fields, never the caches).
+so it can encapsulate its *derived, lazily-memoized* predicates the render walk leans on
+(`isSolidOpaque`, `hasOnlyLeafChildren`, `isVoid`) and a cached hash — while still behaving as an
+immutable value (its `equals`/`hashCode` cover only the six defining fields, never the caches).
 The value `equals`/`hashCode` are *deep* (they walk the whole sub-tree), so the hash is
 **memoized** too: that makes a sector a cheap key for value-keyed caches (e.g. the
 renderer's per-chunk meshes), and `equals` further short-circuits on identity — which is
@@ -260,15 +258,18 @@ of**. The old "material percentages summing to 1" model is gone; in its place:
   LIQUID, WET, MOLTEN, FIBROUS, HAIRY, MOSSY, LEAFY, SPIKY, SHATTERED, POROUS,
   LAYERED, VEINED`. These are *hints*, not a composition: they are the intended
   inputs to a future procedural noise shader (see §7 / §10).
-- **`TextureProfile`** — a set of `Texture` intensities in `[0, 1]`. Crucially they
-  are **independent** and need **not sum to anything** — a surface can be a "grainy
-  liquid" with both at full strength. `none()` (every quality 0) is the null object:
-  invisible empty space. Provides `intensityOf`, `with` (clamped), `isInvisible`,
-  `blend`, and the static **`average(samples)`** used for level-of-detail aggregation.
-  It is an immutable **value class** over a flat `double[]` indexed by `Texture.ordinal()`
-  (not a map): the key space is a small fixed enum, so a plain array makes the hot
-  operations (`intensityOf`, `average`) tight, allocation-/hash-free loops. The array is
-  encapsulated (owned, never exposed); `equals`/`hashCode` compare it element-wise.
+- **`TextureProfile`** — one face's full profile: a set of `Texture` intensities in
+  `[0, 1]` (the **appearance**) plus an **`inset()`** in `[0, 1]` (the **shape** — how far
+  content is recessed behind this face; see §4.3). The qualities are **independent** and
+  need **not sum to anything** — a surface can be a "grainy liquid" with both at full
+  strength. `none()` (every quality 0, inset 0) is the null object: invisible empty space.
+  Provides `intensityOf`, `with` (clamped), `inset`/`withInset`, `isInvisible`, `blend`,
+  the static **`average(samples)`** (which averages the inset alongside the qualities) and
+  **`sameAppearance`** (qualities only, ignoring inset — what greedy meshing merges by). It
+  is an immutable **value class** over a flat `double[]` indexed by `Texture.ordinal()`
+  (plus the scalar inset), not a map: the key space is a small fixed enum, so a plain array
+  makes the hot operations tight, allocation-/hash-free loops. The array is encapsulated
+  (owned, never exposed); `equals`/`hashCode` compare the intensities *and* inset.
 - **`MaterialId`** — *what a cube is made of*, as a sum type:
   `Specific(int id)` | `Diverse`. A leaf "block" is always one `Specific` material;
   a coarse aggregate of disagreeing children is the `Diverse` null object. The
@@ -282,10 +283,12 @@ of**. The old "material percentages summing to 1" model is gone; in its place:
   `isPositive()`, outward `normal()` and `opposite()`.
 - **`WorldSectorEtherData`** — a sector's "ether": **one `MaterialId` for the whole
   cube** (the gameplay substance) plus **one `TextureProfile` per `Side`** (the
-  appearance). Provides `material()`/`withMaterial`, `sideOf(side)`/`withSide`, and
-  `combined()` (the average of all six side profiles). Also a value class over a flat
-  `TextureProfile[]` indexed by `Side.ordinal()`, so `sideOf` is a direct array read —
-  it sits on the hot aggregation path and must not pay map-lookup costs.
+  appearance *and* that face's inset). Provides `material()`/`withMaterial`,
+  `sideOf(side)`/`withSide`, `insetOf(side)`, `combined()` (the average of all six side
+  profiles) and **`shrink(bounds)`** (turns the six insets into a content-fitting box,
+  collapsing crossed axes to a slab). Also a value class over a flat `TextureProfile[]`
+  indexed by `Side.ordinal()`, so `sideOf` is a direct array read — it sits on the hot
+  aggregation path and must not pay map-lookup costs.
 
   Appearance is stored *per face* because only the outer faces of a cube are ever
   seen — so a super-sector can summarize each of its faces from only the matching
@@ -349,25 +352,37 @@ re-aggregates just the ancestors on its root-to-chunk path (`O(depth)`), leaving
 sub-tree — and every other chunk — untouched and identity-stable. This is the single change
 that keeps flying smooth (see §5); the full `aggregated()` remains for building one chunk.
 
-**3. Side insets — `WorldSector.insets()`** <a id="side-insets"></a>
+**3. Side insets — a face's content recess, carried on its `TextureProfile`** <a id="side-insets"></a>
 
 Per-side appearance fixes the *colour* of a coarse LoD box, but not its *shape*: a
 "half-full" sector (solid bottom, air top) drawn as a full cube would either stick
-out into empty air or, if skipped, leave a hole. **`SideInsets`** fixes the shape.
-Each face carries an inset in `[0, 1]` — the fraction of the sector's extent by
-which its content is recessed from that face — and the renderer shrinks the drawn
-box accordingly. (`SideInsets` is the same kind of value class as `TextureProfile`: a
-flat `double[]` indexed by `Side.ordinal()`, so `forSide` is a hash-free array read.)
+out into empty air or, if skipped, leave a hole. The **inset** fixes the shape: each
+face's `TextureProfile` carries, alongside its appearance qualities, an `inset()` in
+`[0, 1]` — the fraction of the sector's extent by which its content is recessed from
+that face. Shape thus lives *in the ether*, not in a separate type or a `WorldSector`
+field; `WorldSectorEtherData.shrink(bounds)` reads the six insets and the renderer
+**meshes that shrunk box** when it draws a unit as a single res-1 box, so a distant
+LoD box stops at the terrain instead of sticking up as a full cube.
 
-Insets are derived bottom-up and **memoized as a single `Lazy<SideInsets>`** on the
-sector (a leaf has none — all zero). For each face a branch runs an *inward-moving*
-algorithm: starting at the face it peels off whole child layers
-(`WorldTreeNode.layerCells(side, depth)`) while **every** sub-sector in the layer
-is `isFullyTransparent()`, adding one full layer of inset each time; at the first
-layer that holds content it adds the *smallest* matching-side inset among that
-layer's non-transparent children (so the inset refines recursively, below child
-granularity) and stops. A solid bottom / air top thus yields `POS_Y = 0.5`,
-`NEG_Y = 0`; a fully empty branch yields `1.0` on every face.
+The inset is **geometry, not appearance**, so although it is part of value identity
+(`equals`/`hashCode` — the mesh cache key must reflect a box's shape) it is **ignored
+by colour and by greedy-mesh face merging**: the mesher merges adjacent coplanar faces
+by `TextureProfile.sameAppearance` (qualities only), so faces that look identical but
+recede differently still merge into one rectangle. A material's intrinsic texture
+simply has inset `0`, so shared profiles stay shared (it costs no extra memory until a
+face is actually recessed).
+
+Insets are **always described top-down by the generator**, just like appearance:
+`etherOf` and `representativeEtherOf` sample the region's 8³ grid and, per face, peel
+whole empty (invisible) cell-layers inward, attaching the resulting recess to that
+side's profile via `TextureProfile.withInset`. A uniform region (solid rock, open air)
+recesses nothing (inset `0`); a surface-straddling region yields roughly `POS_Y > 0`,
+`NEG_Y = 0`. `generate` attaches the **same** top-down insets to its aggregated root
+ether, so the faithfulness invariant `etherOf(b) == generate(b, 1).ether()` holds for
+shape as well as appearance (no LoD pop). There is no bottom-up inset derivation any
+more — `aggregated()` (used only for *edited* sub-trees) just averages whatever insets
+its children's faces carry, for free, since `TextureProfile.average` averages the inset
+alongside the qualities.
 
 ---
 
@@ -793,26 +808,25 @@ structure:
 | `primitives/CameraF64_Spec` | forward/view matrix, frustum validation, value equality, matrix memoization |
 | `primitives/Frustum_Spec`   | plane extraction, conservative box culling, point containment |
 | `util/Lazy_Spec`            | compute-once memoization, concurrent first-access safety |
-| `world/TextureProfile_Spec` | independent qualities, clamping, averaging, blend, invisibility, value equality |
+| `world/TextureProfile_Spec` | independent qualities, clamping, averaging, blend, invisibility, value equality, per-face inset (clamp, value identity, `sameAppearance` ignores it, averaged) |
 | `world/MaterialId_Spec`     | Specific vs Diverse, merge of agreeing/disagreeing ids |
 | `world/Material_Spec`       | starter registry, unique ids, air = invisible null substance |
-| `world/WorldSectorEtherData_Spec` | one material per cube + per-side appearance, combined, value equality |
-| `world/SideInsets_Spec`     | clamping, per-face lookup, box shrink, collapse on cross |
-| `world/SectorInsets_Spec`   | inward-layer inset algorithm, recursive refinement, appearance derived from sub-sectors |
+| `world/WorldSectorEtherData_Spec` | one material per cube + per-side appearance, combined, value equality, per-side insets + `shrink` (fit box, identity when none, slab on crossed insets) |
+| `world/SectorAggregation_Spec` | appearance averaged from boundary sub-sectors, material merge, solid-occluder detection (bottom-up coherence) |
 | `world/LightSource_Spec`    | sum-type variants, bounds, exhaustive matching |
 | `world/WorldTree_Spec`      | 512-node layout, fall-down, per-side LoD + material merge |
 | `world/Entity_Spec`         | camera/voxel entities, sum-type matching |
 | `world/World_Spec`          | add/remove/move keeping tree + lookup in sync |
 | `world/WorldScreens_Spec`   | screen/camera lifecycle, one-way binding, resize, cameras stay out of the tree |
 | `world/WorldUpdate_Spec`    | inputs → camera mutations, held keys remembered between updates, unbound no-op |
-| `world/WorldGeneration_Spec`| infinite LoD refinement: starts as one coarse sector, refines full detail near a camera + coarse far, larger reach refines further, root grows to follow a far camera, idempotent once settled, no-generator skip, detail collapses behind a moved camera + re-refines losslessly on return |
+| `world/WorldGeneration_Spec`| infinite LoD refinement: starts as one coarse sector, refines full detail near a camera + coarse far, larger reach refines further, root grows to follow a far camera, idempotent once settled, no-generator skip, detail collapses behind a moved camera + re-refines losslessly on return, movement gate (tiny moves skipped, count-change/far-move re-walk), generator insets wired through to the world's coarse leaves |
 | `world/CameraFlight_Spec`   | pure free-fly math: move/strafe/sprint/look, dt scaling, no-input identity |
 | `world/CollectSectorsForRendering_Spec` | the visibility walk (frustum + occlusion + chunk floor + distance-based level-of-detail resolution) tested with no renderer |
 | `world/CoverageGrid_Spec`   | conservative mark/test, off-screen handling, occlusion of covered rects |
 | `world/gen/PerlinNoise_Spec`| determinism, range, lattice zeros |
-| `world/gen/WorldGenerator_Spec` | material classification, adaptive subdivision, reproducibility, top-down `etherOf` (faithful to a one-level build, coarse description without a sub-tree) |
+| `world/gen/WorldGenerator_Spec` | material classification, adaptive subdivision, reproducibility, top-down `etherOf` (faithful to a one-level build, coarse description without a sub-tree), top-down `insetsOf` (surface region recesses its top, uniform region has none, deterministic) |
 | `world/render/WorldRenderer_Spec` | culling maths, frustum culling, majority-opaque, texture→colour, occlusion culling behind solids, render smoke test |
-| `world/render/SectorMeshCache_Spec` | chunk face culling (incl. internal sub-block boundaries), greedy merge (per-appearance, height-independent), coarse meshing from branch sectors at a chosen resolution, mesh memoization |
+| `world/render/SectorMeshCache_Spec` | chunk face culling (incl. internal sub-block boundaries), greedy merge (per-appearance, height-independent), coarse meshing from branch sectors at a chosen resolution, res-1 box shrunk to the ether's per-side insets, mesh memoization |
 | `world/render/TextureBaker_Spec`    | procedural tiles: sized + opaque, deterministic, varied (not flat), per-appearance distinct, air bakes cleanly |
 
 Run them with:
@@ -831,7 +845,8 @@ the appearance/material model (`Texture` qualities, `TextureProfile`, `MaterialI
 sum type, `Material` starter registry); entity fall-down, per-side LoD aggregation —
 now **incremental and structure-sharing** (splicing a chunk re-aggregates only its
 root-to-leaf path, `withAggregatedChildren`, leaving every other chunk identity-stable) —
-and lazily-derived per-side `SideInsets`; the `Entity` sum type; the `World` **value class**
+and per-side **insets carried on each face's `TextureProfile`**, described top-down by the
+generator; the `Entity` sum type; the `World` **value class**
 with multi-**screen** support (screens bound one-way to camera entities by id), an
 event-based input model (`EngineInputs` → per-screen `ScreenInputs` event logs) and a
 `World.update` step that folds input into **camera mutations** via the pure `CameraFlight`

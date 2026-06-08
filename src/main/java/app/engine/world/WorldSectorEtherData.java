@@ -1,5 +1,7 @@
 package app.engine.world;
 
+import app.engine.primitives.BoundsF64;
+import app.engine.primitives.VecF64;
 import app.engine.util.Lazy;
 
 import java.util.Arrays;
@@ -13,8 +15,10 @@ import java.util.Arrays;
  *          gameplay substance (one per sector; {@link MaterialId#diverse() Diverse}
  *          once a coarse aggregate mixes several materials); and</li>
  *      <li>a {@link TextureProfile} per cube {@link Side face} &mdash; the visual
- *          appearance qualities, stored per side because only the outer faces of a
- *          cube are ever seen.</li>
+ *          appearance qualities <i>and</i> that face's {@link TextureProfile#inset() inset}
+ *          (how far content is recessed behind it), stored per side because only the outer
+ *          faces of a cube are ever seen. {@link #shrink} turns those six insets into a
+ *          content-fitting box.</li>
  *  </ul>
  *  This replaces the old material-percentage model: appearance is now a set of
  *  independent {@link Texture} qualities (not a distribution that sums to one), and
@@ -72,6 +76,47 @@ public final class WorldSectorEtherData
     /** @return The appearance on the given {@code side}. */
     public TextureProfile sideOf( Side side ) {
         return _sides[side.ordinal()];
+    }
+
+    /** @return How far content is recessed behind {@code side}, in {@code [0, 1]} of the extent ({@code 0} = flush). */
+    public double insetOf( Side side ) {
+        return _sides[side.ordinal()].inset();
+    }
+
+    /**
+     *  Shrinks {@code bounds} inward on each face by that face's {@link TextureProfile#inset() inset}, so a
+     *  coarse level-of-detail box fits the matter inside it instead of drawing as a full cube. If opposing
+     *  insets would cross, that axis collapses to a zero-width slab at their midpoint (never an inverted box).
+     *
+     *  @param bounds The full sector bounds to inset.
+     *  @return The content-fitting sub-box (or {@code bounds} itself when no face is recessed).
+     */
+    public BoundsF64 shrink( BoundsF64 bounds ) {
+        VecF64 min = bounds.min(), max = bounds.max(), size = bounds.size();
+        double[] lo = { min.x(), min.y(), min.z() };
+        double[] hi = { max.x(), max.y(), max.z() };
+        double[] extent = { size.x(), size.y(), size.z() };
+        Side[] negative = { Side.NEG_X, Side.NEG_Y, Side.NEG_Z };
+        Side[] positive = { Side.POS_X, Side.POS_Y, Side.POS_Z };
+
+        boolean any = false;
+        for ( int axis = 0; axis < 3; axis++ ) {
+            double negInset = insetOf(negative[axis]), posInset = insetOf(positive[axis]);
+            if ( negInset == 0 && posInset == 0 )
+                continue;
+            any = true;
+            double newLo = lo[axis] + negInset * extent[axis];
+            double newHi = hi[axis] - posInset * extent[axis];
+            if ( newLo > newHi ) {
+                double mid = (newLo + newHi) / 2;
+                newLo = newHi = mid;
+            }
+            lo[axis] = newLo;
+            hi[axis] = newHi;
+        }
+        if ( !any )
+            return bounds;
+        return BoundsF64.of(VecF64.of(lo[0], lo[1], lo[2]), VecF64.of(hi[0], hi[1], hi[2]));
     }
 
     /** @return A copy of this ether with {@code side} replaced by {@code appearance}. */

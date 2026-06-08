@@ -87,7 +87,11 @@ public final class SectorMeshCache
     private static SectorMesh build( WorldSector sector, int res ) {
         WorldSectorEtherData[] grid = new WorldSectorEtherData[res * res * res];
         rasterize(sector, grid, res, 0, 0, 0, res);
-        return greedyMesh(sector.bounds(), grid, res);
+        // At res-1 the whole unit is one box, so shrink it to its content with the ether's per-side insets (a
+        // coarse LoD leaf straddling the surface thus stops at the terrain instead of sticking up as a full
+        // cube). Above res-1 the grid itself carries the shape, so the full bounds are meshed.
+        BoundsF64 meshBounds = res == 1 ? sector.ether().shrink(sector.bounds()) : sector.bounds();
+        return greedyMesh(meshBounds, grid, res);
     }
 
     /** @return {@code cap} reduced to the largest power of {@link WorldTreeNode#RESOLUTION} that is {@code <= cap} (at least 1). */
@@ -147,7 +151,8 @@ public final class SectorMeshCache
 
     private static SectorMesh greedyMesh( BoundsF64 bounds, WorldSectorEtherData[] grid, int res ) {
         double[] origin = { bounds.min().x(), bounds.min().y(), bounds.min().z() };
-        double cell = bounds.size().x() / res;
+        // Per-axis cell size: usually a cube, but an inset-shrunk res-1 box can be non-cubic.
+        double[] cell = { bounds.size().x() / res, bounds.size().y() / res, bounds.size().z() / res };
 
         List<Quad> quads = new ArrayList<>();
         TextureProfile[][] mask = new TextureProfile[res][res];
@@ -172,13 +177,13 @@ public final class SectorMeshCache
                         if ( p == null || used[uu][vv] )
                             continue;
                         int w = 1;
-                        while ( uu + w < res && !used[uu + w][vv] && p.equals(mask[uu + w][vv]) )
+                        while ( uu + w < res && !used[uu + w][vv] && sameFace(p, mask[uu + w][vv]) )
                             w++;
                         int h = 1;
                         grow:
                         while ( vv + h < res ) {
                             for ( int k = 0; k < w; k++ )
-                                if ( used[uu + k][vv + h] || !p.equals(mask[uu + k][vv + h]) )
+                                if ( used[uu + k][vv + h] || !sameFace(p, mask[uu + k][vv + h]) )
                                     break grow;
                             h++;
                         }
@@ -218,15 +223,26 @@ public final class SectorMeshCache
 
     /** Builds the world-space quad for a merged rectangle, reusing {@link Cubes} for winding/normal. */
     private static Quad rectQuad(
-        double[] origin, double cell, Side side, int a, int u, int v, int la, int u0, int v0, int w, int h, TextureProfile p
+        double[] origin, double[] cell, Side side, int a, int u, int v, int la, int u0, int v0, int w, int h, TextureProfile p
     ) {
         double[] lo = new double[3];
         double[] hi = new double[3];
-        lo[a] = origin[a] + la * cell;       hi[a] = lo[a] + cell;
-        lo[u] = origin[u] + u0 * cell;       hi[u] = lo[u] + w * cell;
-        lo[v] = origin[v] + v0 * cell;       hi[v] = lo[v] + h * cell;
+        lo[a] = origin[a] + la * cell[a];    hi[a] = lo[a] + cell[a];
+        lo[u] = origin[u] + u0 * cell[u];    hi[u] = lo[u] + w * cell[u];
+        lo[v] = origin[v] + v0 * cell[v];    hi[v] = lo[v] + h * cell[v];
         BoundsF64 box = BoundsF64.of(VecF64.of(lo[0], lo[1], lo[2]), VecF64.of(hi[0], hi[1], hi[2]));
         return Cubes.faceQuad(box, side, p);
+    }
+
+    /**
+     *  @return Whether two mask entries should merge into one rectangle: present and of the same
+     *          <i>appearance</i>. Merging compares {@link TextureProfile#sameAppearance appearance}, not
+     *          {@code equals}, so faces that look identical but recede by different
+     *          {@link TextureProfile#inset() insets} still merge &mdash; the per-cell mesh does not use the
+     *          inset (it is consumed only when a sector is drawn as a single box).
+     */
+    private static boolean sameFace( TextureProfile a, @Nullable TextureProfile b ) {
+        return b != null && a.sameAppearance(b);
     }
 
     private static int index( int x, int y, int z, int res ) {

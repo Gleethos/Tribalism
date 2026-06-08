@@ -142,4 +142,41 @@ class WorldGenerator_Spec extends Specification
         expect:
             WorldGenerator.withSeed(7L).etherOf(region) == WorldGenerator.withSeed(7L).etherOf(region)
     }
+
+    // ---- Top-down LoD shape (per-side insets carried in the ether) ---------------
+
+    def "The ether recesses the top of a surface-straddling region (air above) but not its solid bottom."()
+    {
+        given: 'A region from well below to well above the surface (surface height is ~0 here).'
+            var gen = solidGenerator()
+        when: 'Both the faithful and the cheap top-down summaries carry per-side insets.'
+            var faithful = gen.etherOf(cubeAround(VecF64.of(0, 0, 0), 256))
+            var coarse   = gen.representativeEtherOf(cubeAround(VecF64.of(0, 0, 0), 256))
+        then: 'The top is recessed - empty air layers peel inward from +Y...'
+            faithful.insetOf(Side.POS_Y) > 0
+            coarse.insetOf(Side.POS_Y) > 0
+        and: '...while the solid bottom and the (terrain-spanning) sides are flush.'
+            faithful.insetOf(Side.NEG_Y) == 0
+            faithful.insetOf(Side.NEG_X) == 0
+            faithful.insetOf(Side.POS_X) == 0
+        and: 'Both summaries agree on the shape (same per-side insets).'
+            Side.values().every { faithful.insetOf(it) == coarse.insetOf(it) }
+    }
+
+    def "A homogeneous region has no insets (nothing is recessed)."()
+    {
+        given:
+            var gen = solidGenerator()
+        expect: 'Deep solid rock and high open air are both uniform: their content fills (or air is never drawn).'
+            Side.values().every { gen.representativeEtherOf(cubeAround(VecF64.of(0, -2000, 0), 256)).insetOf(it) == 0 }
+            Side.values().every { gen.representativeEtherOf(cubeAround(VecF64.of(0,  2000, 0), 256)).insetOf(it) == 0 }
+    }
+
+    def "The ether's insets are deterministic for a given seed."()
+    {
+        given:
+            var region = cubeAround(VecF64.of(0, 0, 0), 128)
+        expect:
+            WorldGenerator.withSeed(7L).representativeEtherOf(region) == WorldGenerator.withSeed(7L).representativeEtherOf(region)
+    }
 }

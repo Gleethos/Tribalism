@@ -4,6 +4,7 @@ import app.engine.primitives.BoundsF64
 import app.engine.primitives.CameraF64
 import app.engine.primitives.VecF64
 import app.engine.world.EngineInputs
+import app.engine.world.Side
 import app.engine.world.World
 import app.engine.world.gen.PerlinNoise
 import app.engine.world.gen.WorldGenerator
@@ -68,6 +69,46 @@ class WorldGeneration_Spec extends Specification
             world.root().bounds().width() > 1000
         and: '...and it is real terrain (straddles the surface), not empty void.'
             !world.root().isVoid()
+    }
+
+    def "What the generator describes for a region's shape ends up in the world (insets are wired through the ether)."()
+    {
+        given: 'A fresh generator world - its root is one coarse sector describing kilometres top-down.'
+            var gen = generator(96)
+            var root = World.of(gen).root()
+        expect: 'It is that single coarse leaf...'
+            root.isLeaf()
+        and: '...whose ether is EXACTLY what the generator describes for its bounds (the wiring)...'
+            root.ether() == gen.etherOf(root.bounds())
+        and: '...and its per-side insets are non-trivial: air above the surface recesses the top, the solid base does not.'
+            root.ether().insetOf(Side.POS_Y) > 0
+            root.ether().insetOf(Side.NEG_Y) == 0
+    }
+
+    def "Refined coarse leaves throughout the settled world carry the generator's insets, and some are recessed."()
+    {
+        given: 'A world refined and settled around a camera at the surface.'
+            var gen = generator(96)
+            var world = settled(World.of(gen).createCamera(CAMERA, cameraAt(VecF64.of(0, 0, 0))))
+        when: 'We gather every coarse (generator-described) leaf in the settled tree - those with a recessed face.'
+            var coarse = []
+            collectRecessedLeaves(world.root(), coarse)
+        then: 'Each reports exactly the ether the generator describes for its own bounds (the cheap coarse summary)...'
+            coarse.every { it.ether() == gen.representativeEtherOf(it.bounds()) }
+        and: '...and at least one exists (a surface box shrunk to fit, not a full cube).'
+            !coarse.isEmpty()
+    }
+
+    /** Collects leaves whose ether recesses at least one face (generator-described coarse surface leaves). */
+    private static void collectRecessedLeaves( app.engine.world.WorldSector sector, List leaves ) {
+        if ( sector.isLeaf() ) {
+            if ( Side.values().any { sector.ether().insetOf(it) > 0 } )
+                leaves.add(sector)
+            return
+        }
+        var node = sector.children()
+        for ( int i = 0; i < 512; i++ )
+            collectRecessedLeaves(node.sector(i), leaves)
     }
 
     def "A hand-built world (no generator) never refines and reports no generator."()

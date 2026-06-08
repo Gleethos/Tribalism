@@ -123,7 +123,13 @@ public record WorldGenerator(
      *  already {@link WorldSector#aggregated() aggregated} from the bottom up.
      */
     public WorldSector generate( BoundsF64 bounds, int maxDepth ) {
-        return build(bounds, maxDepth).aggregated();
+        WorldSector built = build(bounds, maxDepth).aggregated();
+        if ( homogeneousMaterial(bounds) != null )
+            return built; // uniform: inset 0 already, matching etherOf's homogeneous short-circuit.
+        // Attach the SAME top-down per-side insets etherOf uses, so a coarse node and its one-level
+        // refinement agree on shape as well as appearance (keeping etherOf(b) == generate(b, 1).ether()),
+        // and a distant generated chunk drawn as a single box still shrinks to its surface.
+        return built.withEther(withInsets(built.ether(), insetsBySide(bounds)));
     }
 
     /**
@@ -150,15 +156,20 @@ public record WorldGenerator(
      *  @return The region's representative material and per-side appearance, derived purely from noise.
      */
     /**
-     *  @return A cheap, uniform top-down appearance for a whole region: the ether of its single
-     *          {@link #dominantMaterial dominant sampled material}. This is the coarse counterpart to
-     *          {@link #etherOf}: it samples a region only a handful of times (not its full
-     *          {@value WorldTreeNode#RESOLUTION}&sup3; grid) and produces one material on every face,
-     *          so it is cheap enough to use for the <i>many</i> coarse level-of-detail leaves a far
-     *          camera materializes &mdash; where a faithful per-side summary is not worth its cost.
+     *  @return A cheap, <i>uniform</i> top-down appearance for a whole region: its single
+     *          {@link #dominantMaterial dominant sampled material} on every face, carrying that region's
+     *          per-side {@link TextureProfile#inset() insets} (so a coarse box drawn from it still shrinks
+     *          to fit the surface). This is the coarse counterpart to {@link #etherOf}: it uses one
+     *          dominant material rather than a faithful per-side appearance, so it is cheap enough for the
+     *          <i>many</i> coarse level-of-detail leaves a far camera materializes. A uniform region
+     *          short-circuits (no inset sampling); only a surface-straddling region pays for the
+     *          {@value WorldTreeNode#RESOLUTION}&sup3; inset grid.
      */
     public WorldSectorEtherData representativeEtherOf( BoundsF64 bounds ) {
-        return WorldSectorEtherData.of(dominantMaterial(bounds));
+        WorldSectorEtherData ether = WorldSectorEtherData.of(dominantMaterial(bounds));
+        if ( homogeneousMaterial(bounds) != null )
+            return ether; // uniform: nothing recedes, faces keep their shared inset-0 appearance.
+        return withInsets(ether, insetsBySide(bounds));
     }
 
     /**
@@ -175,26 +186,65 @@ public record WorldGenerator(
     public WorldSectorEtherData etherOf( BoundsF64 bounds ) {
         Material homogeneous = homogeneousMaterial(bounds);
         if ( homogeneous != null )
-            return WorldSectorEtherData.of(homogeneous); // uniform region: one exact material, no averaging drift.
+            return WorldSectorEtherData.of(homogeneous); // uniform region: one exact material, inset 0, no averaging drift.
 
         Tuple<BoundsF64> cells = bounds.subdivide(WorldTreeNode.RESOLUTION);
         Material[] cellMaterials = new Material[WorldTreeNode.SECTOR_COUNT];
+        boolean[] empty = new boolean[WorldTreeNode.SECTOR_COUNT];
         List<MaterialId> ids = new ArrayList<>(WorldTreeNode.SECTOR_COUNT);
         for ( int i = 0; i < WorldTreeNode.SECTOR_COUNT; i++ ) {
             Material material = dominantMaterial(cells.get(i));
             cellMaterials[i] = material;
+            empty[i] = material.texture().isInvisible();
             ids.add(material.materialId());
         }
 
+        // Each face carries BOTH its appearance (the average of the boundary cells on that face) and its
+        // inset (empty cell-layers peeled inward from that face) - the two top-down per-side descriptions.
         WorldSectorEtherData ether = WorldSectorEtherData.empty().withMaterial(MaterialId.merge(ids));
         for ( Side side : Side.values() ) {
             int[] boundary = WorldTreeNode.boundaryCells(side);
             List<TextureProfile> faces = new ArrayList<>(boundary.length);
             for ( int cell : boundary )
                 faces.add(cellMaterials[cell].texture());
-            ether = ether.withSide(side, TextureProfile.average(faces));
+            double inset = emptyLayersFrom(side, empty) / (double) WorldTreeNode.RESOLUTION;
+            ether = ether.withSide(side, TextureProfile.average(faces).withInset(inset));
         }
         return ether;
+    }
+
+    /** @return The per-side insets of {@code bounds} (indexed by {@link Side#ordinal()}), sampled from its {@value WorldTreeNode#RESOLUTION}&sup3; grid. */
+    private double[] insetsBySide( BoundsF64 bounds ) {
+        Tuple<BoundsF64> cells = bounds.subdivide(WorldTreeNode.RESOLUTION);
+        boolean[] empty = new boolean[WorldTreeNode.SECTOR_COUNT];
+        for ( int i = 0; i < WorldTreeNode.SECTOR_COUNT; i++ )
+            empty[i] = dominantMaterial(cells.get(i)).texture().isInvisible();
+        double[] insets = new double[Side.values().length];
+        for ( Side side : Side.values() )
+            insets[side.ordinal()] = emptyLayersFrom(side, empty) / (double) WorldTreeNode.RESOLUTION;
+        return insets;
+    }
+
+    /** @return {@code ether} with each side's appearance recessed by the matching entry of {@code insets}. */
+    private static WorldSectorEtherData withInsets( WorldSectorEtherData ether, double[] insets ) {
+        for ( Side side : Side.values() ) {
+            double inset = insets[side.ordinal()];
+            if ( inset > 0 )
+                ether = ether.withSide(side, ether.sideOf(side).withInset(inset));
+        }
+        return ether;
+    }
+
+    /** @return How many whole cell-layers, counted inward from {@code side}, are entirely empty before the first layer with content. */
+    private static int emptyLayersFrom( Side side, boolean[] empty ) {
+        int layers = 0;
+        for ( int depth = 0; depth < WorldTreeNode.RESOLUTION; depth++ ) {
+            for ( int idx : WorldTreeNode.layerCells(side, depth) )
+                if ( !empty[idx] )
+                    return layers; // this layer holds content: stop peeling.
+            layers++;
+        }
+        return layers;
     }
 
     private WorldSector build( BoundsF64 bounds, int depth ) {

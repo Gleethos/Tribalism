@@ -91,4 +91,44 @@ class TextureProfile_Spec extends Specification
         and: 'Different intensities are not equal.'
             TextureProfile.of(Texture.GRAINY, 0.5) != TextureProfile.of(Texture.GRAINY, 0.6)
     }
+
+    // ---- Inset: the per-face content recession that rides on the profile ---------
+
+    def "A profile's inset defaults to zero and is set (clamped) by withInset, leaving appearance untouched."()
+    {
+        given:
+            var grass = TextureProfile.of(Texture.MOSSY, 0.7)
+        expect: 'No inset by default.'
+            grass.inset() == 0.0
+        and: 'withInset sets it, clamped to [0,1], and does not touch the qualities.'
+            grass.withInset(0.5).inset() == 0.5
+            grass.withInset(2.0).inset() == 1.0
+            grass.withInset(-1.0).inset() == 0.0
+            grass.withInset(0.5).intensityOf(Texture.MOSSY) == 0.7
+    }
+
+    def "The inset is part of value identity (equals/hashCode) but ignored by sameAppearance."()
+    {
+        given:
+            var flush = TextureProfile.of(Texture.MOSSY, 0.7)
+            var recessed = flush.withInset(0.5)
+        expect: 'Two profiles that differ only in inset are NOT equal...'
+            flush != recessed
+            flush.hashCode() != recessed.hashCode()
+        and: '...yet they have the same appearance, so the greedy mesher still merges them.'
+            flush.sameAppearance(recessed)
+            recessed.sameAppearance(flush)
+        and: 'Different qualities are never the same appearance.'
+            !TextureProfile.of(Texture.MOSSY, 0.7).sameAppearance(TextureProfile.of(Texture.MOSSY, 0.8))
+    }
+
+    def "average averages the inset alongside the qualities."()
+    {
+        given:
+            var flush = TextureProfile.of(Texture.GRAINY, 1.0).withInset(0.0)
+            var deep = TextureProfile.of(Texture.GRAINY, 1.0).withInset(0.8)
+        expect:
+            Math.abs(TextureProfile.average([flush, deep]).inset() - 0.4) < 1e-12
+            TextureProfile.average([flush, deep]).intensityOf(Texture.GRAINY) == 1.0
+    }
 }
