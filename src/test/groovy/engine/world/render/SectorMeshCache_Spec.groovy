@@ -102,6 +102,32 @@ class SectorMeshCache_Spec extends Specification
         return WorldSector.empty(bounds).withChildren(new WorldTreeNode(leaves))
     }
 
+    def "Intermediate power-of-two resolutions mesh by downsampling and keep a flat surface where it is."()
+    {
+        given: 'A half-full block: solid rock below y==4, air above.'
+            var halfFull = block { int x, int y, int z -> y < 4 ? Material.ROCK : Material.AIR }
+            var cache = new SectorMeshCache()
+        expect: 'The in-between resolutions (impossible on the old 1/8/64 ladder) mesh fine...'
+            [2, 4, 8].every { int res -> cache.meshOf(halfFull, res).faceCount() == 6 }
+        and: '...and at every step the floor surface stays exactly at y == 4 (downsampling shifts nothing).'
+            [2, 4, 8].every { int res ->
+                cache.meshOf(halfFull, res).quads().collectMany {
+                    [it.c0().y(), it.c1().y(), it.c2().y(), it.c3().y()]
+                }.max() == 4.0d
+            }
+    }
+
+    def "Downsampling merges 2x2x2 blocks by majority: a checkerboard coarsens to solid, not to air."()
+    {
+        given: 'An 8x8x8 checkerboard of rock and air (every 2x2x2 block holds exactly 4 solid cells).'
+            var checkerboard = block { int x, int y, int z -> ((x + y + z) % 2 == 0) ? Material.ROCK : Material.AIR }
+            var cache = new SectorMeshCache()
+        expect: 'At full resolution the checkerboard exposes a sea of faces...'
+            cache.meshOf(checkerboard, 8).faceCount() > 6
+        and: '...halved once, every merged cell is majority-solid, so it collapses to one solid box.'
+            cache.meshOf(checkerboard, 4).faceCount() == 6
+    }
+
     def "A column of stacked voxels greedy-merges each side into a single strip, regardless of height."()
     {
         when: 'A single 1x(height)x1 column of rock along Y at the corner.'

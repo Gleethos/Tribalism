@@ -328,10 +328,13 @@ public final class World
     private static final double LOD_DETAIL = 40.0;
 
     /**
-     *  The {@link #detailCells} value at and above which a sector must have children: exactly the
-     *  res-1&rarr;res-8 boundary of {@link #meshResolutionFor} ({@code sqrt(RESOLUTION)}), so every sector
-     *  the renderer meshes finer than a single flat box (res-8 <i>from its sub-sectors</i>, showing the
-     *  surface shape) is guaranteed to have sub-sectors to mesh from. Refinement is further restricted to
+     *  The {@link #detailCells} value at and above which a sector must have children ({@code sqrt(RESOLUTION)}
+     *  &asymp; 2.83), so a sector big enough on screen to be meshed from its sub-sectors is guaranteed to
+     *  have sub-sectors to mesh from. With the power-of-two ladder of {@link #meshResolutionFor} the band
+     *  just below this (cells in ~1.4&ndash;2.8, wanting res 2) has no children; the mesh cache clamps such
+     *  a childless leaf back to a res-1 box, exactly the picture the old ladder drew there (a baked
+     *  per-leaf surface patch is the planned way to give that band real shape &mdash; see
+     *  WORLD_ENGINE_LOD_DESIGN.md). Refinement is further restricted to
      *  {@link WorldGenerator#isHomogeneous non-homogeneous} (surface) sectors, which bounds the cone to the
      *  2D terrain surface.
      */
@@ -776,9 +779,12 @@ public final class World
 
     /**
      *  @return The grid resolution to mesh a unit at, given how many {@link #detailCells cells} of detail
-     *          it wants across its edge: the nearest power of {@link WorldTreeNode#RESOLUTION}
-     *          ({@code 1, 8, 64}), capped at {@link #MAX_MESH_RESOLUTION}. Nearest (rather than floor)
-     *          keeps the cell size centred on the target across the coarse, factor-8 LoD steps.
+     *          it wants across its edge: the nearest power of two ({@code 1, 2, 4, ..., 64}), capped at
+     *          {@link #MAX_MESH_RESOLUTION}. The tree only stores factor-{@value WorldTreeNode#RESOLUTION}
+     *          levels, but the mesher builds the in-between resolutions by downsampling
+     *          (see {@link app.engine.world.render.SectorMeshCache}), so the LoD ladder steps by ×2
+     *          instead of the old, visibly popping ×8. Nearest (rather than floor) keeps the cell size
+     *          centred on the target across the steps.
      */
     private static int meshResolutionFor( double desiredCells ) {
         if ( desiredCells <= 1 )
@@ -788,11 +794,8 @@ public final class World
         // chunk to a single res-1 box the instant the camera entered its bounds).
         if ( desiredCells >= MAX_MESH_RESOLUTION )
             return MAX_MESH_RESOLUTION;
-        int exponent = (int) Math.round(Math.log(desiredCells) / Math.log(WorldTreeNode.RESOLUTION));
-        int res = 1;
-        for ( int i = 0; i < exponent; i++ )
-            res *= WorldTreeNode.RESOLUTION;
-        return Math.min(res, MAX_MESH_RESOLUTION);
+        int exponent = (int) Math.round(Math.log(desiredCells) / Math.log(2));
+        return Math.min(1 << exponent, MAX_MESH_RESOLUTION);
     }
 
     /** @return The focal length in pixels for a camera rendered into a viewport of the given height. */

@@ -161,6 +161,25 @@ class CollectSectorsForRendering_Spec extends Specification
             farUnits.resolutions[0] < nearUnits.resolutions[0]
     }
 
+    def "The level-of-detail ladder steps by powers of two, not jumps of eight."()
+    {
+        given: 'A 128-unit branch (rock below, air above), chunk size the whole world so it is always one unit.'
+            var bounds = BoundsF64.cube(VecF64.zero(), 128)
+            var world = World.of(branch(bounds) { int x, int y, int z -> y < 4 ? Material.ROCK : Material.AIR })
+            var camera = new CameraF64(VecF64.of(0, 0, 64 + distance), VecF64.zero(), VecF64.of(0, 1, 0), Math.toRadians(60), 1.0, 0.5, 8000)
+            var units = new Capture()
+        when:
+            onScreen(world, camera, 600, 600).collectSectorsForRendering(SCREEN, 128.0, units)
+        then: 'The single unit is meshed at an in-between resolution the old powers-of-8 ladder could not express.'
+            units.sectors.size() == 1
+            units.resolutions[0] == expectedResolution
+        where: 'detailCells = 40 * 64 / distance, rounded to the nearest power of two.'
+            distance | expectedResolution
+            160.0    | 16
+            640.0    | 4
+            1280.0   | 2
+    }
+
     def "A camera inside a chunk meshes it at the finest detail, not the coarsest (regression: detailCells +Infinity)."()
     {
         given: 'A 128-unit branch (rock below, air above), chunk size the whole world so it is always one unit.'

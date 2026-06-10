@@ -2,6 +2,7 @@ package app.engine.world.render;
 
 import app.engine.primitives.BoundsF64;
 import app.engine.primitives.VecF64;
+import app.engine.world.MaterialId;
 import app.engine.world.Side;
 import app.engine.world.TextureProfile;
 import app.engine.world.WorldSector;
@@ -42,8 +43,11 @@ import java.util.WeakHashMap;
  *  resolution the rasterizer stops higher up and fills each cell with that <i>branch</i>
  *  sector's own (level-of-detail aggregated) ether &mdash; so a distant sector is greedy-meshed
  *  from big blocks of branch sectors rather than leaves, for a few coarse quads instead of
- *  thousands. Valid resolutions are powers of {@value WorldTreeNode#RESOLUTION}
- *  ({@code 1, 8, 64}), because each tree level divides the grid by that factor.
+ *  thousands. Valid resolutions are powers of <b>two</b> ({@code 1, 2, 4, ..., 64}): the tree
+ *  itself only provides factor-{@value WorldTreeNode#RESOLUTION} levels ({@code 1, 8, 64}), and
+ *  the in-between steps are built by rasterizing at the next such level and then halving the
+ *  grid (2&times;2&times;2 majority-solid downsampling) &mdash; this is what turns the engine's
+ *  coarse ×8 LoD jumps into gentle ×2 steps without touching the data model.
  *  <p>
  *  This deliberately lives in the renderer; the data model knows nothing of meshes.
  */
@@ -79,14 +83,21 @@ public final class SectorMeshCache
      *  @return Its occlusion-culled, greedy-meshed visible surface at that detail.
      */
     public SectorMesh meshOf( WorldSector sector, int resolutionCap ) {
-        int res = Math.min(snapDownToPowerOfResolution(resolutionCap), gridResolution(sector));
+        int res = Math.min(snapDownToPowerOfTwo(resolutionCap), gridResolution(sector));
         return _cache.computeIfAbsent(sector, s -> new HashMap<>())
                      .computeIfAbsent(res, r -> build(sector, r));
     }
 
     private static SectorMesh build( WorldSector sector, int res ) {
-        WorldSectorEtherData[] grid = new WorldSectorEtherData[res * res * res];
-        rasterize(sector, grid, res, 0, 0, 0, res);
+        // The tree only offers factor-RESOLUTION levels, so rasterize at the smallest such level that
+        // carries at least the requested detail, then halve the grid down to the target resolution.
+        int rasterRes = rasterResolutionFor(res);
+        WorldSectorEtherData[] grid = new WorldSectorEtherData[rasterRes * rasterRes * rasterRes];
+        rasterize(sector, grid, rasterRes, 0, 0, 0, rasterRes);
+        while ( rasterRes > res ) {
+            grid = halve(grid, rasterRes);
+            rasterRes /= 2;
+        }
         // At res-1 the whole unit is one box, so shrink it to its content with the ether's per-side insets (a
         // coarse LoD leaf straddling the surface thus stops at the terrain instead of sticking up as a full
         // cube). Above res-1 the grid itself carries the shape, so the full bounds are meshed.
@@ -94,12 +105,69 @@ public final class SectorMeshCache
         return greedyMesh(meshBounds, grid, res);
     }
 
-    /** @return {@code cap} reduced to the largest power of {@link WorldTreeNode#RESOLUTION} that is {@code <= cap} (at least 1). */
-    private static int snapDownToPowerOfResolution( int cap ) {
+    /** @return {@code cap} reduced to the largest power of two that is {@code <= cap} (at least 1, at most {@link #MAX_GRID_RES}). */
+    private static int snapDownToPowerOfTwo( int cap ) {
         int res = 1;
-        while ( res * WorldTreeNode.RESOLUTION <= cap && res * WorldTreeNode.RESOLUTION <= MAX_GRID_RES )
-            res *= WorldTreeNode.RESOLUTION;
+        while ( res * 2 <= cap && res * 2 <= MAX_GRID_RES )
+            res *= 2;
         return res;
+    }
+
+    /** @return The smallest power of {@link WorldTreeNode#RESOLUTION} (a tree level: {@code 1, 8, 64}) that is {@code >= res}. */
+    private static int rasterResolutionFor( int res ) {
+        int raster = 1;
+        while ( raster < res )
+            raster *= WorldTreeNode.RESOLUTION;
+        return raster;
+    }
+
+    /**
+     *  Downsamples the ether grid to half its edge: each output cell merges its 2&times;2&times;2 input
+     *  cells, becoming solid when at least half of them are (majority-solid, so thin features fade out
+     *  rather than bloat), with the merged appearance of the cells it absorbed. The overwhelmingly common
+     *  uniform block (all eight inputs the same ether) short-circuits to that ether without averaging.
+     */
+    private static WorldSectorEtherData[] halve( WorldSectorEtherData[] grid, int res ) {
+        int half = res / 2;
+        WorldSectorEtherData[] out = new WorldSectorEtherData[half * half * half];
+        List<WorldSectorEtherData> present = new ArrayList<>(8);
+        for ( int z = 0; z < half; z++ )
+            for ( int y = 0; y < half; y++ )
+                for ( int x = 0; x < half; x++ ) {
+                    present.clear();
+                    for ( int dz = 0; dz < 2; dz++ )
+                        for ( int dy = 0; dy < 2; dy++ )
+                            for ( int dx = 0; dx < 2; dx++ ) {
+                                WorldSectorEtherData ether = grid[index(2 * x + dx, 2 * y + dy, 2 * z + dz, res)];
+                                if ( ether != null )
+                                    present.add(ether);
+                            }
+                    if ( present.size() >= 4 )
+                        out[index(x, y, z, half)] = merged(present);
+                }
+        return out;
+    }
+
+    /** @return The ether representing a merged 2x2x2 block: the shared ether if uniform, else the per-side average. */
+    private static WorldSectorEtherData merged( List<WorldSectorEtherData> present ) {
+        WorldSectorEtherData first = present.get(0);
+        boolean uniform = true;
+        for ( int i = 1; uniform && i < present.size(); i++ )
+            uniform = first.equals(present.get(i));
+        if ( uniform )
+            return first;
+        List<MaterialId> ids = new ArrayList<>(present.size());
+        for ( WorldSectorEtherData ether : present )
+            ids.add(ether.material());
+        WorldSectorEtherData result = WorldSectorEtherData.empty().withMaterial(MaterialId.merge(ids));
+        List<TextureProfile> faces = new ArrayList<>(present.size());
+        for ( Side side : Side.values() ) {
+            faces.clear();
+            for ( WorldSectorEtherData ether : present )
+                faces.add(ether.sideOf(side));
+            result = result.withSide(side, TextureProfile.average(faces));
+        }
+        return result;
     }
 
     /** @return The grid edge to mesh {@code sector} at its finest: {@code 8^depth} to its deepest leaf, capped at {@link #MAX_GRID_RES}. */
