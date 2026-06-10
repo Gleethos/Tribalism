@@ -15,6 +15,7 @@ import java.util.Arrays;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.PriorityQueue;
 
 /**
  *  The whole world as a single immutable value.
@@ -820,52 +821,73 @@ public final class World
             this.collector = collector;
         }
 
-        void collect( WorldSector sector ) {
-            if ( sector.isVoid() )
-                return; // empty air sub-tree: nothing to draw.
-            if ( !view.frustum().intersects(sector.bounds()) )
-                return; // outside the view: prune this sector and its whole sub-tree.
+        /**
+         *  Walks the tree <b>strictly nearest-first</b> (best-first over a priority queue keyed by
+         *  distance to each sector's bounds), which is what the occlusion {@link CoverageGrid} requires:
+         *  a sector may only be tested for occlusion once <i>every</i> nearer sector has already marked
+         *  its silhouette. A plain recursive depth-first walk does not give that &mdash; it expands the
+         *  nearest child's <i>whole</i> sub-tree (including its far parts) before the next child, so a far
+         *  occluder in a near sub-tree could be marked before a nearer sector in a far sub-tree is tested,
+         *  wrongly culling the nearer one. That error concentrates at the horizon, where many depths
+         *  compress into a thin screen band, so it showed up as visible geometry vanishing at the top edge.
+         *  Best-first keeps the hierarchical pruning (an occluded sector's whole sub-tree is still skipped,
+         *  because it is only reached after everything nearer, and is dropped before its children are queued).
+         */
+        void collect( WorldSector root ) {
+            VecF64 eye = view.camera().position();
+            PriorityQueue<Pending> frontier = new PriorityQueue<>();
+            frontier.add(new Pending(distanceToBounds(eye, root.bounds()), root));
+            while ( !frontier.isEmpty() ) {
+                WorldSector sector = frontier.poll().sector();
+                if ( sector.isVoid() )
+                    continue; // empty air sub-tree: nothing to draw.
+                if ( !view.frustum().intersects(sector.bounds()) )
+                    continue; // outside the view: prune this sector and its whole sub-tree.
 
-            double[][] corners = project8(sector.bounds());
-            if ( corners != null && coverage.isOccluded(minOf(corners, 0), minOf(corners, 1),
-                                                        maxOf(corners, 0), maxOf(corners, 1)) ) {
-                occlusionCulled++;
-                return; // fully hidden behind nearer solid geometry: prune the sub-tree.
+                double[][] corners = project8(sector.bounds());
+                if ( corners != null && coverage.isOccluded(minOf(corners, 0), minOf(corners, 1),
+                                                            maxOf(corners, 0), maxOf(corners, 1)) ) {
+                    occlusionCulled++;
+                    continue; // fully hidden behind nearer solid geometry: prune the sub-tree.
+                }
+
+                if ( sector.isSolidOpaque() ) {
+                    // A perfect occluder: collect it as one render unit (its mesh is just the shell, so the
+                    // coarsest resolution suffices) and record its silhouette so it blocks whatever is behind.
+                    collector.collect(sector, view, 1);
+                    collected++;
+                    if ( corners != null )
+                        coverage.markOccluder(corners);
+                    continue;
+                }
+
+                // Level of detail: how many cells of detail does this sector want across its edge? A sector
+                // small on screen is meshed coarsely (few big quads from branch sectors); a near, big one is
+                // descended into so its children carry the detail. The SAME metric the world refines by.
+                double cells = detailCells(sector.bounds(), eye);
+
+                boolean atFloor = sector.isLeaf() || maxEdge(sector.bounds()) <= chunkSize;
+                if ( atFloor || cells <= LOD_COLLAPSE_CELLS ) {
+                    // At the chunk floor (full detail), or far enough that the whole sector is only a few
+                    // cells on screen: hand it over as one unit, meshed at the chosen level of detail.
+                    collector.collect(sector, view, meshResolutionFor(cells));
+                    collected++;
+                    continue;
+                }
+
+                // Still big on screen above the floor: queue the children so they carry the detail and
+                // occlusion can act between them. They re-enter the frontier in global nearest-first order.
+                WorldTreeNode node = sector.children();
+                for ( int i = 0; i < WorldTreeNode.SECTOR_COUNT; i++ ) {
+                    WorldSector child = node.sector(i);
+                    frontier.add(new Pending(distanceToBounds(eye, child.bounds()), child));
+                }
             }
+        }
 
-            if ( sector.isSolidOpaque() ) {
-                // A perfect occluder: collect it as one render unit (its mesh is just the
-                // shell, so the coarsest resolution suffices) and record its silhouette so it
-                // blocks whatever is behind.
-                collector.collect(sector, view, 1);
-                collected++;
-                if ( corners != null )
-                    coverage.markOccluder(corners);
-                return;
-            }
-
-            // Level of detail: how many cells of detail does this sector want across its edge? A sector
-            // small on screen is meshed coarsely (few big quads from branch sectors); a near, big one is
-            // descended into so its children carry the detail. The SAME metric the world refines by.
-            double cells = detailCells(sector.bounds(), view.camera().position());
-
-            boolean atFloor = sector.isLeaf() || maxEdge(sector.bounds()) <= chunkSize;
-            if ( atFloor || cells <= LOD_COLLAPSE_CELLS ) {
-                // At the chunk floor (full detail), or far enough that the whole sector is only a few
-                // cells on screen: hand it over as one unit, meshed at the chosen level of detail.
-                collector.collect(sector, view, meshResolutionFor(cells));
-                collected++;
-                return;
-            }
-
-            // Still big on screen above the floor: recurse so children carry the detail (and occlusion
-            // can act between them), nearest child first, so nearer occluders are marked before farther ones.
-            WorldTreeNode node = sector.children();
-            double[] dist = new double[WorldTreeNode.SECTOR_COUNT];
-            for ( int i = 0; i < WorldTreeNode.SECTOR_COUNT; i++ )
-                dist[i] = view.camera().position().distance(node.sector(i).bounds().center());
-            for ( int i : orderByDistance(dist) )
-                collect(node.sector(i));
+        /** A sector waiting in the traversal frontier, ordered nearest-first by its distance to the camera. */
+        private record Pending(double distance, WorldSector sector) implements Comparable<Pending> {
+            @Override public int compareTo( Pending other ) { return Double.compare(distance, other.distance); }
         }
 
         /** @return The 8 corners of {@code bounds} projected to screen, or {@code null} if any is behind the camera. */
