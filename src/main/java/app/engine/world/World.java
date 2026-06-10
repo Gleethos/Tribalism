@@ -713,8 +713,10 @@ public final class World
      *      <li><b>Frustum culling</b> &mdash; a sector outside the view volume (and its
      *          whole sub-tree) is skipped, as is a fully transparent (air) sub-tree.</li>
      *      <li><b>Occlusion culling</b> &mdash; the walk proceeds <b>near&nbsp;&rarr;&nbsp;far</b>;
-     *          a fully-{@link WorldSector#isSolidOpaque() solid} sector marks its screen
-     *          silhouette into a {@link CoverageGrid} as it is collected, and any later
+     *          a fully-{@link WorldSector#isSolidOpaque() solid} sector marks the screen
+     *          silhouette of its <i>drawn</i> box (its bounds {@link WorldSectorEtherData#shrink
+     *          inset-shrunk} to the content, exactly what the renderer fills at res-1)
+     *          into a {@link CoverageGrid} as it is collected, and any later
      *          (farther) sector whose screen rectangle is already fully covered is
      *          skipped, sub-tree and all.</li>
      *      <li><b>Level of detail</b> &mdash; for each surviving sector the walk estimates how big it is on
@@ -836,11 +838,19 @@ public final class World
             if ( sector.isSolidOpaque() ) {
                 // A perfect occluder: collect it as one render unit (its mesh is just the
                 // shell, so the coarsest resolution suffices) and record its silhouette so it
-                // blocks whatever is behind.
+                // blocks whatever is behind. Crucially, the silhouette of what is DRAWN: a
+                // res-1 unit is rendered as its inset-shrunk content box (see SectorMeshCache),
+                // so a surface box that is "solid opaque" by face opacity still recedes to the
+                // terrain. Marking the full bounds instead would claim the sky band above the
+                // drawn surface and wrongly cull distant geometry that is visible there.
                 collector.collect(sector, view, 1);
                 collected++;
-                if ( corners != null )
-                    coverage.markOccluder(corners);
+                if ( corners != null ) {
+                    BoundsF64 drawn = sector.ether().shrink(sector.bounds());
+                    double[][] drawnCorners = drawn == sector.bounds() ? corners : project8(drawn);
+                    if ( drawnCorners != null )
+                        coverage.markOccluder(drawnCorners);
+                }
                 return;
             }
 

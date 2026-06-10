@@ -6,6 +6,7 @@ import app.engine.primitives.VecF64
 import app.engine.world.Material
 import app.engine.world.ScreenId
 import app.engine.world.SectorDrawCollector
+import app.engine.world.Side
 import app.engine.world.World
 import app.engine.world.WorldSector
 import app.engine.world.WorldSectorEtherData
@@ -95,6 +96,35 @@ class CollectSectorsForRendering_Spec extends Specification
             awayStats.occlusionCulledSectors() == 0
     }
 
+    def "An inset solid box only occludes what its drawn (shrunk) box covers, not its full bounds (regression: phantom sky-band culling)."()
+    {
+        given: 'A near solid box and a far solid box on the same line of sight, air elsewhere.'
+            var bounds = BoundsF64.cube(VecF64.zero(), 128)
+            var cells = bounds.subdivide(WorldTreeNode.RESOLUTION)
+            int near = WorldTreeNode.indexOf(0, 4, 4)
+            int far  = WorldTreeNode.indexOf(7, 4, 4)
+            var rock = WorldSectorEtherData.of(Material.ROCK)
+            // The near box's top recedes halfway down (a surface box: fully opaque faces, but the
+            // renderer draws it inset-shrunk), so the far box pokes out visibly above its DRAWN top.
+            var recessedRock = rock.withSide(Side.POS_Y, rock.sideOf(Side.POS_Y).withInset(0.5d))
+        and: 'A camera at the drawn surface height, looking straight along the row of cells.'
+            var camera = new CameraF64(VecF64.of(-100, 8, 8), VecF64.of(0, 8, 8), VecF64.of(0, 1, 0), Math.toRadians(60), 1.0, 0.5, 2000)
+        when: 'The near box is recessed: the far box must survive, its upper half is visible above the drawn top.'
+            var seen = new Capture()
+            var stats = onScreen(twoBoxWorld(bounds, cells, near, recessedRock, far, rock), camera, 200, 200)
+                    .collectSectorsForRendering(SCREEN, 16.0, seen)
+        then: 'The far box is collected - the band above the near box\'s drawn top is not phantom coverage.'
+            seen.sectors.any { it.bounds() == cells.get(far) }
+            stats.occlusionCulledSectors() == 0
+        when: 'Control: the same scene with a flush (un-inset) near box really does hide the far box.'
+            var blocked = new Capture()
+            var blockedStats = onScreen(twoBoxWorld(bounds, cells, near, rock, far, rock), camera, 200, 200)
+                    .collectSectorsForRendering(SCREEN, 16.0, blocked)
+        then:
+            !blocked.sectors.any { it.bounds() == cells.get(far) }
+            blockedStats.occlusionCulledSectors() > 0
+    }
+
     def "A larger chunk size yields fewer, bigger render units (the batching knob)."()
     {
         given: 'A non-solid branch (rock below, air above) and a camera looking straight at it.'
@@ -151,6 +181,16 @@ class CollectSectorsForRendering_Spec extends Specification
             insideUnits.resolutions[0] == nearUnits.resolutions[0]
         and: '...and emphatically not the res-1 single box the +Infinity overflow used to collapse it to.'
             insideUnits.resolutions[0] > 1
+    }
+
+    /** A world of air leaves with two solid boxes at the given child indices (the occlusion duel rig). */
+    private static World twoBoxWorld( BoundsF64 bounds, Tuple<BoundsF64> cells, int near, WorldSectorEtherData nearEther, int far, WorldSectorEtherData farEther ) {
+        WorldSector[] kids = new WorldSector[WorldTreeNode.SECTOR_COUNT]
+        for ( int i = 0; i < WorldTreeNode.SECTOR_COUNT; i++ )
+            kids[i] = WorldSector.leaf(cells.get(i), WorldSectorEtherData.empty())
+        kids[near] = WorldSector.leaf(cells.get(near), nearEther)
+        kids[far]  = WorldSector.leaf(cells.get(far),  farEther)
+        return World.of(WorldSector.empty(bounds).withChildren(new WorldTreeNode(kids)))
     }
 
     /** An aggregated 8x8x8 branch over {@code bounds} whose leaves come from a (x,y,z)->Material function. */
