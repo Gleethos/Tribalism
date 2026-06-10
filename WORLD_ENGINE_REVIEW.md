@@ -12,10 +12,10 @@ Four of your reported symptoms map to **three concrete, verifiable bugs and one 
 |---|--------------|-----------|-----------|----------|
 | B1 | Meshes are two‑sided; you see their inside | GL backface culling is **never enabled**, and it *can't* be until the cube winding is fixed — 3 of the 6 faces wind **inward** | **Certain** (proven) | small |
 | B2 | Fly close to terrain → the whole 64³ chunk vanishes / collapses | `meshResolutionFor(+∞) == 1` integer overflow: camera *inside* a chunk ⇒ `detailCells = +∞` ⇒ chunk meshed at the **coarsest** LoD instead of the finest | **Certain** (proven) | 1 line |
-| B3 | Boxes vanish just before they slide off the **top** edge | **Occlusion grid ordering bug** (confirmed: `isOccluded→false` makes it vanish). The coverage grid is only correct under strict front‑to‑back submission, but the walk was depth‑first‑nearest‑child, so a far occluder could be marked before a nearer box was tested. *(Not the far plane — disproven by the user.)* | **Certain** (repro'd) | small — **fixed** |
+| B3 | Far LoD boxes get culled at the top edge of the screen | Far clip plane (2000) **< view/refine distance (2048)**: a ring of coarse terrain at the horizon is frustum‑clipped. Software occlusion grid is a secondary suspect | **High** (needs a visual confirm) | small |
 | B4 | The far field is *many* big blocks, culled individually, never one big greedy mesh | By design each coarse leaf is its **own** render unit; the greedy mesher never spans sectors, and `refine` collapses distant sectors to childless leaves the mesher can't merge | **Certain** (by design) | architectural |
 
-**"Less is more" verdict:** still some. I initially flagged the **software occlusion culler** for removal, but the user is right to keep it — it pays off in profiling (looking at a wall culls the world behind it). Its top‑edge bug was a real *ordering* defect, now fixed (B3), not a reason to delete it. The biggest remaining simplification candidate is the **inset/shrink** system (rewritten ~6 times per the design log) — a good candidate for replacement by a small baked per‑node LoD grid, which would also fix B4.
+**"Less is more" verdict:** yes. The single biggest source of complexity‑without‑payoff is the **software occlusion culler** (`CoverageGrid` + the near→far sort + the convex‑hull machinery). On the GPU path it is redundant with the depth buffer, it is only *approximately* near→far (so it under‑culls anyway), and it is the most likely culprit for spurious edge‑culling. Recommend deleting it from the GL path. The **inset/shrink** system is the second (it has been rewritten ~6 times per the design log) and is a good candidate for replacement by a small baked per‑node LoD grid.
 
 ---
 
@@ -127,17 +127,15 @@ This is independently a good guard (the unbounded `for` loop on a large finite `
 
 ---
 
-### B3 — Boxes vanish at the top edge  *(Fixed)*
+### B3 — Far LoD boxes culled at the top edge  *(High confidence; please confirm visually)*
 
-My original "far plane" theory was **wrong** — the user disproved it (the far plane is visible much further out and cuts geometry cleanly) and pinned the bug precisely: making `CoverageGrid.isOccluded` always return `false` makes the vanishing disappear entirely. So it is the **occlusion culler**.
+I could not reproduce this purely by static analysis, but the configuration makes one cause very likely and gives a second to rule out.
 
-**Root cause — the coverage grid is unsound under the traversal's submission order.** The grid carries no depth; it is a 1‑bit "covered" buffer, so it is only correct if geometry is submitted **strictly front‑to‑back** (when a sector is tested, every *nearer* sector must already be marked). But `collect` walked the tree **depth‑first, nearest‑child‑first** (`World.java:858‑863`), which is *not* a global near→far order: it expands the nearest child's **entire** sub‑tree — including that sub‑tree's *far* parts — before the next child. So a **farther** occluder in a near sub‑tree can be marked **before** a **nearer** sector in a far sub‑tree is tested, and the nearer one is wrongly culled.
+**Leading cause — far clip plane is closer than the world is built/refined.** In the demo the camera is `near=0.5, far=2000` (`WorldEngineDemo.java:86`), but `World.VIEW_DISTANCE = 2048` (`World.java:315`) — the root is grown, and surface sectors are refined, out to **2048**. So there is a 2000–2048 ring of large coarse‑leaf boxes (512u+ at that distance) that the **far plane frustum‑clips** even though they're "on screen." In orbit/level flight the horizon sits in the upper part of the view, so this clipping reads as **"far boxes popping out at the top edge."** A hard circular far‑clip with no fog looks like culling regardless.
 
-**Why the top, specifically.** The horizon is where many depth layers compress into a thin screen band (distant terrain at a grazing angle), so out‑of‑order marking produces the most wrong‑culls there — and at level/downward flight the horizon sits in the **upper** screen. The bottom and sides show near ground (few overlapping depths), so the error doesn't surface there.
+*Fix:* make the far plane ≥ the view distance (e.g. `far = 2200`, or derive both from one constant), and ideally fade terrain toward the far plane (distance fog → sky colour) so the boundary isn't a hard pop. Note the two distances are currently declared in different files with no link between them — a refactor target.
 
-**Fix (done):** replaced the recursive walk with a **best‑first** traversal over a `PriorityQueue` keyed by distance‑to‑bounds, so sectors are processed in strict nearest‑first order. This restores the grid's invariant while keeping the hierarchical pruning (an occluded sector's whole sub‑tree is still skipped). Occlusion culling is **kept**, not removed — the "near solid occludes far" test still passes (`culled > 0`).
-
-*Residual / optional upgrade:* a single large occluder that is nearer in one place and farther in another can still, in pathological cases, mark a tile in front of something it shouldn't (any 1‑bit screen‑space occluder has this). The principled cure is to store a **per‑tile min‑depth** (turn the boolean coverage grid into a coarse Hi‑Z) so the test compares depth, not just coverage. Not needed for the reported bug; worth it only if pathological cases show up.
+**Secondary suspect — the software occlusion grid.** `CoverageGrid.isOccluded` treats fully‑off‑screen rectangles as occluded and culls a sector whose whole screen‑space AABB falls in already‑covered tiles (`World.java:824‑829`, `CoverageGrid.java:49‑66`). For convex cube occluders the marking is geometrically exact, so I don't think it's *wrongly* culling visible sky‑edge geometry — but it's the cheapest thing to falsify: temporarily make `collectSectorsForRendering` skip the occlusion test and see if the top‑edge culling disappears. If it does, that's your answer; if not, it's the far plane. (Either way, see §4 — I recommend removing it from the GL path.)
 
 ---
 
@@ -163,7 +161,7 @@ There's also visible **factor‑8 LoD popping**: `meshResolutionFor` only ever r
 - **`detailCells` near‑field blow‑up is load‑bearing in two places.** The same `+∞`‑when‑inside value also feeds `refine` (fine there — it just forces descent) and the child‑sort distances. Worth a single clearly‑documented helper rather than `distance <= 0 ? +∞` scattered around.
 - **Occlusion ordering is only approximate.** `collect` recurses **depth‑first nearest‑child‑first** (`World.java:858‑863`), which is *not* globally near→far: the entire subtree of the nearest child (including its far parts) is marked before the second child is touched. This makes the occluder under‑effective (misses culls), not wrong — but it means the grid pays its full cost for partial benefit. Another argument for removing it on GL.
 - **`isMajorityOpaque` is a misnomer and its doc is stale.** It's `combined().isOpaque()` = average OPACITY ≥ `OPACITY_THRESHOLD` (`WorldSectorEtherData.java:175`, `TextureProfile.java:43`), where the threshold is **0.25**, not a "majority." The design log and some comments say 0.5. Rename to something like `readsAsSolidSurface()` and fix the threshold references.
-- **`VIEW_DISTANCE` (2048) and the demo's far plane (2000) and `generationDistance` (160) are three independent magic numbers** with real ordering constraints between them (`generationDistance ≤ view ≤ far`) and no single source of truth. Far (2000) < view (2048) is a latent inconsistency worth tidying — but it is *not* B3 (the user confirmed the far plane cuts cleanly; B3 was the occlusion ordering bug).
+- **`VIEW_DISTANCE` (2048) and the demo's far plane (2000) and `generationDistance` (160) are three independent magic numbers** with real ordering constraints between them (`generationDistance ≤ view ≤ far`) and no single source of truth. B3 is the visible consequence.
 - **Dead pixel‑LoD code.** `World.projectedEdgePixels` (`World.java:769`) is referenced **only by tests** now; `World.focalLengthPx` and `ViewInfo.focalLengthPx` are computed and stored but never read by any renderer (projection uses the matrix directly). Leftovers from the pre‑"resolution‑independent LoD" era — safe to delete (and drop the tests that pin them).
 
 ---
@@ -172,7 +170,7 @@ There's also visible **factor‑8 LoD popping**: `meshResolutionFor` only ever r
 
 Ranked by payoff:
 
-1. ~~Delete the software occlusion culler.~~ **Superseded:** keep it (it profiles well); its ordering bug is fixed in B3. The only optional follow‑up is the per‑tile Hi‑Z upgrade noted there, if pathological over‑culls ever appear.
+1. **Delete the software occlusion culler from the GL path.** `CoverageGrid` (142 lines) + Andrew's‑monotone‑chain convex hull + point‑in‑polygon + per‑frame coverage buffer + the near→far child sort in both `refine` and `collect`. On GPU it duplicates the depth buffer, it's only approximately ordered (so it under‑culls), and it's the prime suspect for edge‑culling artifacts. Keep frustum culling (cheap, correct, essential). If you want it for the CPU fallback, gate it behind a flag there only. **This removes the most code for the least risk.**
 
 2. **Replace the inset/shrink machinery with a baked per‑node LoD summary** (see B4). Per your own design log this is the most‑rewritten subsystem in the engine (≈6 iterations). It exists solely so a childless coarse box isn't a full cube. A tiny baked heightfield/occupancy per node would subsume it *and* fix B4, *and* let you drop `WorldSectorEtherData.shrink`, `insetsBySide`, `emptyFraction`, the per‑face inset on `TextureProfile`, and the res‑1 special case in the mesher. Big net simplification — but it's a real piece of work; do it deliberately, not now.
 
@@ -199,8 +197,8 @@ Ranked by payoff:
 |------|--------|------|--------|
 | 1 | **B2**: clamp `meshResolutionFor` for `+∞`/huge | trivial | close terrain stops vanishing — biggest visible win per line |
 | 2 | **B1**: fix `FACE_CORNERS` winding + enable `GL_CULL_FACE` | low | no more see‑through/inside‑out meshes; ~½ the triangles |
-| 3 | **B3**: best‑first (front‑to‑back) occlusion traversal — **done** | low | top‑edge vanishing fixed; occlusion kept |
-| 4 | *(optional)* per‑tile Hi‑Z upgrade to the coverage grid | medium | full occlusion soundness for large occluders |
+| 3 | **B3**: far plane ≥ view distance (+ optional fog); unify the distance constants | low | horizon stops popping |
+| 4 | **§4.1**: delete `CoverageGrid` from the GL path | low | large code reduction; rules out occlusion artifacts |
 | 5 | Docs/§5 + dead‑code (`projectedEdgePixels`/`focalLengthPx`) + helper de‑dup | low | clarity |
 | 6 | **B4 / §4.2**: baked per‑node LoD grid (replaces insets, fixes "many boxes") | high | the real far‑field fix + the engine's biggest simplification |
 
