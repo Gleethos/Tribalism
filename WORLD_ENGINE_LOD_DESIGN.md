@@ -167,7 +167,15 @@ becomes optional.
 - Derive the demo camera's far plane from `VIEW_DISTANCE` (single source of truth) and
   add distance fog → sky colour in the GL fragment shader so the last band fades, not
   pops.
-- Re-land the per-cell-inset greedy mesher (insets at all resolutions) on top of **A**.
+- ~~Re-land the per-cell-inset greedy mesher (insets at all resolutions) on top of **A**.~~
+  **Done 2026-06-10** (pulled forward after review: only res-1 boxes shrank, so LoD shapes
+  were inconsistently blocky). The reverted `07f9c87` mesher is re-landed (coverage-based
+  cull + step walls + flush-only merging; res-1 special case subsumed — one cell at its
+  inset planes IS the shrunk box), and `VolumePatch` gained per-column **top insets**
+  (byte-quantized, baked from the surface field where it crosses the column's top cell)
+  so far terraces also recede to the continuous surface instead of quantizing to cells.
+  `solidBaseFraction` subtracts the recessed top of the shortest column, keeping the
+  occlusion slab ⊆ drawn geometry (invariant 2.5).
 
 ---
 

@@ -247,7 +247,36 @@ public record WorldGenerator(
                             lo.x() + (x + 0.5) * size.x() / n,
                             lo.y() + (y + 0.5) * size.y() / n,
                             lo.z() + (z + 0.5) * size.z() / n));
-        return VolumePatch.of(cells);
+        return VolumePatch.of(cells, topInsetsOf(cells, bounds));
+    }
+
+    /**
+     *  @return Per patch column, how far the continuous terrain surface sits below the top of that
+     *          column's highest solid cell, in {@code [0, 1)} of one cell height &mdash; the sub-cell
+     *          refinement that keeps a coarse terrace at the exact surface instead of quantizing to
+     *          cells. Only applied where the surface really does cross that cell (a cave roof or
+     *          floating content keeps a flush top: the volumetric grid stays the shape authority).
+     */
+    private double[] topInsetsOf( Material[] cells, BoundsF64 bounds ) {
+        int n = VolumePatch.RESOLUTION;
+        VecF64 lo = bounds.min(), hi = bounds.max();
+        double cellHeight = (hi.y() - lo.y()) / n;
+        double[] insets = new double[n * n];
+        for ( int z = 0; z < n; z++ )
+            for ( int x = 0; x < n; x++ ) {
+                int top = n - 1;
+                while ( top >= 0 && cells[WorldTreeNode.indexOf(x, top, z)] == Material.AIR )
+                    top--;
+                if ( top < 0 )
+                    continue; // an empty column has no surface to refine.
+                double colX = lo.x() + (x + 0.5) * (hi.x() - lo.x()) / n;
+                double colZ = lo.z() + (z + 0.5) * (hi.z() - lo.z()) / n;
+                double contentTop = Math.max(surfaceHeightAt(colX, colZ), seaLevel);
+                double cellTop = lo.y() + (top + 1) * cellHeight;
+                if ( contentTop < cellTop && contentTop >= cellTop - cellHeight )
+                    insets[x + z * n] = (cellTop - contentTop) / cellHeight;
+            }
+        return insets;
     }
 
     /**

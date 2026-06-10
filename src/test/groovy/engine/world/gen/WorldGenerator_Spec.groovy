@@ -53,6 +53,9 @@ class WorldGenerator_Spec extends Specification
         and: 'Every column rests on solid ground, so the patch advertises an occluding solid base.'
             patch.solidBaseFraction() > 0
             patch.solidBaseFraction() <= 1.0d
+        and: 'The sub-cell surface refinement is baked: columns recede to the continuous surface, not cell boundaries.'
+            (0..7).every { x -> (0..7).every { z -> 0.0d <= patch.topInset(x, z) && patch.topInset(x, z) <= 1.0d } }
+            (0..7).any { x -> (0..7).any { z -> patch.topInset(x, z) > 0 } }
         and: 'Baking is deterministic: the same bounds bake to an equal patch.'
             patch == gen.volumePatchOf(bounds)
     }

@@ -250,6 +250,65 @@ class SectorMeshCache_Spec extends Specification
             ys.max() == 8.0
     }
 
+    def "Per-cell insets apply at res>1: a recessed half drops its top, and a step wall bridges the gap (no hole)."()
+    {
+        given: 'A single ground layer (y==0). Left half (x<4) flush; right half (x>=4) recessed by half on top.'
+            var ground = blockOf { int x, int y, int z ->
+                if ( y != 0 ) return WorldSectorEtherData.empty()
+                var rock = WorldSectorEtherData.of(Material.ROCK)
+                return x < 4 ? rock : rock.withSide(Side.POS_Y, rock.sideOf(Side.POS_Y).withInset(0.5))
+            }
+        when: 'Meshed at full (sub-block) resolution.'
+            var mesh = new SectorMeshCache().meshOf(ground, 8)
+            var tops = mesh.quads().findAll { it.normal().y() > 0.5 }
+        then: 'The flush half keeps its top at the cell boundary (y=1)...'
+            tops.any { ysOf(it).max() == 1.0 }
+        and: '...the recessed half drops its top to the content surface (y=0.5)...'
+            tops.any { ysOf(it).max() == 0.5 }
+        and: '...and an X-facing step wall reaches up to y=1 at the x=4 seam, so the height step is not a hole.'
+            mesh.quads().any { q ->
+                Math.abs(q.normal().x()) > 0.5 && xsOf(q).every { Math.abs(it - 4.0) < 1e-9 } && ysOf(q).max() == 1.0
+            }
+    }
+
+    def "A volume patch's baked top insets recede far terraces to the continuous surface (no cell quantization)."()
+    {
+        given: 'A patch of 4-cell-high ground whose columns are all recessed by a fifth of a cell on top.'
+            Material[] cells = new Material[VolumePatch.CELL_COUNT]
+            for ( int z = 0; z < 8; z++ )
+                for ( int y = 0; y < 8; y++ )
+                    for ( int x = 0; x < 8; x++ )
+                        cells[WorldTreeNode.indexOf(x, y, z)] = y < 4 ? Material.ROCK : Material.AIR
+            double[] topInsets = new double[64]
+            Arrays.fill(topInsets, 0.2d) // 0.2 * 255 == 51: survives the patch's byte quantization exactly.
+            var leaf = WorldSector.leaf(cube(0, 8), WorldSectorEtherData.of(Material.ROCK), VolumePatch.of(cells, topInsets))
+        when:
+            var mesh = new SectorMeshCache().meshOf(leaf, 8)
+            var tops = topHeights(mesh)
+        then: 'One terrace top, a fifth of a cell below the cell boundary: y = 4 - 0.2 = 3.8.'
+            tops.size() == 1
+            Math.abs(tops[0] - 3.8d) < 1e-9
+        and: 'The advertised occluding base never reaches above that drawn surface.'
+            leaf.volumePatch().solidBaseFraction() <= 3.8d / 8 + 1e-9
+    }
+
+    /** An (un-aggregated) 8x8x8 block whose leaves come from a (x,y,z)->WorldSectorEtherData function. */
+    private static WorldSector blockOf( Closure<WorldSectorEtherData> etherAt ) {
+        var bounds = cube(0, 8)
+        var cells = bounds.subdivide(WorldTreeNode.RESOLUTION)
+        WorldSector[] kids = new WorldSector[WorldTreeNode.SECTOR_COUNT]
+        for ( int z = 0; z < 8; z++ )
+            for ( int y = 0; y < 8; y++ )
+                for ( int x = 0; x < 8; x++ ) {
+                    int i = WorldTreeNode.indexOf(x, y, z)
+                    kids[i] = WorldSector.leaf(cells.get(i), etherAt(x, y, z) as WorldSectorEtherData)
+                }
+        return WorldSector.empty(bounds).withChildren(new WorldTreeNode(kids))
+    }
+
+    private static List<Double> ysOf( Quad q ) { [q.c0().y(), q.c1().y(), q.c2().y(), q.c3().y()] }
+    private static List<Double> xsOf( Quad q ) { [q.c0().x(), q.c1().x(), q.c2().x(), q.c3().x()] }
+
     def "The mesh is memoized: the same immutable sector returns the identical mesh."()
     {
         given:

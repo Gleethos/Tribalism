@@ -41,24 +41,39 @@ public final class VolumePatch
     private final Material[] _palette;
     /** Palette index per cell, in {@link WorldTreeNode#indexOf} linear order. Never exposed. */
     private final byte[] _cells;
+    /** Per column ({@code x + z*RESOLUTION}): how far the column's TOP solid cell is empty from its
+     *  top, quantized to {@code [0, 255]} of the cell height. Refines the cell-quantized surface to
+     *  the continuous one, so far terrain meshes at the same smooth height a res-1 box shrinks to. */
+    private final byte[] _topInsets;
     private final double _solidBaseFraction;
     private int _hash;
 
-    private VolumePatch( Material[] palette, byte[] cells, double solidBaseFraction ) {
+    private VolumePatch( Material[] palette, byte[] cells, byte[] topInsets, double solidBaseFraction ) {
         _palette = palette;
         _cells = cells;
+        _topInsets = topInsets;
         _solidBaseFraction = solidBaseFraction;
     }
 
+    /** @return A patch over the given cell materials, with no sub-cell surface refinement (flush cells). */
+    public static VolumePatch of( Material[] cells ) {
+        return of(cells, new double[RESOLUTION * RESOLUTION]);
+    }
+
     /**
-     *  @param cells The material of each grid cell ({@link Material#AIR} for empty space),
-     *               {@link WorldTreeNode#indexOf indexed} {@code x + y*RESOLUTION + z*RESOLUTION²};
-     *               the array is copied (palette-compressed), not retained.
+     *  @param cells     The material of each grid cell ({@link Material#AIR} for empty space),
+     *                   {@link WorldTreeNode#indexOf indexed} {@code x + y*RESOLUTION + z*RESOLUTION²};
+     *                   the array is copied (palette-compressed), not retained.
+     *  @param topInsets Per column ({@code x + z*RESOLUTION}), in {@code [0, 1]} of one cell height: how far
+     *                   the column's top solid cell's content is recessed below that cell's top. The
+     *                   sub-cell surface refinement that keeps a coarse terrace from quantizing to cells.
      *  @return A patch over the given cell materials.
      */
-    public static VolumePatch of( Material[] cells ) {
+    public static VolumePatch of( Material[] cells, double[] topInsets ) {
         if ( cells.length != CELL_COUNT )
             throw new IllegalArgumentException("A volume patch needs " + CELL_COUNT + " cells, but got " + cells.length + ".");
+        if ( topInsets.length != RESOLUTION * RESOLUTION )
+            throw new IllegalArgumentException("A volume patch needs " + (RESOLUTION * RESOLUTION) + " column top insets, but got " + topInsets.length + ".");
         List<Material> palette = new ArrayList<>();
         byte[] indexed = new byte[CELL_COUNT];
         for ( int i = 0; i < CELL_COUNT; i++ ) {
@@ -72,12 +87,27 @@ public final class VolumePatch
             }
             indexed[i] = (byte) index;
         }
-        return new VolumePatch(palette.toArray(new Material[0]), indexed, solidBaseFractionOf(cells));
+        byte[] quantized = new byte[RESOLUTION * RESOLUTION];
+        double[] applied = new double[RESOLUTION * RESOLUTION];
+        for ( int i = 0; i < quantized.length; i++ ) {
+            quantized[i] = (byte) Math.round(Math.max(0, Math.min(1, topInsets[i])) * 255);
+            applied[i] = (quantized[i] & 0xFF) / 255.0; // EXACTLY what a renderer will recede by.
+        }
+        return new VolumePatch(palette.toArray(new Material[0]), indexed, quantized, solidBaseFractionOf(cells, applied));
     }
 
     /** @return The material of the cell at grid coordinate ({@code x}, {@code y}, {@code z}). */
     public Material material( int x, int y, int z ) {
         return _palette[_cells[WorldTreeNode.indexOf(x, y, z)]];
+    }
+
+    /**
+     *  @return How far column ({@code x}, {@code z})'s top solid cell is empty from its top, in
+     *          {@code [0, 1]} of one cell height &mdash; the sub-cell surface refinement a renderer
+     *          applies as that cell's top inset.
+     */
+    public double topInset( int x, int z ) {
+        return (_topInsets[x + z * RESOLUTION] & 0xFF) / 255.0;
     }
 
     /**
@@ -91,17 +121,29 @@ public final class VolumePatch
         return _solidBaseFraction;
     }
 
-    /** @return The shortest per-column run of contiguously fully-opaque cells up from the grid bottom, as a fraction. */
-    private static double solidBaseFractionOf( Material[] cells ) {
-        int shortestRun = RESOLUTION;
+    /**
+     *  @return The shortest per-column run of contiguously fully-opaque cells up from the grid bottom,
+     *          as a fraction of the grid height. Where a column's run ends at its recessed surface cell,
+     *          that cell's {@code topInset} is subtracted &mdash; the drawn surface sits that far below
+     *          the cell boundary, and the advertised solid base must never reach above what is drawn
+     *          (the occlusion culler marks exactly this slab).
+     */
+    private static double solidBaseFractionOf( Material[] cells, double[] topInsets ) {
+        double shortestRun = RESOLUTION;
         for ( int z = 0; z < RESOLUTION && shortestRun > 0; z++ )
             for ( int x = 0; x < RESOLUTION && shortestRun > 0; x++ ) {
                 int run = 0;
                 while ( run < RESOLUTION && isFullyOpaque(cells[WorldTreeNode.indexOf(x, run, z)]) )
                     run++;
-                shortestRun = Math.min(shortestRun, run);
+                int topVisible = RESOLUTION - 1;
+                while ( topVisible >= 0 && cells[WorldTreeNode.indexOf(x, topVisible, z)].texture().isInvisible() )
+                    topVisible--;
+                double effective = run;
+                if ( run > 0 && topVisible == run - 1 )
+                    effective -= topInsets[x + z * RESOLUTION]; // the run's top cell is the recessed surface.
+                shortestRun = Math.min(shortestRun, effective);
             }
-        return shortestRun / (double) RESOLUTION;
+        return Math.max(0, shortestRun) / RESOLUTION;
     }
 
     private static boolean isFullyOpaque( Material material ) {
@@ -112,14 +154,16 @@ public final class VolumePatch
     public boolean equals( Object obj ) {
         if ( this == obj ) return true;
         if ( !(obj instanceof VolumePatch other) ) return false;
-        return Arrays.equals(_cells, other._cells) && Arrays.equals(_palette, other._palette);
+        return Arrays.equals(_cells, other._cells)
+            && Arrays.equals(_topInsets, other._topInsets)
+            && Arrays.equals(_palette, other._palette);
     }
 
     @Override
     public int hashCode() {
         int h = _hash;
         if ( h == 0 ) {
-            h = 31 * Arrays.hashCode(_cells) + Arrays.hashCode(_palette);
+            h = 31 * (31 * Arrays.hashCode(_cells) + Arrays.hashCode(_topInsets)) + Arrays.hashCode(_palette);
             _hash = h;
         }
         return h;
