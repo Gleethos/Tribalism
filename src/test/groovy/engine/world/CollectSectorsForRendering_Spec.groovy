@@ -7,6 +7,7 @@ import app.engine.world.Material
 import app.engine.world.ScreenId
 import app.engine.world.SectorDrawCollector
 import app.engine.world.Side
+import app.engine.world.VolumePatch
 import app.engine.world.World
 import app.engine.world.WorldSector
 import app.engine.world.WorldSectorEtherData
@@ -125,6 +126,35 @@ class CollectSectorsForRendering_Spec extends Specification
             blockedStats.occlusionCulledSectors() > 0
     }
 
+    def "A solid leaf with a volume patch is drawn with shape at its LoD resolution and occludes only its solid base."()
+    {
+        given: 'A near solid-opaque leaf whose patch is ground filling its bottom half, and a far solid box behind it.'
+            var bounds = BoundsF64.cube(VecF64.zero(), 128)
+            var cells = bounds.subdivide(WorldTreeNode.RESOLUTION)
+            int near = WorldTreeNode.indexOf(0, 4, 4)
+            int far  = WorldTreeNode.indexOf(7, 4, 4)
+            var rock = WorldSectorEtherData.of(Material.ROCK)
+            var camera = new CameraF64(VecF64.of(-100, 8, 8), VecF64.of(0, 8, 8), VecF64.of(0, 1, 0), Math.toRadians(60), 1.0, 0.5, 2000)
+            var groundLeaf = WorldSector.leaf(cells.get(near), rock, patchOf { int x, int y, int z -> y < 4 ? Material.ROCK : Material.AIR })
+        when:
+            var seen = new Capture()
+            var stats = onScreen(twoSectorWorld(bounds, cells, near, groundLeaf, far, WorldSector.leaf(cells.get(far), rock)), camera, 200, 200)
+                    .collectSectorsForRendering(SCREEN, 16.0, seen)
+        then: 'The patched leaf is collected at its patch resolution (8), no longer forced to a single res-1 box.'
+            seen.resolutions[seen.sectors.findIndexOf { it.bounds() == cells.get(near) }] == 8
+        and: 'The far box pokes out above the ground and survives: only the solid base slab occludes.'
+            seen.sectors.any { it.bounds() == cells.get(far) }
+            stats.occlusionCulledSectors() == 0
+        when: 'Control: the same scene with the patch solid to its top really does hide the far box.'
+            var fullLeaf = WorldSector.leaf(cells.get(near), rock, patchOf { int x, int y, int z -> Material.ROCK })
+            var blocked = new Capture()
+            var blockedStats = onScreen(twoSectorWorld(bounds, cells, near, fullLeaf, far, WorldSector.leaf(cells.get(far), rock)), camera, 200, 200)
+                    .collectSectorsForRendering(SCREEN, 16.0, blocked)
+        then:
+            !blocked.sectors.any { it.bounds() == cells.get(far) }
+            blockedStats.occlusionCulledSectors() > 0
+    }
+
     def "A larger chunk size yields fewer, bigger render units (the batching knob)."()
     {
         given: 'A non-solid branch (rock below, air above) and a camera looking straight at it.'
@@ -204,12 +234,27 @@ class CollectSectorsForRendering_Spec extends Specification
 
     /** A world of air leaves with two solid boxes at the given child indices (the occlusion duel rig). */
     private static World twoBoxWorld( BoundsF64 bounds, Tuple<BoundsF64> cells, int near, WorldSectorEtherData nearEther, int far, WorldSectorEtherData farEther ) {
+        return twoSectorWorld(bounds, cells, near, WorldSector.leaf(cells.get(near), nearEther), far, WorldSector.leaf(cells.get(far), farEther))
+    }
+
+    /** A world of air leaves with two arbitrary sectors at the given child indices. */
+    private static World twoSectorWorld( BoundsF64 bounds, Tuple<BoundsF64> cells, int near, WorldSector nearSector, int far, WorldSector farSector ) {
         WorldSector[] kids = new WorldSector[WorldTreeNode.SECTOR_COUNT]
         for ( int i = 0; i < WorldTreeNode.SECTOR_COUNT; i++ )
             kids[i] = WorldSector.leaf(cells.get(i), WorldSectorEtherData.empty())
-        kids[near] = WorldSector.leaf(cells.get(near), nearEther)
-        kids[far]  = WorldSector.leaf(cells.get(far),  farEther)
+        kids[near] = nearSector
+        kids[far]  = farSector
         return World.of(WorldSector.empty(bounds).withChildren(new WorldTreeNode(kids)))
+    }
+
+    /** A volume patch whose cells come from a (x,y,z)->Material function. */
+    private static VolumePatch patchOf( Closure<Material> materialAt ) {
+        Material[] cells = new Material[VolumePatch.CELL_COUNT]
+        for ( int z = 0; z < VolumePatch.RESOLUTION; z++ )
+            for ( int y = 0; y < VolumePatch.RESOLUTION; y++ )
+                for ( int x = 0; x < VolumePatch.RESOLUTION; x++ )
+                    cells[WorldTreeNode.indexOf(x, y, z)] = materialAt(x, y, z) as Material
+        return VolumePatch.of(cells)
     }
 
     /** An aggregated 8x8x8 branch over {@code bounds} whose leaves come from a (x,y,z)->Material function. */

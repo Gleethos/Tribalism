@@ -39,6 +39,33 @@ class WorldGenerator_Spec extends Specification
             gen.materialAt(VecF64.of(0, -1000, 0)) == Material.ROCK
     }
 
+    def "volumePatchOf bakes a volumetric summary of a surface region: solid below ground, air above."()
+    {
+        given:
+            var gen = solidGenerator()
+        when: 'A region straddling the surface (amplitude 24, so a 128-cube around 0 covers it everywhere).'
+            var bounds = cubeAround(VecF64.of(0, 0, 0), 128)
+            var patch = gen.volumePatchOf(bounds)
+        then: 'It exists and is volumetric: the deepest cells are solid, the highest are air.'
+            patch != null
+            (0..7).every { x -> (0..7).every { z -> patch.material(x, 0, z) != Material.AIR } }
+            (0..7).every { x -> (0..7).every { z -> patch.material(x, 7, z) == Material.AIR } }
+        and: 'Every column rests on solid ground, so the patch advertises an occluding solid base.'
+            patch.solidBaseFraction() > 0
+            patch.solidBaseFraction() <= 1.0d
+        and: 'Baking is deterministic: the same bounds bake to an equal patch.'
+            patch == gen.volumePatchOf(bounds)
+    }
+
+    def "volumePatchOf is null for a homogeneous region (a uniform box has no shape to bake)."()
+    {
+        given:
+            var gen = solidGenerator()
+        expect:
+            gen.volumePatchOf(cubeAround(VecF64.of(0, -1000, 0), 64)) == null
+            gen.volumePatchOf(cubeAround(VecF64.of(0, 1000, 0), 64)) == null
+    }
+
     def "There is a grass band at the very surface."()
     {
         given: 'At x=z=0 the surface height is exactly the base level (noise is 0 on the lattice).'

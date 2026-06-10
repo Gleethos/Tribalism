@@ -99,6 +99,21 @@ class WorldGeneration_Spec extends Specification
             !coarse.isEmpty()
     }
 
+    def "Refined coarse leaves carry the generator's baked volume patch, so the far field has shape."()
+    {
+        given: 'A world refined and settled around a camera at the surface.'
+            var gen = generator(96)
+            var world = settled(World.of(gen).createCamera(CAMERA, cameraAt(VecF64.of(0, 0, 0))))
+        when: 'We gather the recessed (surface-straddling) coarse leaves of the settled tree.'
+            var coarse = []
+            collectRecessedLeaves(world.root(), coarse)
+        then: 'Each carries exactly the volume patch the generator bakes for its own bounds (the wiring)...'
+            !coarse.isEmpty()
+            coarse.every { it.volumePatch() == gen.volumePatchOf(it.bounds()) }
+        and: '...and at least one is ground resting on a solid base (it will both shape AND occlude).'
+            coarse.any { it.volumePatch() != null && it.volumePatch().solidBaseFraction() > 0 }
+    }
+
     /** Collects leaves whose ether recesses at least one face (generator-described coarse surface leaves). */
     private static void collectRecessedLeaves( app.engine.world.WorldSector sector, List leaves ) {
         if ( sector.isLeaf() ) {

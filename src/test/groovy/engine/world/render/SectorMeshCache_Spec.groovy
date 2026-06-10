@@ -4,6 +4,7 @@ import app.engine.primitives.BoundsF64
 import app.engine.primitives.VecF64
 import app.engine.world.Material
 import app.engine.world.Side
+import app.engine.world.VolumePatch
 import app.engine.world.WorldSector
 import app.engine.world.WorldSectorEtherData
 import app.engine.world.WorldTreeNode
@@ -167,6 +168,55 @@ class SectorMeshCache_Spec extends Specification
         expect:
             mesh.quads().every { Quad q -> !q.profile().isInvisible() }
             mesh.faceCount() > 0
+    }
+
+    def "A childless leaf with a volume patch meshes with real shape at coarse resolutions."()
+    {
+        given: 'A leaf over 0..8 whose patch is a terrace: ground 2 cells high on the left (x<4), 6 on the right.'
+            var leaf = WorldSector.leaf(cube(0, 8), WorldSectorEtherData.of(Material.ROCK),
+                                        patchOf { int x, int y, int z -> y < (x < 4 ? 2 : 6) ? Material.ROCK : Material.AIR })
+            var cache = new SectorMeshCache()
+        when:
+            var mesh = cache.meshOf(leaf, 8)
+        then: 'Two terrace tops at the two ground heights - not one flat box top - plus the step wall between them.'
+            topHeights(mesh) == [2.0d, 6.0d]
+            mesh.faceCount() > 6
+        and: 'Downsampled to res 4 (cell-aligned terraces) the shape survives.'
+            topHeights(cache.meshOf(leaf, 4)) == [2.0d, 6.0d]
+        and: 'Without a patch, the same childless leaf can only ever be a single box, whatever is asked for.'
+            new SectorMeshCache().meshOf(WorldSector.leaf(cube(0, 8), WorldSectorEtherData.of(Material.ROCK)), 8).faceCount() == 6
+    }
+
+    def "A floating structure in a volume patch meshes with an exposed underside - the far field is volumetric, not a heightmap."()
+    {
+        given: 'A patch whose only content is a slab floating at y 5..6, nothing beneath it.'
+            var leaf = WorldSector.leaf(cube(0, 8), WorldSectorEtherData.of(Material.ROCK),
+                                        patchOf { int x, int y, int z -> y == 5 ? Material.ROCK : Material.AIR })
+        when:
+            var mesh = new SectorMeshCache().meshOf(leaf, 8)
+        then: 'The slab has a drawn underside at y == 5 (a heightmap could never represent this)...'
+            mesh.quads().any { Quad q -> q.normal().y() < -0.5 && [q.c0().y(), q.c1().y(), q.c2().y(), q.c3().y()].every { it == 5.0d } }
+        and: '...and its top at y == 6.'
+            topHeights(mesh) == [6.0d]
+        and: 'Floating content advertises no solid base, so it will occlude nothing behind it.'
+            leaf.volumePatch().solidBaseFraction() == 0.0d
+    }
+
+    /** A volume patch whose cells come from a (x,y,z)->Material function. */
+    private static VolumePatch patchOf( Closure<Material> materialAt ) {
+        Material[] cells = new Material[VolumePatch.CELL_COUNT]
+        for ( int z = 0; z < VolumePatch.RESOLUTION; z++ )
+            for ( int y = 0; y < VolumePatch.RESOLUTION; y++ )
+                for ( int x = 0; x < VolumePatch.RESOLUTION; x++ )
+                    cells[WorldTreeNode.indexOf(x, y, z)] = materialAt(x, y, z) as Material
+        return VolumePatch.of(cells)
+    }
+
+    /** The distinct heights of all upward (+Y) faces of the mesh, ascending. */
+    private static List<Double> topHeights( mesh ) {
+        return mesh.quads().findAll { Quad q -> q.normal().y() > 0.5 }
+                   .collectMany { Quad q -> [q.c0().y(), q.c1().y(), q.c2().y(), q.c3().y()] }
+                   .unique().sort()
     }
 
     def "A coarse leaf whose ether recesses a face meshes as a box shrunk to fit its content."()

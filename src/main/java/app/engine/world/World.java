@@ -530,14 +530,14 @@ public final class World
     }
 
     /**
-     *  @return A childless sector over {@code bounds} described top-down by the generator. It uses the
+     *  @return A childless sector over {@code bounds} described top-down by the generator: the
      *          <i>cheap</i> {@link WorldGenerator#representativeEtherOf} summary (not the full
-     *          {@link WorldGenerator#etherOf}), because the detail cone materializes many of these and a
-     *          per-side summary is not worth its cost at coarse levels &mdash; the renderer draws a
-     *          childless coarse leaf as a single box anyway.
+     *          {@link WorldGenerator#etherOf} &mdash; the detail cone materializes many of these), plus
+     *          the baked {@link WorldGenerator#volumePatchOf volume patch} that lets the renderer mesh
+     *          this childless leaf with real shape at coarse resolutions instead of as a single box.
      */
     private static WorldSector coarseLeaf( WorldGenerator generator, BoundsF64 bounds ) {
-        return WorldSector.leaf(bounds, generator.representativeEtherOf(bounds));
+        return WorldSector.leaf(bounds, generator.representativeEtherOf(bounds), generator.volumePatchOf(bounds));
     }
 
     /** Subdivides a coarse leaf into eight coarse-leaf children (the node keeps its own top-down ether). */
@@ -717,8 +717,9 @@ public final class World
      *          whole sub-tree) is skipped, as is a fully transparent (air) sub-tree.</li>
      *      <li><b>Occlusion culling</b> &mdash; the walk proceeds <b>near&nbsp;&rarr;&nbsp;far</b>;
      *          a fully-{@link WorldSector#isSolidOpaque() solid} sector marks the screen
-     *          silhouette of its <i>drawn</i> box (its bounds {@link WorldSectorEtherData#shrink
-     *          inset-shrunk} to the content, exactly what the renderer fills at res-1)
+     *          silhouette of what it certainly <i>draws</i> (the {@link WorldSectorEtherData#shrink
+     *          inset-shrunk} content box of a res-1 unit, or a patched unit's
+     *          {@link VolumePatch#solidBaseFraction() solid base slab})
      *          into a {@link CoverageGrid} as it is collected, and any later
      *          (farther) sector whose screen rectangle is already fully covered is
      *          skipped, sub-tree and all.</li>
@@ -839,20 +840,29 @@ public final class World
             }
 
             if ( sector.isSolidOpaque() ) {
-                // A perfect occluder: collect it as one render unit (its mesh is just the
-                // shell, so the coarsest resolution suffices) and record its silhouette so it
-                // blocks whatever is behind. Crucially, the silhouette of what is DRAWN: a
-                // res-1 unit is rendered as its inset-shrunk content box (see SectorMeshCache),
-                // so a surface box that is "solid opaque" by face opacity still recedes to the
-                // terrain. Marking the full bounds instead would claim the sky band above the
-                // drawn surface and wrongly cull distant geometry that is visible there.
-                collector.collect(sector, view, 1);
+                // An occluding render unit. "Solid opaque" means opaque on every FACE - not "fills
+                // its bounds": a true solid (no patch) is just its shell, so res-1 suffices, while a
+                // childless surface leaf carries a baked volume patch and is drawn with shape at its
+                // level-of-detail resolution (capped at the patch's grid).
+                VolumePatch patch = sector.volumePatch();
+                int resolution = patch == null ? 1
+                        : Math.min(meshResolutionFor(detailCells(sector.bounds(), view.camera().position())),
+                                   VolumePatch.RESOLUTION);
+                collector.collect(sector, view, resolution);
                 collected++;
                 if ( corners != null ) {
-                    BoundsF64 drawn = sector.ether().shrink(sector.bounds());
-                    double[][] drawnCorners = drawn == sector.bounds() ? corners : project8(drawn);
-                    if ( drawnCorners != null )
-                        coverage.markOccluder(drawnCorners);
+                    // Record the silhouette of what is certainly DRAWN - anything more would
+                    // phantom-cull visible geometry behind it: the inset-shrunk content box for a
+                    // res-1 unit, or for a patched unit the slab every patch column fills up from
+                    // the sector floor (nothing, for content not resting on the floor).
+                    BoundsF64 drawn = resolution == 1
+                            ? sector.ether().shrink(sector.bounds())
+                            : solidBase(sector.bounds(), patch);
+                    if ( drawn != null ) {
+                        double[][] drawnCorners = drawn == sector.bounds() ? corners : project8(drawn);
+                        if ( drawnCorners != null )
+                            coverage.markOccluder(drawnCorners);
+                    }
                 }
                 return;
             }
@@ -879,6 +889,20 @@ public final class World
                 dist[i] = view.camera().position().distance(node.sector(i).bounds().center());
             for ( int i : orderByDistance(dist) )
                 collect(node.sector(i));
+        }
+
+        /**
+         *  @return The slab of {@code bounds} that the patch's columns all fill contiguously up from
+         *          the sector floor &mdash; geometry the patched unit certainly draws at every
+         *          resolution, hence safe to mark as an occluder &mdash; or {@code null} when the
+         *          base is open (e.g. floating content), which then occludes nothing.
+         */
+        private static @Nullable BoundsF64 solidBase( BoundsF64 bounds, VolumePatch patch ) {
+            double fraction = patch.solidBaseFraction();
+            if ( fraction <= 0 )
+                return null;
+            VecF64 min = bounds.min(), max = bounds.max();
+            return BoundsF64.of(min, VecF64.of(max.x(), min.y() + fraction * (max.y() - min.y()), max.z()));
         }
 
         /** @return The 8 corners of {@code bounds} projected to screen, or {@code null} if any is behind the camera. */

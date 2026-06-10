@@ -108,32 +108,41 @@ geometry. Whenever the drawn shape of a unit changes, the marking in
   same picture as today, filled properly by **B**. Update the stale `REFINE_CELLS` doc
   ("exactly the res-1→res-8 boundary") accordingly.
 
-### B. Baked `SurfacePatch` on coarse leaves *(the strategic far-field fix)*
+### B. Baked `VolumePatch` on coarse leaves *(the strategic far-field fix)*
 
-**Data.** A small per-leaf surface summary, generated where `insetsBySide` already
-samples: an **8×8 column grid** over the leaf's footprint, per column
-`(contentTop, material)` with `contentTop = max(surfaceHeightAt, seaLevel)` at the column
-centre, material from the same dominant-visible rule as today; plus the precomputed
-`minTop` over all columns. ≈ 0.8 KB per patch.
+> Revised 2026-06-10 after review: the first draft baked an 8×8 *heightmap*, which
+> hard-wires "distant content is terrain" into the engine. Big far objects may be
+> anything (overhangs, arches, floating structures, future buildings), so the baked
+> summary is **volumetric**: the engine stays content-agnostic and only the *generator*
+> knows the world is currently a height field.
 
-**Placement.** `WorldGenerator.surfacePatchOf(BoundsF64)`; attached by `World.coarseLeaf`
+**Data.** A baked **8×8×8 grid of materials** per coarse leaf — exactly the per-cell
+information `etherOf` already samples and throws away, materialized. One
+`materialAt(cell centre)` sample per cell (cheap; a coarse LoD summary, tunable to
+multi-sample later), `Material.AIR` = empty. Stored palette-compressed
+(`byte[512]` indices + small `Material[]` palette ≈ 0.6 KB). Plus one derived scalar
+for occlusion: `solidBaseFraction` — the fraction of the leaf's height up to which
+*every* column is fully-opaque from the bottom (recovers terrain-slab occlusion;
+naturally 0 for floating content).
+
+**Placement.** `WorldGenerator.volumePatchOf(BoundsF64)`; attached by `World.coarseLeaf`
 (and the grown root's leaves) to non-homogeneous leaves only. Carried as an optional
-field on `WorldSector` (leaf-only, like the former `_ownInsets`), **included in
-equals/hashCode** so the mesh cache keys on it. Homogeneous leaves stay patch-free
-(solid interior or pure air — nothing to shape).
+leaf-only field on `WorldSector`, **included in equals/hashCode** so the mesh cache keys
+on it. Homogeneous leaves stay patch-free (solid interior or pure air — nothing to shape).
 
-**Meshing.** `SectorMeshCache` gains a heightmap path for childless patched leaves at
-res 2–8: downsample the 8×8 column grid to res×res (max of tops — never under-draw a
-peak, same convention as the POS_Y inset), then emit terraced columns: greedy-merged top
-faces + the exposed wall strips between columns of different height. ~r² quads per unit.
-res-1 keeps today's `ether().shrink(bounds)` box. Axis-aligned closed columns mean
-**no cracks/T-junctions between adjacent units of different LoD** — the voxel aesthetic
-sidesteps classic terrain-LoD stitching entirely.
+**Meshing.** No new mesh path: a childless patched leaf at res 2–8 synthesizes its ether
+grid *from the patch* (one shared ether per distinct material) and flows through the
+existing downsample + greedy pipeline from step A unchanged. res-1 keeps today's
+`ether().shrink(bounds)` box. Axis-aligned closed cells mean **no cracks/T-junctions
+between adjacent units of different LoD** — the voxel aesthetic sidesteps classic
+terrain-LoD stitching entirely.
 
 **Traversal.** The `isSolidOpaque` fast path must stop forcing res-1: a patched leaf is
-collected at `meshResolutionFor(cells)` like any other unit. Occlusion marking for a
-patched leaf must shrink to what is certainly drawn: the box `[bounds.min → minTop]`
-(solid under every column), per invariant 2.5.
+collected at `meshResolutionFor(cells)` (capped at the patch's 8). Occlusion marking
+shrinks to what is certainly drawn: the slab `[bounds.min → min.y + solidBaseFraction ×
+height]`, skipped when the base is empty (floating content occludes nothing), per
+invariant 2.5. The 2×2×2 majority-downsampling preserves the slab (a merged bottom cell
+always inherits ≥ half solid inputs), so the marking stays conservative at every res.
 
 **Refinement interplay (follow-up tuning, not part of the first landing).** Once
 childless leaves can mesh up to res-8 from their patch, children are only *needed* above
@@ -180,7 +189,7 @@ becomes optional.
 | Step | Change | Size | Files |
 |------|--------|------|-------|
 | 1 | **A**: pow-2 `meshResolutionFor` + grid downsampling in the mesher | S | `World`, `SectorMeshCache` + specs |
-| 2 | **B**: `SurfacePatch` end-to-end (generator → leaf → mesher → traversal/occlusion) | M/L | `WorldGenerator`, `WorldSector`, `World`, `SectorMeshCache` + specs |
+| 2 | **B**: `VolumePatch` end-to-end (generator → leaf → mesher → traversal/occlusion) | M/L | `WorldGenerator`, `WorldSector`, `World`, `SectorMeshCache` + specs |
 | 3 | **D**: far plane from `VIEW_DISTANCE` + fog; re-land insets-at-all-res | S | `WorldEngineDemo`, `GlRenderer`, `SectorMeshCache` |
 | 4 | **C**: far-field VBO batching (measure first) | M | `GlRenderer` |
 | 5 | Tuning: raise `REFINE_CELLS` once B is visually confirmed | S | `World` |

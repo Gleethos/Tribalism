@@ -43,6 +43,8 @@ public final class WorldSector {
     private final ValueSet<LightSource> _lights;
     private final Tuple<LightTrace> _lightTraces;
     private final @Nullable WorldTreeNode _children;
+    /** A baked coarse volume summary, carried by childless generator-described leaves only (see {@link #volumePatch()}). */
+    private final @Nullable VolumePatch _volumePatch;
 
     // Derived, memoized. Purely a function of the fields above (specifically the
     // children), so it is excluded from equals/hashCode and computed at most once.
@@ -63,12 +65,25 @@ public final class WorldSector {
         Tuple<LightTrace> lightTraces,
         @Nullable WorldTreeNode children
     ) {
+        this(bounds, ether, entities, lights, lightTraces, children, null);
+    }
+
+    private WorldSector(
+        BoundsF64 bounds,
+        WorldSectorEtherData ether,
+        ValueSet<WorldTreeEntityId> entities,
+        ValueSet<LightSource> lights,
+        Tuple<LightTrace> lightTraces,
+        @Nullable WorldTreeNode children,
+        @Nullable VolumePatch volumePatch
+    ) {
         _bounds      = Objects.requireNonNull(bounds);
         _ether       = Objects.requireNonNull(ether);
         _entities    = Objects.requireNonNull(entities);
         _lights      = Objects.requireNonNull(lights);
         _lightTraces = Objects.requireNonNull(lightTraces);
         _children    = children;
+        _volumePatch = children == null ? volumePatch : null; // a branch's shape lives in its children.
         _solidOpaque = Lazy.of(this::computeSolidOpaque);
         _hasOnlyLeafChildren = Lazy.of(this::computeHasOnlyLeafChildren);
         _void        = Lazy.of(this::computeVoid);
@@ -88,14 +103,34 @@ public final class WorldSector {
      *          its matter rather than a full cube &mdash; there is no separate inset state on the sector.
      */
     public static WorldSector leaf( BoundsF64 bounds, WorldSectorEtherData ether ) {
+        return leaf(bounds, ether, null);
+    }
+
+    /**
+     *  @return An empty leaf sector over {@code bounds} made of the given {@code ether}, carrying a
+     *          baked {@link VolumePatch} so the renderer can mesh this childless leaf with real shape
+     *          (terrain, overhangs, structures) at coarse resolutions instead of a single box.
+     */
+    public static WorldSector leaf( BoundsF64 bounds, WorldSectorEtherData ether, @Nullable VolumePatch volumePatch ) {
         return new WorldSector(
                 bounds,
                 ether,
                 ValueSet.of(WorldTreeEntityId.class),
                 ValueSet.of(LightSource.class),
                 Tuple.of(LightTrace.class),
-                null
+                null,
+                volumePatch
             );
+    }
+
+    /**
+     *  @return The baked coarse {@link VolumePatch volume summary} of this childless leaf, or
+     *          {@code null} when there is none (a branch carries its shape in its children; a
+     *          homogeneous leaf is a full box and needs none). Generator-attached, leaf-only,
+     *          and part of this sector's value (it is drawn content).
+     */
+    public @Nullable VolumePatch volumePatch() {
+        return _volumePatch;
     }
 
     /** @return An empty leaf sector over {@code bounds} made of nothing. */
@@ -159,31 +194,31 @@ public final class WorldSector {
     }
 
     public WorldSector withEther( WorldSectorEtherData newEther ) {
-        return new WorldSector(_bounds, newEther, _entities, _lights, _lightTraces, _children);
+        return new WorldSector(_bounds, newEther, _entities, _lights, _lightTraces, _children, _volumePatch);
     }
 
     public WorldSector withChildren( @Nullable WorldTreeNode newChildren ) {
-        return new WorldSector(_bounds, _ether, _entities, _lights, _lightTraces, newChildren);
+        return new WorldSector(_bounds, _ether, _entities, _lights, _lightTraces, newChildren, _volumePatch);
     }
 
     public WorldSector withEntity( WorldTreeEntityId entity ) {
-        return new WorldSector(_bounds, _ether, _entities.add(entity), _lights, _lightTraces, _children);
+        return new WorldSector(_bounds, _ether, _entities.add(entity), _lights, _lightTraces, _children, _volumePatch);
     }
 
     public WorldSector withoutEntity( WorldTreeEntityId entity ) {
-        return new WorldSector(_bounds, _ether, _entities.remove(entity), _lights, _lightTraces, _children);
+        return new WorldSector(_bounds, _ether, _entities.remove(entity), _lights, _lightTraces, _children, _volumePatch);
     }
 
     public WorldSector withLight( LightSource light ) {
-        return new WorldSector(_bounds, _ether, _entities, _lights.add(light), _lightTraces, _children);
+        return new WorldSector(_bounds, _ether, _entities, _lights.add(light), _lightTraces, _children, _volumePatch);
     }
 
     public WorldSector withoutLight( LightSource light ) {
-        return new WorldSector(_bounds, _ether, _entities, _lights.remove(light), _lightTraces, _children);
+        return new WorldSector(_bounds, _ether, _entities, _lights.remove(light), _lightTraces, _children, _volumePatch);
     }
 
     public WorldSector withLightTrace( LightTrace trace ) {
-        return new WorldSector(_bounds, _ether, _entities, _lights, _lightTraces.add(trace), _children);
+        return new WorldSector(_bounds, _ether, _entities, _lights, _lightTraces.add(trace), _children, _volumePatch);
     }
 
     /**
@@ -386,14 +421,15 @@ public final class WorldSector {
             && _entities.equals(other._entities)
             && _lights.equals(other._lights)
             && _lightTraces.equals(other._lightTraces)
-            && Objects.equals(_children, other._children);
+            && Objects.equals(_children, other._children)
+            && Objects.equals(_volumePatch, other._volumePatch);
     }
 
     @Override
     public int hashCode() {
         int h = _hash;
         if ( h == 0 ) {
-            h = Objects.hash(_bounds, _ether, _entities, _lights, _lightTraces, _children);
+            h = Objects.hash(_bounds, _ether, _entities, _lights, _lightTraces, _children, _volumePatch);
             _hash = h;
         }
         return h;

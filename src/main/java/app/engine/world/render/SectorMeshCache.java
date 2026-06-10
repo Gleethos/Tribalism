@@ -2,9 +2,11 @@ package app.engine.world.render;
 
 import app.engine.primitives.BoundsF64;
 import app.engine.primitives.VecF64;
+import app.engine.world.Material;
 import app.engine.world.MaterialId;
 import app.engine.world.Side;
 import app.engine.world.TextureProfile;
+import app.engine.world.VolumePatch;
 import app.engine.world.WorldSector;
 import app.engine.world.WorldSectorEtherData;
 import app.engine.world.WorldTreeNode;
@@ -89,20 +91,47 @@ public final class SectorMeshCache
     }
 
     private static SectorMesh build( WorldSector sector, int res ) {
-        // The tree only offers factor-RESOLUTION levels, so rasterize at the smallest such level that
-        // carries at least the requested detail, then halve the grid down to the target resolution.
+        // At res-1 the whole unit is one box, so shrink it to its content with the ether's per-side insets (a
+        // coarse LoD leaf straddling the surface thus stops at the terrain instead of sticking up as a full
+        // cube). Above res-1 the grid itself carries the shape, so the full bounds are meshed.
+        if ( res == 1 ) {
+            WorldSectorEtherData[] grid = new WorldSectorEtherData[1];
+            rasterize(sector, grid, 1, 0, 0, 0, 1);
+            return greedyMesh(sector.ether().shrink(sector.bounds()), grid, 1);
+        }
+        // The tree only offers factor-RESOLUTION levels, so source the grid at the smallest such level that
+        // carries at least the requested detail - from the sub-tree, or for a childless leaf from its baked
+        // volume patch (the far field's shape) - then halve the grid down to the target resolution.
         int rasterRes = rasterResolutionFor(res);
-        WorldSectorEtherData[] grid = new WorldSectorEtherData[rasterRes * rasterRes * rasterRes];
-        rasterize(sector, grid, rasterRes, 0, 0, 0, rasterRes);
+        WorldSectorEtherData[] grid;
+        VolumePatch patch = sector.isLeaf() ? sector.volumePatch() : null;
+        if ( patch != null ) {
+            grid = patchGrid(patch);
+            rasterRes = VolumePatch.RESOLUTION;
+        } else {
+            grid = new WorldSectorEtherData[rasterRes * rasterRes * rasterRes];
+            rasterize(sector, grid, rasterRes, 0, 0, 0, rasterRes);
+        }
         while ( rasterRes > res ) {
             grid = halve(grid, rasterRes);
             rasterRes /= 2;
         }
-        // At res-1 the whole unit is one box, so shrink it to its content with the ether's per-side insets (a
-        // coarse LoD leaf straddling the surface thus stops at the terrain instead of sticking up as a full
-        // cube). Above res-1 the grid itself carries the shape, so the full bounds are meshed.
-        BoundsF64 meshBounds = res == 1 ? sector.ether().shrink(sector.bounds()) : sector.bounds();
-        return greedyMesh(meshBounds, grid, res);
+        return greedyMesh(sector.bounds(), grid, res);
+    }
+
+    /** @return The ether grid of a baked {@link VolumePatch}: one shared ether per distinct material, air cells empty. */
+    private static WorldSectorEtherData[] patchGrid( VolumePatch patch ) {
+        int n = VolumePatch.RESOLUTION;
+        WorldSectorEtherData[] grid = new WorldSectorEtherData[VolumePatch.CELL_COUNT];
+        Map<Material, WorldSectorEtherData> ethers = new HashMap<>();
+        for ( int z = 0; z < n; z++ )
+            for ( int y = 0; y < n; y++ )
+                for ( int x = 0; x < n; x++ ) {
+                    Material material = patch.material(x, y, z);
+                    if ( !material.texture().isInvisible() )
+                        grid[index(x, y, z, n)] = ethers.computeIfAbsent(material, WorldSectorEtherData::of);
+                }
+        return grid;
     }
 
     /** @return {@code cap} reduced to the largest power of two that is {@code <= cap} (at least 1, at most {@link #MAX_GRID_RES}). */
@@ -170,8 +199,15 @@ public final class SectorMeshCache
         return result;
     }
 
-    /** @return The grid edge to mesh {@code sector} at its finest: {@code 8^depth} to its deepest leaf, capped at {@link #MAX_GRID_RES}. */
+    /**
+     *  @return The grid edge to mesh {@code sector} at its finest: {@code 8^depth} to its deepest leaf,
+     *          capped at {@link #MAX_GRID_RES}. A childless leaf with a baked {@link VolumePatch}
+     *          supports the patch's {@value VolumePatch#RESOLUTION} (the far field's shape); without
+     *          one it can only ever be a single box.
+     */
     private static int gridResolution( WorldSector sector ) {
+        if ( sector.isLeaf() )
+            return sector.volumePatch() != null ? VolumePatch.RESOLUTION : 1;
         int depth = maxLeafDepth(sector);
         int res = 1;
         while ( depth-- > 0 && res * WorldTreeNode.RESOLUTION <= MAX_GRID_RES )

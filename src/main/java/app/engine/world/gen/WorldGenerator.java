@@ -6,9 +6,11 @@ import app.engine.world.Material;
 import app.engine.world.MaterialId;
 import app.engine.world.Side;
 import app.engine.world.TextureProfile;
+import app.engine.world.VolumePatch;
 import app.engine.world.WorldSector;
 import app.engine.world.WorldSectorEtherData;
 import app.engine.world.WorldTreeNode;
+import org.jspecify.annotations.Nullable;
 import sprouts.Tuple;
 
 import java.util.ArrayList;
@@ -214,6 +216,38 @@ public record WorldGenerator(
             ether = ether.withSide(side, TextureProfile.average(faces));
         }
         return withInsets(ether, insetsBySide(bounds));
+    }
+
+    /**
+     *  Bakes the coarse <b>volumetric</b> level-of-detail summary of {@code bounds}: one
+     *  {@link #materialAt material} sample at the centre of each of its
+     *  {@value app.engine.world.VolumePatch#RESOLUTION}&sup3; cells. This is the per-cell information
+     *  {@link #etherOf} samples and then collapses into face averages &mdash; here it is kept, so a
+     *  childless coarse leaf can be <i>meshed with shape</i> (terrain, cliffs, overhangs, floating
+     *  structures &mdash; whatever the noise puts there) without owning a sub-tree. One centre sample
+     *  per cell keeps it cheap (a patch is a far-field summary, not ground truth); like everything
+     *  else here it is a pure, deterministic function of {@code bounds}, so collapsing a sector and
+     *  re-refining it later reproduces the identical patch.
+     *
+     *  @param bounds The region to summarize.
+     *  @return The region's baked volume patch, or {@code null} for a
+     *          {@link #isHomogeneous homogeneous} region (a uniform box has no shape worth baking).
+     */
+    public @Nullable VolumePatch volumePatchOf( BoundsF64 bounds ) {
+        if ( homogeneousMaterial(bounds) != null )
+            return null;
+        int n = VolumePatch.RESOLUTION;
+        VecF64 lo = bounds.min();
+        VecF64 size = bounds.size();
+        Material[] cells = new Material[VolumePatch.CELL_COUNT];
+        for ( int z = 0; z < n; z++ )
+            for ( int y = 0; y < n; y++ )
+                for ( int x = 0; x < n; x++ )
+                    cells[WorldTreeNode.indexOf(x, y, z)] = materialAt(VecF64.of(
+                            lo.x() + (x + 0.5) * size.x() / n,
+                            lo.y() + (y + 0.5) * size.y() / n,
+                            lo.z() + (z + 0.5) * size.z() / n));
+        return VolumePatch.of(cells);
     }
 
     /**
