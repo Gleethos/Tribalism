@@ -204,30 +204,17 @@ public final class SectorMeshCache
     }
 
     /**
-     *  @return The ether representing a merged 2x2x2 block: the most frequent of the present ethers
-     *          (first wins ties). Reusing a dominant EXISTING instance &mdash; the generator's own
-     *          "a block is its dominant material" rule &mdash; rather than averaging a fresh one is
-     *          deliberate: a freshly averaged ether per mixed block allocated six profiles and
-     *          recomputed its lazily-memoized predicates on every (re)build, which alone accounted
-     *          for tens of milliseconds per mid-band chunk mesh; a shared instance costs nothing,
-     *          and at the distances coarse resolutions are drawn the appearance difference is
-     *          invisible while greedy merging actually improves (equal instances merge perfectly).
+     *  @return The ether representing a merged 2x2x2 block: the first present one. Reusing an
+     *          EXISTING instance rather than averaging a fresh one is deliberate: a freshly averaged
+     *          ether per mixed block allocated six profiles and recomputed its lazily-memoized
+     *          predicates on every (re)build, which alone cost tens of milliseconds per mid-band
+     *          chunk mesh. And "first" rather than "most frequent" because the deep ether equality
+     *          needed for counting was itself a profiled hotspot &mdash; at the distances coarse
+     *          resolutions are drawn, which of a block's own materials represents it is invisible,
+     *          and the choice is just as deterministic.
      */
     private static WorldSectorEtherData merged( List<WorldSectorEtherData> present ) {
-        WorldSectorEtherData best = present.get(0);
-        int bestCount = 0;
-        for ( int i = 0; i < present.size(); i++ ) {
-            WorldSectorEtherData candidate = present.get(i);
-            int count = 0;
-            for ( WorldSectorEtherData other : present )
-                if ( candidate.equals(other) )
-                    count++;
-            if ( count > bestCount ) {
-                bestCount = count;
-                best = candidate;
-            }
-        }
-        return best;
+        return present.get(0);
     }
 
     /**

@@ -42,8 +42,13 @@ public final class WorldSectorEtherData
 
     // Derived, memoized: whether this sector reads as a solid surface. Purely a function of
     // the fields above, so it is excluded from equals/hashCode and computed at most once. It
-    // sits on the hot rendering path and combined() is not cheap, hence the lazy cache.
+    // sits on the hot rendering path, hence the lazy cache.
     private final Lazy<Boolean> _majorityOpaque = Lazy.of(this::computeMajorityOpaque);
+
+    // Cached hash (0 = not yet computed; the recompute is benign). Ether hashes feed every sector
+    // hash and value-keyed renderer cache, and hashing six profiles is not free - same scheme as
+    // WorldSector's memoized hash.
+    private int _hash;
 
     /** Takes ownership of {@code sides}: callers must not retain or mutate it afterwards. */
     private WorldSectorEtherData( MaterialId material, TextureProfile[] sides ) {
@@ -51,14 +56,23 @@ public final class WorldSectorEtherData
         _sides = sides;
     }
 
+    /** The interned uniform ether per material (see {@link #of(Material)}). */
+    private static final java.util.concurrent.ConcurrentHashMap<Material, WorldSectorEtherData> UNIFORM =
+            new java.util.concurrent.ConcurrentHashMap<>();
+
     /** Empty space: the air material with an invisible appearance on every side. */
     public static WorldSectorEtherData empty() {
         return of(Material.AIR);
     }
 
-    /** @return Ether whose six faces all show {@code material}'s default appearance. */
+    /**
+     *  @return The ether whose six faces all show {@code material}'s default appearance &mdash;
+     *          <b>interned</b>: the same shared instance per material. A generated chunk holds hundreds
+     *          of thousands of uniform leaves; sharing one instance per material means their memoized
+     *          predicates, hashes and identity-fast equality are paid once per process, not per voxel.
+     */
     public static WorldSectorEtherData of( Material material ) {
-        return uniform(material.materialId(), material.texture());
+        return UNIFORM.computeIfAbsent(material, m -> uniform(m.materialId(), m.texture()));
     }
 
     /** @return Ether with the given {@code material} and the same {@code appearance} on all six faces. */
@@ -177,7 +191,14 @@ public final class WorldSectorEtherData
     }
 
     private boolean computeMajorityOpaque() {
-        return combined().isOpaque();
+        // Equivalent to combined().isOpaque() - the average of the sides' OPACITY is the OPACITY of the
+        // averaged profile - but without materializing the full 20-quality average. This predicate is
+        // probed for every grid cell of every mesh build (hundreds of thousands of fresh leaf ethers
+        // when a generated chunk is meshed), where combined()'s allocations dominated whole frames.
+        double opacity = 0;
+        for ( TextureProfile side : _sides )
+            opacity += side.intensityOf(Texture.OPACITY);
+        return opacity / _sides.length >= TextureProfile.OPACITY_THRESHOLD;
     }
 
     @Override
@@ -189,7 +210,12 @@ public final class WorldSectorEtherData
 
     @Override
     public int hashCode() {
-        return 31 * _material.hashCode() + Arrays.hashCode(_sides);
+        int h = _hash;
+        if ( h == 0 ) {
+            h = 31 * _material.hashCode() + Arrays.hashCode(_sides);
+            _hash = h;
+        }
+        return h;
     }
 
     @Override

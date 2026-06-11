@@ -241,9 +241,36 @@ public record WorldGenerator(
      *  @return The region's baked volume patch, or {@code null} for a
      *          {@link #isHomogeneous homogeneous} region (a uniform box has no shape worth baking).
      */
+    /**
+     *  Everything {@link app.engine.world.World} needs to make a childless coarse leaf, computed with
+     *  <b>one</b> homogeneity probe: {@link #representativeEtherOf} and {@link #volumePatchOf} each
+     *  gate on (the identical) {@code homogeneousMaterial} sample, and the detail cone materializes so
+     *  many coarse leaves while streaming that the duplicate nine-sample probes were a measurable share
+     *  of the updater thread. The parts equal those methods' results exactly.
+     *
+     *  @param bounds The region the leaf will cover.
+     *  @return Its representative ether and (for a non-uniform region) its baked volume patch.
+     */
+    public CoarseDescription describeCoarse( BoundsF64 bounds ) {
+        Material homogeneous = homogeneousMaterial(bounds);
+        if ( homogeneous != null )
+            return new CoarseDescription(WorldSectorEtherData.of(homogeneous), null);
+        WorldSectorEtherData ether = withInsets(
+                WorldSectorEtherData.of(dominantVisibleMaterial(bounds)), insetsBySide(bounds));
+        return new CoarseDescription(ether, bakeVolumePatch(bounds));
+    }
+
+    /** The two generator-described parts of a coarse leaf (see {@link #describeCoarse}). */
+    public record CoarseDescription( WorldSectorEtherData ether, @Nullable VolumePatch volumePatch ) {}
+
     public @Nullable VolumePatch volumePatchOf( BoundsF64 bounds ) {
         if ( homogeneousMaterial(bounds) != null )
             return null;
+        return bakeVolumePatch(bounds);
+    }
+
+    /** The body of {@link #volumePatchOf} for a region already known to be non-uniform. */
+    private VolumePatch bakeVolumePatch( BoundsF64 bounds ) {
         int n = VolumePatch.RESOLUTION;
         VecF64 lo = bounds.min();
         VecF64 size = bounds.size();

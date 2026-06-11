@@ -125,7 +125,9 @@ public final class World
         double half = size / 2;
         BoundsF64 rootBounds = BoundsF64.of(VecF64.of(-half, -half, -half), VecF64.of(half, half, half));
         return new World(
-                WorldSector.leaf(rootBounds, generator.etherOf(rootBounds)),
+                // The patch also serves as the leaf's "non-uniform region" flag, which refine() reads
+                // structurally instead of re-sampling the generator - so the root must carry one too.
+                WorldSector.leaf(rootBounds, generator.etherOf(rootBounds), generator.volumePatchOf(rootBounds)),
                 Association.between(Long.class, Entity.class),
                 Association.between(ScreenId.class, Screen.class),
                 Association.between(ScreenId.class, ScreenInputState.class),
@@ -449,7 +451,12 @@ public final class World
         double cells = detailCells(node.bounds(), eyes);
         // Only surface-straddling sectors carry detail; a uniform region is identical at every level, so it
         // is never worth refining (this bounds the cone to the 2D terrain surface, not the 3D volume).
-        boolean wantsDetail = cells > REFINE_CELLS && !generator.isHomogeneous(node.bounds());
+        // Non-uniformity is read STRUCTURALLY rather than by re-sampling the generator: a coarse leaf
+        // carries a baked volume patch exactly when its region is non-uniform, and a branch exists only
+        // because its region was non-uniform when subdivided. (Probing generator.isHomogeneous here cost
+        // nine noise samples per visited node per walk - the single largest cost of streaming.)
+        boolean nonUniform = !node.isLeaf() || node.volumePatch() != null;
+        boolean wantsDetail = cells > REFINE_CELLS && nonUniform;
 
         if ( edge <= generator.chunkSize() ) {
             // Finest managed level. Detail here is true voxels from generate() - but only within the
@@ -537,7 +544,8 @@ public final class World
      *          this childless leaf with real shape at coarse resolutions instead of as a single box.
      */
     private static WorldSector coarseLeaf( WorldGenerator generator, BoundsF64 bounds ) {
-        return WorldSector.leaf(bounds, generator.representativeEtherOf(bounds), generator.volumePatchOf(bounds));
+        WorldGenerator.CoarseDescription description = generator.describeCoarse(bounds);
+        return WorldSector.leaf(bounds, description.ether(), description.volumePatch());
     }
 
     /** Subdivides a coarse leaf into eight coarse-leaf children (the node keeps its own top-down ether). */

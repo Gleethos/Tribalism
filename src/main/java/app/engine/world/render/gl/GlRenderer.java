@@ -214,6 +214,8 @@ public final class GlRenderer implements Renderer
         final int vbo;
         final int vertexCount;
         long lastUsedFrame;
+        /** The exact key instance this chunk is stored under (see {@code chunkFor}'s key refresh). */
+        ChunkKey storedKey;
 
         GpuChunk( int vao, int vbo, int vertexCount, long frame ) {
             this.vao = vao;
@@ -343,6 +345,16 @@ public final class GlRenderer implements Renderer
             GpuChunk gpu = _chunks.get(key);
             if ( gpu == null ) {
                 gpu = uploadChunk(chunk, meshResolution);
+                gpu.storedKey = key;
+                _chunks.put(key, gpu);
+            } else if ( gpu.storedKey.sector() != chunk ) {
+                // The world stream produced a NEW (value-equal) sector instance for this chunk. A plain
+                // HashMap keeps the OLD key on a hit, so every later frame's lookup would re-run the
+                // DEEP value-equality between the two instances (a whole-subtree walk per chunk per
+                // frame, profiled as a major frame cost). Re-store under the live instance once, so
+                // lookups go back to identity-fast.
+                _chunks.remove(gpu.storedKey);
+                gpu.storedKey = key;
                 _chunks.put(key, gpu);
             }
             return gpu;
@@ -388,10 +400,15 @@ public final class GlRenderer implements Renderer
 
         /** The texture-array layer for an appearance, baking and uploading it on first use (cached). */
         private int layerFor( TextureProfile profile ) {
-            // Key by APPEARANCE only: the inset is geometry, not look, and it varies continuously per
-            // surface cell - keying the raw profile flooded all MAX_LAYERS slots with visually identical
-            // bakes and pushed everything else onto the layer-0 fallback.
-            TextureProfile appearance = profile.inset() == 0 ? profile : profile.withInset(0);
+            // Key (and bake) by the appearance BUCKET, not the raw profile. Aggregated far-field faces
+            // are a continuum of slightly different profiles (and carry geometric insets); keying them
+            // raw flooded all MAX_LAYERS slots with visually identical ~50ms bakes - a frame hitch per
+            // streamed-in sector - and then pushed everything else onto the layer-0 fallback.
+            // Four steps per quality: coarse enough that aggregated blends collapse onto few buckets
+            // (and their many faint qualities round to zero, which also makes each bake cheap - the
+            // baker evaluates one noise pattern per PRESENT quality per pixel), fine enough that the
+            // pure authored materials keep distinct looks.
+            TextureProfile appearance = profile.bucketed(4);
             Integer layer = _layers.get(appearance);
             if ( layer != null )
                 return layer;

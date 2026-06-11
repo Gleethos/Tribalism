@@ -44,6 +44,9 @@ public final class TextureProfile
 
     /** Per-quality intensities in {@code [0, 1]}, indexed by {@link Texture#ordinal()}. Never exposed. */
     private final double[] _intensities;
+    /** Cached hash (0 = not yet computed; the recompute is benign) - profiles are hashed by every
+     *  ether/sector hash and every value-keyed renderer cache. */
+    private int _hash;
     /** How far content is recessed behind this face, in {@code [0, 1]} of the sector's extent (geometry, not appearance). */
     private final double _inset;
 
@@ -113,6 +116,24 @@ public final class TextureProfile
     }
 
     /**
+     *  @return This profile's <b>appearance bucket</b>: every quality intensity rounded to a multiple
+     *          of {@code 1/steps}, and no inset (recession is geometry, not look). Aggregation breeds
+     *          a continuum of slightly different profiles (every averaged super-sector face is unique);
+     *          anything that pays per <i>distinct</i> appearance &mdash; like a renderer baking one
+     *          texture tile per look &mdash; keys by this bucket so that continuum collapses onto a few
+     *          shared looks. Returns {@code this} when already bucketed (no allocation).
+     */
+    public TextureProfile bucketed( int steps ) {
+        double[] rounded = new double[COUNT];
+        boolean changed = _inset != 0;
+        for ( int i = 0; i < COUNT; i++ ) {
+            rounded[i] = Math.round(_intensities[i] * steps) / (double) steps;
+            changed |= rounded[i] != _intensities[i];
+        }
+        return changed ? new TextureProfile(rounded, 0.0) : this;
+    }
+
+    /**
      *  Computes the per-quality average of many profiles. This is the core of
      *  level-of-detail aggregation: a parent sector's per-side appearance is the
      *  average of the matching-side profiles of its boundary children. It is a flat
@@ -174,7 +195,12 @@ public final class TextureProfile
 
     @Override
     public int hashCode() {
-        return 31 * Arrays.hashCode(_intensities) + Double.hashCode(_inset);
+        int h = _hash;
+        if ( h == 0 ) {
+            h = 31 * Arrays.hashCode(_intensities) + Double.hashCode(_inset);
+            _hash = h;
+        }
+        return h;
     }
 
     @Override
