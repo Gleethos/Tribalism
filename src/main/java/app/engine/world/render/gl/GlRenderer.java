@@ -129,6 +129,8 @@ public final class GlRenderer implements Renderer
     private final AtomicReference<@Nullable World> _world = new AtomicReference<>();
     private final Map<ScreenId, Viewport> _viewports = new ConcurrentHashMap<>();
     private final CopyOnWriteArrayList<Viewport> _canvases = new CopyOnWriteArrayList<>();
+    /** Distinct render-failure signatures already reported (render thread only; see {@link #renderLoop}). */
+    private final java.util.Set<String> _reportedRenderFailures = new java.util.HashSet<>();
     private final Map<ScreenId, FrameStats> _stats = new ConcurrentHashMap<>();
     private final SectorMeshCache _meshCache = new SectorMeshCache(); // CPU meshes; gl-renderer thread only
     private final Thread _renderThread;
@@ -187,8 +189,14 @@ public final class GlRenderer implements Renderer
                     continue; // not yet realized on screen; render() would fail
                 try {
                     viewport.render();
-                } catch ( RuntimeException ignored ) {
-                    // The canvas can momentarily be un-renderable (resize/reparent); try next frame.
+                } catch ( RuntimeException ex ) {
+                    // The canvas can momentarily be un-renderable (resize/reparent), so skipping a frame
+                    // is fine - but report each DISTINCT failure once: a deterministic per-frame throw
+                    // otherwise freezes the picture with no trace whatsoever (a meshing bug hid behind
+                    // this catch as two "frozen spots on the horizon" for days).
+                    String signature = ex.getClass().getName() + ": " + ex.getMessage();
+                    if ( _reportedRenderFailures.add(signature) )
+                        ex.printStackTrace();
                 }
             }
             try {

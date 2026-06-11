@@ -310,6 +310,24 @@ class SectorMeshCache_Spec extends Specification
             mesh.faceCount() < 64
     }
 
+    def "Crossing opposing insets collapse a face to nothing instead of crashing (regression: the frozen horizon spots)."()
+    {
+        given: 'A ground layer of narrow-ridge cells: NEG_X and POS_X insets that CROSS (0.6 + 0.6 > 1).'
+            var ground = blockOf { int x, int y, int z ->
+                if ( y != 0 ) return WorldSectorEtherData.empty()
+                var rock = WorldSectorEtherData.of(Material.ROCK)
+                rock = rock.withSide(Side.NEG_X, rock.sideOf(Side.NEG_X).withInset(0.6))
+                return rock.withSide(Side.POS_X, rock.sideOf(Side.POS_X).withInset(0.6))
+            }
+        when: 'Meshed at full resolution. (This used to build an inverted box and throw - which the GL render loop swallowed per frame, silently freezing the picture whenever such a sector was on screen.)'
+            var mesh = new SectorMeshCache().meshOf(ground, 8)
+        then: 'No throw; the zero-width content simply emits no face on the collapsed axes...'
+            notThrown(IllegalArgumentException)
+        and: '...leaving only the X-facing end caps (the faces whose extents did not collapse).'
+            mesh.faceCount() > 0
+            mesh.quads().every { Quad q -> Math.abs(q.normal().x()) > 0.5 }
+    }
+
     /** An (un-aggregated) 8x8x8 block whose leaves come from a (x,y,z)->WorldSectorEtherData function. */
     private static WorldSector blockOf( Closure<WorldSectorEtherData> etherAt ) {
         var bounds = cube(0, 8)

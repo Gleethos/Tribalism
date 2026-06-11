@@ -358,9 +358,17 @@ public final class SectorMeshCache
                         if ( !mergeable[uu][vv] ) {
                             // A face shrunk on a perpendicular axis can't tile with its neighbours: emit it alone.
                             used[uu][vv] = true;
-                            quads.add(faceQuad(a, u, v, side, p, aPlane,
-                                    origin[u] + (uu + uLoI[uu][vv]) * cell[u], origin[u] + (uu + 1 - uHiI[uu][vv]) * cell[u],
-                                    origin[v] + (vv + vLoI[uu][vv]) * cell[v], origin[v] + (vv + 1 - vHiI[uu][vv]) * cell[v]));
+                            double uLo = origin[u] + (uu + uLoI[uu][vv]) * cell[u];
+                            double uHi = origin[u] + (uu + 1 - uHiI[uu][vv]) * cell[u];
+                            double vLo = origin[v] + (vv + vLoI[uu][vv]) * cell[v];
+                            double vHi = origin[v] + (vv + 1 - vHiI[uu][vv]) * cell[v];
+                            // Opposing insets that CROSS (a narrow ridge: e.g. NEG_X + POS_X > 1) collapse
+                            // the content to a zero-width slab on that axis - same rule as ether shrink().
+                            // Such a face has no area: emit nothing. (Emitting an inverted box threw from
+                            // BoundsF64 - and since the render loop swallows per-frame exceptions, that
+                            // silently froze the picture whenever such a sector was in view.)
+                            if ( uLo < uHi && vLo < vHi )
+                                quads.add(faceQuad(a, u, v, side, p, aPlane, uLo, uHi, vLo, vHi));
                             continue;
                         }
                         // Merge full faces sharing appearance AND recession into a maximal rectangle.
