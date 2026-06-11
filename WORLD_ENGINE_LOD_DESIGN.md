@@ -167,6 +167,23 @@ becomes optional.
 - Derive the demo camera's far plane from `VIEW_DISTANCE` (single source of truth) and
   add distance fog → sky colour in the GL fragment shader so the last band fades, not
   pops.
+- **Depth precision over huge view ranges (DECIDED + DONE 2026-06-11): reversed-Z float
+  depth, not two-pass depth partitioning.** With near 0.5 / far 2000 a 24-bit depth buffer
+  resolves ~0.5u at the horizon (error ∝ z²/near), and the inset mesher deliberately
+  overdraws coplanar step walls — structural far-field z-fighting that worsens as the range
+  grows. Considered the classic two-pass near/far partition (works on any GL, but a
+  permanent seam/complexity tax and only ~√ratio improvement per partition) versus
+  **reversed-Z over a 32-bit float depth buffer** (one pass, no seams, near-constant
+  *relative* precision ≈ 1e-7 over any range, far plane can be infinite). Chose reversed-Z;
+  implemented in `GlRenderer`: GL 4.5 context, `glClipControl(ZERO_TO_ONE)`, offscreen
+  RGBA8 + `DEPTH_COMPONENT32F` target blitted to the canvas, `GL_GREATER`/clear-0, and
+  `Mat4F64.perspectiveReversedInfinite` for rasterization only — culling stays on the
+  camera's finite frustum. Falls back to classic depth where clip control or a float-depth
+  FBO is unavailable (note: macOS caps at GL 4.1 — if a Mac build ever matters, that is
+  where the two-pass partition becomes the right tool; it remains the documented
+  escalation path). The demo's far plane is raised to 4096 (> VIEW_DISTANCE diagonal), so
+  the horizon ring is no longer frustum-clipped — under reversed-Z the far plane only
+  governs culling, never depth quality.
 - ~~Re-land the per-cell-inset greedy mesher (insets at all resolutions) on top of **A**.~~
   **Done 2026-06-10** (pulled forward after review: only res-1 boxes shrank, so LoD shapes
   were inconsistently blocky). The reverted `07f9c87` mesher is re-landed (coverage-based

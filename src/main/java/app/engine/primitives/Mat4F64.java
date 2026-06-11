@@ -103,6 +103,33 @@ public final class Mat4F64
     }
 
     /**
+     *  A right-handed <b>reversed-Z</b> perspective projection with an <b>infinite</b> far plane,
+     *  mapping depth into {@code [0, 1]} with {@code 1} at the near plane and {@code 0} at infinity.
+     *  <p>
+     *  This is the projection for a floating-point depth buffer: floats are densest near zero, which
+     *  reversed-Z hands to the <i>far</i> field, yielding near-constant <i>relative</i> depth precision
+     *  over arbitrarily large view ranges (no z-fighting at the horizon, no far-plane tradeoff) where
+     *  the classic {@code [-1, 1]} mapping of {@link #perspective} degrades quadratically with distance.
+     *  A renderer using it must flip its conventions accordingly: depth test {@code GREATER}, clear
+     *  depth {@code 0}, and clip-space depth declared as {@code [0, 1]} (e.g.
+     *  {@code glClipControl(..., GL_ZERO_TO_ONE)}). Culling keeps using the finite
+     *  {@link #perspective} frustum; this matrix only shapes what the GPU rasterizes.
+     *
+     *  @param fovYRadians The vertical field of view, in radians.
+     *  @param aspect The viewport aspect ratio ({@code width / height}).
+     *  @param near The distance to the near clipping plane (positive).
+     */
+    public static Mat4F64 perspectiveReversedInfinite( double fovYRadians, double aspect, double near ) {
+        double f = 1.0 / Math.tan(fovYRadians / 2.0);
+        return new Mat4F64(new double[]{
+                f / aspect, 0,  0,  0,
+                0,          f,  0,  0,
+                0,          0,  0,  near,
+                0,          0, -1,  0
+        });
+    }
+
+    /**
      *  A right-handed orthographic projection matrix mapping the given box into
      *  the OpenGL clip cube.
      */

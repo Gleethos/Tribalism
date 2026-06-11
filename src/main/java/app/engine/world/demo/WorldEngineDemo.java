@@ -83,7 +83,10 @@ public final class WorldEngineDemo
 
     private static CameraF64 orbitingCamera( double angleRadians, double aspect ) {
         VecF64 position = VecF64.of(Math.cos(angleRadians) * ORBIT_RADIUS, ORBIT_HEIGHT, Math.sin(angleRadians) * ORBIT_RADIUS);
-        return new CameraF64(position, VecF64.zero(), VecF64.of(0, 1, 0), Math.toRadians(60), aspect, 0.5, 2000);
+        // Far plane comfortably beyond the world's VIEW_DISTANCE (2048, plus diagonal margin) so the
+        // horizon ring is no longer frustum-clipped; on the GL reversed-Z path depth precision is
+        // independent of this value anyway (the far plane only governs culling).
+        return new CameraF64(position, VecF64.zero(), VecF64.of(0, 1, 0), Math.toRadians(60), aspect, 0.5, 4096);
     }
 
     private static void showWindow( World initialWorld ) {

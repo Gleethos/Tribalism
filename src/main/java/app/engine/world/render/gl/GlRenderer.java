@@ -1,5 +1,6 @@
 package app.engine.world.render.gl;
 
+import app.engine.primitives.CameraF64;
 import app.engine.primitives.Mat4F64;
 import app.engine.primitives.VecF64;
 import app.engine.world.ScreenId;
@@ -21,6 +22,7 @@ import org.lwjgl.opengl.GL13;
 import org.lwjgl.opengl.GL15;
 import org.lwjgl.opengl.GL20;
 import org.lwjgl.opengl.GL30;
+import org.lwjgl.opengl.GL45;
 import org.lwjgl.opengl.awt.AWTGLCanvas;
 import org.lwjgl.opengl.awt.GLData;
 import org.lwjgl.system.MemoryUtil;
@@ -147,8 +149,12 @@ public final class GlRenderer implements Renderer
     public synchronized Component viewportFor( ScreenId screenId ) {
         return _viewports.computeIfAbsent(screenId, id -> {
             GLData data = new GLData();
-            data.majorVersion = 3;
-            data.minorVersion = 3;
+            // 4.5 for glClipControl, the prerequisite of the reversed-Z float-depth path (see initGL) -
+            // available on Linux/Windows drivers for the last decade. (macOS caps at GL 4.1; if a Mac
+            // build ever matters, initGL's capability check falls back to the classic depth path there,
+            // but the context request itself would also need lowering - see WORLD_ENGINE_LOD_DESIGN.md.)
+            data.majorVersion = 4;
+            data.minorVersion = 5;
             data.profile = GLData.Profile.CORE;
             data.depthSize = 24;
             data.doubleBuffer = true;
@@ -260,6 +266,12 @@ public final class GlRenderer implements Renderer
         private boolean _mvpReady;
         private long _frame;
 
+        // Reversed-Z state (see initGL): scene drawn into an offscreen target with a FLOAT depth
+        // attachment (the default framebuffer's fixed-point depth would void the precision win),
+        // then the colour is blitted onto the canvas.
+        private boolean _reversedZ;
+        private int _fbo, _fboColor, _fboDepth, _fboWidth, _fboHeight;
+
         Viewport( ScreenId screenId, GLData data ) {
             super(data);
             _screenId = screenId;
@@ -270,7 +282,19 @@ public final class GlRenderer implements Renderer
             createCapabilities();
             GL11.glClearColor(SKY_R, SKY_G, SKY_B, 1f);
             GL11.glEnable(GL11.GL_DEPTH_TEST);
-            GL11.glDepthFunc(GL11.GL_LESS);
+            // Reversed-Z over a 32-bit FLOAT depth buffer (rendered offscreen, blitted to the canvas):
+            // depth 1 at the near plane, 0 at infinity (Mat4F64.perspectiveReversedInfinite). Floats are
+            // densest near zero, so the far field gets the precision - near-constant RELATIVE precision
+            // over any view range, where the classic mapping resolved only ~0.5u at a 2km horizon (and
+            // this mesher deliberately overdraws coplanar step walls, so that z-fought visibly). Needs
+            // glClipControl to declare [0,1] clip depth; without it (e.g. macOS) fall back to classic Z.
+            _reversedZ = getCapabilities().OpenGL45 || getCapabilities().GL_ARB_clip_control;
+            if ( _reversedZ ) {
+                GL45.glClipControl(GL20.GL_LOWER_LEFT, GL45.GL_ZERO_TO_ONE);
+                GL11.glDepthFunc(GL11.GL_GREATER);
+                GL11.glClearDepth(0.0);
+            } else
+                GL11.glDepthFunc(GL11.GL_LESS);
             // Back-face culling: the mesher emits only outward-facing shell quads, all wound counter-clockwise
             // seen from outside (see Cubes.FACE_CORNERS), so the hidden back side of every face is dropped.
             // This roughly halves the submitted triangles and stops the insides of meshes showing through when
@@ -304,7 +328,12 @@ public final class GlRenderer implements Renderer
 
         @Override
         public void paintGL() {
-            GL11.glViewport(0, 0, getFramebufferWidth(), getFramebufferHeight());
+            int width = getFramebufferWidth(), height = getFramebufferHeight();
+            if ( _reversedZ && width > 0 && height > 0 ) {
+                ensureFramebuffer(width, height);
+                GL30.glBindFramebuffer(GL30.GL_FRAMEBUFFER, _fbo);
+            }
+            GL11.glViewport(0, 0, width, height);
             GL11.glClear(GL11.GL_COLOR_BUFFER_BIT | GL11.GL_DEPTH_BUFFER_BIT);
 
             World world = _world.get();
@@ -319,7 +348,7 @@ public final class GlRenderer implements Renderer
                         _screenId, CHUNK_SIZE,
                         ( sector, view, meshResolution ) -> {
                             if ( !_mvpReady ) {
-                                captureMvp(view.viewProjection());
+                                captureMvp(rasterizationMatrixFor(view));
                                 _mvpReady = true;
                             }
                             GpuChunk chunk = chunkFor(sector, meshResolution);
@@ -343,8 +372,65 @@ public final class GlRenderer implements Renderer
                 }
                 evictStaleChunks();
             }
+            if ( _reversedZ && width > 0 && height > 0 ) {
+                // Copy the offscreen colour onto the canvas; the float depth never leaves the FBO.
+                GL30.glBindFramebuffer(GL30.GL_READ_FRAMEBUFFER, _fbo);
+                GL30.glBindFramebuffer(GL30.GL_DRAW_FRAMEBUFFER, 0);
+                GL30.glBlitFramebuffer(0, 0, width, height, 0, 0, width, height,
+                                       GL11.GL_COLOR_BUFFER_BIT, GL11.GL_NEAREST);
+                GL30.glBindFramebuffer(GL30.GL_FRAMEBUFFER, 0);
+            }
             _stats.put(_screenId, new FrameStats(faces, occlusionCulled));
             swapBuffers();
+        }
+
+        /**
+         *  @return The matrix the GPU rasterizes with: on the reversed-Z path the
+         *          {@link Mat4F64#perspectiveReversedInfinite reversed, infinite-far} projection over
+         *          the camera's view (the camera's own finite frustum keeps governing culling); on the
+         *          classic path the view's ordinary view-projection.
+         */
+        private Mat4F64 rasterizationMatrixFor( app.engine.world.ViewInfo view ) {
+            if ( !_reversedZ )
+                return view.viewProjection();
+            CameraF64 camera = view.camera();
+            return Mat4F64.perspectiveReversedInfinite(camera.fovYRadians(), camera.aspect(), camera.near())
+                          .mul(camera.viewMatrix());
+        }
+
+        /** (Re)creates the offscreen render target (RGBA8 colour + 32-bit FLOAT depth) at the canvas size. */
+        private void ensureFramebuffer( int width, int height ) {
+            if ( _fbo != 0 && width == _fboWidth && height == _fboHeight )
+                return;
+            if ( _fbo != 0 ) {
+                GL30.glDeleteFramebuffers(_fbo);
+                GL30.glDeleteRenderbuffers(_fboColor);
+                GL30.glDeleteRenderbuffers(_fboDepth);
+            }
+            _fboColor = GL30.glGenRenderbuffers();
+            GL30.glBindRenderbuffer(GL30.GL_RENDERBUFFER, _fboColor);
+            GL30.glRenderbufferStorage(GL30.GL_RENDERBUFFER, GL11.GL_RGBA8, width, height);
+            _fboDepth = GL30.glGenRenderbuffers();
+            GL30.glBindRenderbuffer(GL30.GL_RENDERBUFFER, _fboDepth);
+            GL30.glRenderbufferStorage(GL30.GL_RENDERBUFFER, GL30.GL_DEPTH_COMPONENT32F, width, height);
+            _fbo = GL30.glGenFramebuffers();
+            GL30.glBindFramebuffer(GL30.GL_FRAMEBUFFER, _fbo);
+            GL30.glFramebufferRenderbuffer(GL30.GL_FRAMEBUFFER, GL30.GL_COLOR_ATTACHMENT0, GL30.GL_RENDERBUFFER, _fboColor);
+            GL30.glFramebufferRenderbuffer(GL30.GL_FRAMEBUFFER, GL30.GL_DEPTH_ATTACHMENT, GL30.GL_RENDERBUFFER, _fboDepth);
+            _fboWidth = width;
+            _fboHeight = height;
+            if ( GL30.glCheckFramebufferStatus(GL30.GL_FRAMEBUFFER) != GL30.GL_FRAMEBUFFER_COMPLETE ) {
+                // No float-depth target: undo the reversed conventions and render classically on screen.
+                GL30.glBindFramebuffer(GL30.GL_FRAMEBUFFER, 0);
+                GL30.glDeleteFramebuffers(_fbo);
+                GL30.glDeleteRenderbuffers(_fboColor);
+                GL30.glDeleteRenderbuffers(_fboDepth);
+                _fbo = 0;
+                _reversedZ = false;
+                GL11.glDepthFunc(GL11.GL_LESS);
+                GL11.glClearDepth(1.0);
+                System.err.println("GlRenderer: float-depth framebuffer unavailable; falling back to classic depth.");
+            }
         }
 
         /** Returns the retained VBO for a chunk at a level of detail, meshing and uploading it once on first sight. */

@@ -96,4 +96,27 @@ class Mat4F64_Spec extends Specification
             m.mul(Mat4F64.identity()) == m
             Mat4F64.identity().mul(m) == m
     }
+
+    def "The reversed-Z infinite projection maps the near plane to depth 1 and the far field towards 0."()
+    {
+        given: 'A reversed projection and view-space points along the forward (-z) axis.'
+            var p = Mat4F64.perspectiveReversedInfinite(Math.toRadians(60), 1.0, 2.0)
+            var depthAt = { double viewZ ->
+                double clipZ = p.get(2, 2) * viewZ + p.get(2, 3)
+                double clipW = p.get(3, 2) * viewZ
+                return clipZ / clipW
+            }
+        expect: 'Depth is 1 exactly at the near plane...'
+            Math.abs(depthAt(-2.0) - 1.0) < 1e-12
+        and: '...falls monotonically with distance...'
+            depthAt(-10.0) > depthAt(-100.0)
+            depthAt(-100.0) > depthAt(-100000.0)
+        and: '...approaching (but never reaching) 0 at extreme range - there is no far plane.'
+            depthAt(-1.0e12) > 0.0
+            depthAt(-1.0e12) < 1e-10
+        and: 'The x/y rows match the classic projection (only depth changes).'
+            var classic = Mat4F64.perspective(Math.toRadians(60), 1.0, 2.0, 1000.0)
+            p.get(0, 0) == classic.get(0, 0)
+            p.get(1, 1) == classic.get(1, 1)
+    }
 }
