@@ -82,6 +82,10 @@ public final class CoverageGrid
             minX = Math.min(minX, p[0]); maxX = Math.max(maxX, p[0]);
             minY = Math.min(minY, p[1]); maxY = Math.max(maxY, p[1]);
         }
+        if ( maxX - minX < _tile || maxY - minY < _tile )
+            return; // too small to contain even one whole tile: nothing could be marked. This is the
+                    // common case for the THOUSANDS of small far-field occluders tested every frame,
+                    // so bailing before any tile/point-in-polygon work matters.
         int txMin = Math.max(0, (int) (minX / _tile));
         int tyMin = Math.max(0, (int) (minY / _tile));
         int txMax = Math.min(_cols - 1, (int) (maxX / _tile));

@@ -273,23 +273,41 @@ class SectorMeshCache_Spec extends Specification
 
     def "A volume patch's baked top insets recede far terraces to the continuous surface (no cell quantization)."()
     {
-        given: 'A patch of 4-cell-high ground whose columns are all recessed by a fifth of a cell on top.'
+        given: 'A patch of 4-cell-high ground whose columns are all recessed by a quarter cell on top.'
             Material[] cells = new Material[VolumePatch.CELL_COUNT]
             for ( int z = 0; z < 8; z++ )
                 for ( int y = 0; y < 8; y++ )
                     for ( int x = 0; x < 8; x++ )
                         cells[WorldTreeNode.indexOf(x, y, z)] = y < 4 ? Material.ROCK : Material.AIR
             double[] topInsets = new double[64]
-            Arrays.fill(topInsets, 0.2d) // 0.2 * 255 == 51: survives the patch's byte quantization exactly.
+            Arrays.fill(topInsets, 0.25d) // a multiple of the mesher's 1/16 geometric quantization.
             var leaf = WorldSector.leaf(cube(0, 8), WorldSectorEtherData.of(Material.ROCK), VolumePatch.of(cells, topInsets))
         when:
             var mesh = new SectorMeshCache().meshOf(leaf, 8)
             var tops = topHeights(mesh)
-        then: 'One terrace top, a fifth of a cell below the cell boundary: y = 4 - 0.2 = 3.8.'
+        then: 'One merged terrace top, a quarter cell below the cell boundary: y = 4 - 0.25 = 3.75.'
             tops.size() == 1
-            Math.abs(tops[0] - 3.8d) < 1e-9
+            Math.abs(tops[0] - 3.75d) < 1e-9
         and: 'The advertised occluding base never reaches above that drawn surface.'
-            leaf.volumePatch().solidBaseFraction() <= 3.8d / 8 + 1e-9
+            leaf.volumePatch().solidBaseFraction() <= 3.75d / 8 + 1e-9
+    }
+
+    def "Recession is quantized for merging: nearly-equal insets share one quad, instead of one quad per cell."()
+    {
+        given: 'A ground layer whose every cell recedes by a slightly DIFFERENT amount within one 1/16 bucket.'
+            var ground = blockOf { int x, int y, int z ->
+                if ( y != 0 ) return WorldSectorEtherData.empty()
+                var rock = WorldSectorEtherData.of(Material.ROCK)
+                // 0.5 .. 0.5567: all in the same 1/16 bucket (8/16), as continuous terrain insets would be.
+                return rock.withSide(Side.POS_Y, rock.sideOf(Side.POS_Y).withInset(0.5 + (x + z * 8) * 0.0009))
+            }
+        when:
+            var mesh = new SectorMeshCache().meshOf(ground, 8)
+        then: 'The 64 almost-equal tops merge into ONE quad at the floored bucket depth (y = 0.5)...'
+            mesh.quads().count { Quad q -> q.normal().y() > 0.5 } == 1
+            topHeights(mesh) == [0.5d]
+        and: '...instead of the 64 per-cell tops raw continuous insets would force.'
+            mesh.faceCount() < 64
     }
 
     /** An (un-aggregated) 8x8x8 block whose leaves come from a (x,y,z)->WorldSectorEtherData function. */

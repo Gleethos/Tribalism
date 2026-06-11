@@ -103,16 +103,24 @@ public record WorldGenerator(
 
     /** @return Which {@link Material} occupies the single point {@code p}. */
     public Material materialAt( VecF64 p ) {
-        double surface = surfaceHeightAt(p.x(), p.z());
-        if ( p.y() > surface )
-            return p.y() <= seaLevel ? Material.WATER : Material.AIR;
+        return materialAt(p.x(), p.y(), p.z(), surfaceHeightAt(p.x(), p.z()));
+    }
 
-        double depthBelow = surface - p.y();
+    /**
+     *  The body of {@link #materialAt(VecF64)} with the (expensive, fractal) {@code surface} height
+     *  passed in, so column-shaped samplers ({@link #volumePatchOf}) can compute it once per column
+     *  instead of once per cell. Same result, by construction.
+     */
+    private Material materialAt( double x, double y, double z, double surface ) {
+        if ( y > surface )
+            return y <= seaLevel ? Material.WATER : Material.AIR;
+
+        double depthBelow = surface - y;
         // Carve caves below the immediate surface using 3D noise.
         if ( depthBelow > grassDepth ) {
-            double cave = noise.noise(p.x() * 0.05, p.y() * 0.05, p.z() * 0.05);
+            double cave = noise.noise(x * 0.05, y * 0.05, z * 0.05);
             if ( cave > caveThreshold )
-                return p.y() <= seaLevel ? Material.WATER : Material.AIR;
+                return y <= seaLevel ? Material.WATER : Material.AIR;
         }
         if ( depthBelow <= grassDepth ) return Material.GRASS;
         if ( depthBelow <= soilDepth )  return Material.SOIL;
@@ -239,15 +247,24 @@ public record WorldGenerator(
         int n = VolumePatch.RESOLUTION;
         VecF64 lo = bounds.min();
         VecF64 size = bounds.size();
+        // The fractal surface height is a function of (x, z) only, so it is sampled once per COLUMN
+        // and shared by the column's cells (and by the top-inset pass below) - the fbm is by far the
+        // dominant cost of baking a patch, and per-cell resampling made the streaming thread noise-bound.
+        double[] surfaces = new double[n * n];
+        for ( int z = 0; z < n; z++ )
+            for ( int x = 0; x < n; x++ )
+                surfaces[x + z * n] = surfaceHeightAt(lo.x() + (x + 0.5) * size.x() / n,
+                                                      lo.z() + (z + 0.5) * size.z() / n);
         Material[] cells = new Material[VolumePatch.CELL_COUNT];
         for ( int z = 0; z < n; z++ )
             for ( int y = 0; y < n; y++ )
                 for ( int x = 0; x < n; x++ )
-                    cells[WorldTreeNode.indexOf(x, y, z)] = materialAt(VecF64.of(
+                    cells[WorldTreeNode.indexOf(x, y, z)] = materialAt(
                             lo.x() + (x + 0.5) * size.x() / n,
                             lo.y() + (y + 0.5) * size.y() / n,
-                            lo.z() + (z + 0.5) * size.z() / n));
-        return VolumePatch.of(cells, topInsetsOf(cells, bounds));
+                            lo.z() + (z + 0.5) * size.z() / n,
+                            surfaces[x + z * n]);
+        return VolumePatch.of(cells, topInsetsOf(cells, bounds, surfaces));
     }
 
     /**
@@ -257,7 +274,7 @@ public record WorldGenerator(
      *          cells. Only applied where the surface really does cross that cell (a cave roof or
      *          floating content keeps a flush top: the volumetric grid stays the shape authority).
      */
-    private double[] topInsetsOf( Material[] cells, BoundsF64 bounds ) {
+    private double[] topInsetsOf( Material[] cells, BoundsF64 bounds, double[] surfaces ) {
         int n = VolumePatch.RESOLUTION;
         VecF64 lo = bounds.min(), hi = bounds.max();
         double cellHeight = (hi.y() - lo.y()) / n;
@@ -269,9 +286,7 @@ public record WorldGenerator(
                     top--;
                 if ( top < 0 )
                     continue; // an empty column has no surface to refine.
-                double colX = lo.x() + (x + 0.5) * (hi.x() - lo.x()) / n;
-                double colZ = lo.z() + (z + 0.5) * (hi.z() - lo.z()) / n;
-                double contentTop = Math.max(surfaceHeightAt(colX, colZ), seaLevel);
+                double contentTop = Math.max(surfaces[x + z * n], seaLevel);
                 double cellTop = lo.y() + (top + 1) * cellHeight;
                 if ( contentTop < cellTop && contentTop >= cellTop - cellHeight )
                     insets[x + z * n] = (cellTop - contentTop) / cellHeight;

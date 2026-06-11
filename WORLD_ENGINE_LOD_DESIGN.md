@@ -176,6 +176,23 @@ becomes optional.
   so far terraces also recede to the continuous surface instead of quantizing to cells.
   `solidBaseFraction` subtracts the recessed top of the shortest column, keeping the
   occlusion slab ⊆ drawn geometry (invariant 2.5).
+- **The inset performance collapse, diagnosed and fixed (2026-06-11).** Per-cell insets were
+  originally reverted because they killed the framerate; the JFR profile
+  (`WorldEngineDemo_2026_06_10_223725.jfr`) showed why: continuous per-cell insets made every
+  cell's appearance object **unique**, which defeated every cache and merge in the pipeline
+  simultaneously — fresh ethers recomputed their lazy `isMajorityOpaque` (~28% of the render
+  thread in `combined()`/`average()`), greedy merging never matched (`depth` equality → 1×1
+  quad explosion, the visible symptom), the GL texture-layer map (keyed by full profile
+  equality, inset included) flooded all `MAX_LAYERS` slots, and `volumePatchOf` resampled the
+  5-octave surface fbm per cell (~60% of the streaming thread). Fixes, none of which change
+  the data model: interned material/top-inset ethers + a per-build solidity mask in
+  `SectorMeshCache`; geometric insets **floor-quantized to 1/16 cell** (`INSET_STEP`) so
+  locally-flat terrain merges again while flooring keeps drawn ⊇ marked (invariant 2.5);
+  `GlRenderer.layerFor` keyed by inset-stripped appearance; per-column (not per-cell) fbm in
+  `volumePatchOf`; dominant-instance (not averaged) ethers in grid downsampling; and a
+  `markOccluder` early-out for silhouettes smaller than one tile. Known remaining cost: a
+  cold res-16/32 mesh of a fully generated chunk ≈ 35 ms (the 64³ rasterize recursion) —
+  near-camera only; revisit if band-crossing hitches show up.
 
 ---
 

@@ -388,14 +388,18 @@ public final class GlRenderer implements Renderer
 
         /** The texture-array layer for an appearance, baking and uploading it on first use (cached). */
         private int layerFor( TextureProfile profile ) {
-            Integer layer = _layers.get(profile);
+            // Key by APPEARANCE only: the inset is geometry, not look, and it varies continuously per
+            // surface cell - keying the raw profile flooded all MAX_LAYERS slots with visually identical
+            // bakes and pushed everything else onto the layer-0 fallback.
+            TextureProfile appearance = profile.inset() == 0 ? profile : profile.withInset(0);
+            Integer layer = _layers.get(appearance);
             if ( layer != null )
                 return layer;
             if ( _layers.size() >= MAX_LAYERS )
                 return 0; // out of layers: fall back to the first appearance rather than fail
             int assigned = _layers.size();
-            uploadLayer(assigned, TextureBaker.bake(profile, TILE_PX));
-            _layers.put(profile, assigned);
+            uploadLayer(assigned, TextureBaker.bake(appearance, TILE_PX));
+            _layers.put(appearance, assigned);
             return assigned;
         }
 

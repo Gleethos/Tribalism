@@ -3,14 +3,12 @@ package app.engine.world.render;
 import app.engine.primitives.BoundsF64;
 import app.engine.primitives.VecF64;
 import app.engine.world.Material;
-import app.engine.world.MaterialId;
 import app.engine.world.Side;
 import app.engine.world.TextureProfile;
 import app.engine.world.VolumePatch;
 import app.engine.world.WorldSector;
 import app.engine.world.WorldSectorEtherData;
 import app.engine.world.WorldTreeNode;
-import org.jspecify.annotations.Nullable;
 import sprouts.Tuple;
 
 import java.util.ArrayList;
@@ -18,6 +16,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.WeakHashMap;
+import java.util.concurrent.ConcurrentHashMap;
 
 /**
  *  Builds and memoizes the occlusion-culled, <b>greedy-meshed</b> {@link SectorMesh}
@@ -112,32 +111,52 @@ public final class SectorMeshCache
         return greedyMesh(sector.bounds(), grid, res);
     }
 
+    /** Interned ether per material, shared across builds and threads, so its memoized predicates and
+     *  identity-based fast paths pay once per process instead of once per mesh build. */
+    private static final Map<Material, WorldSectorEtherData> MATERIAL_ETHERS = new ConcurrentHashMap<>();
+    /** Interned per-material top-inset ether variants, one per quantized {@link VolumePatch#topInset} byte.
+     *  Sharing these is what lets patch columns with equal recession merge and memoize like any voxel. */
+    private static final Map<Material, WorldSectorEtherData[]> TOP_INSET_ETHERS = new ConcurrentHashMap<>();
+
+    private static WorldSectorEtherData etherOf( Material material ) {
+        return MATERIAL_ETHERS.computeIfAbsent(material, WorldSectorEtherData::of);
+    }
+
+    private static WorldSectorEtherData topInsetEtherOf( Material material, double inset ) {
+        int key = (int) Math.round(inset * 255);
+        if ( key <= 0 )
+            return etherOf(material);
+        WorldSectorEtherData[] variants = TOP_INSET_ETHERS.computeIfAbsent(material, m -> new WorldSectorEtherData[256]);
+        WorldSectorEtherData variant = variants[key];
+        if ( variant == null ) {
+            WorldSectorEtherData base = etherOf(material);
+            variant = base.withSide(Side.POS_Y, base.sideOf(Side.POS_Y).withInset(key / 255.0));
+            variants[key] = variant; // benign race: both writers produce an equal value.
+        }
+        return variant;
+    }
+
     /**
-     *  @return The ether grid of a baked {@link VolumePatch}: one shared ether per distinct material, air
-     *          cells empty, and each column's top solid cell recessed by the patch's baked
+     *  @return The ether grid of a baked {@link VolumePatch}: one shared (interned) ether per distinct
+     *          material, air cells empty, and each column's top solid cell recessed by the patch's baked
      *          {@link VolumePatch#topInset(int, int) top inset} &mdash; so a far terrace meshes at the
      *          continuous surface height (like a res-1 shrunk box does) instead of quantizing to cells.
      */
     private static WorldSectorEtherData[] patchGrid( VolumePatch patch ) {
         int n = VolumePatch.RESOLUTION;
         WorldSectorEtherData[] grid = new WorldSectorEtherData[VolumePatch.CELL_COUNT];
-        Map<Material, WorldSectorEtherData> ethers = new HashMap<>();
         for ( int z = 0; z < n; z++ )
             for ( int x = 0; x < n; x++ ) {
                 int top = -1;
                 for ( int y = 0; y < n; y++ ) {
                     Material material = patch.material(x, y, z);
                     if ( !material.texture().isInvisible() ) {
-                        grid[index(x, y, z, n)] = ethers.computeIfAbsent(material, WorldSectorEtherData::of);
+                        grid[index(x, y, z, n)] = etherOf(material);
                         top = y;
                     }
                 }
-                double inset = top < 0 ? 0 : patch.topInset(x, z);
-                if ( inset > 0 ) {
-                    WorldSectorEtherData ether = grid[index(x, top, z, n)];
-                    grid[index(x, top, z, n)] = ether.withSide(Side.POS_Y,
-                            ether.sideOf(Side.POS_Y).withInset(inset));
-                }
+                if ( top >= 0 && patch.topInset(x, z) > 0 )
+                    grid[index(x, top, z, n)] = topInsetEtherOf(patch.material(x, top, z), patch.topInset(x, z));
             }
         return grid;
     }
@@ -161,8 +180,7 @@ public final class SectorMeshCache
     /**
      *  Downsamples the ether grid to half its edge: each output cell merges its 2&times;2&times;2 input
      *  cells, becoming solid when at least half of them are (majority-solid, so thin features fade out
-     *  rather than bloat), with the merged appearance of the cells it absorbed. The overwhelmingly common
-     *  uniform block (all eight inputs the same ether) short-circuits to that ether without averaging.
+     *  rather than bloat), represented by the {@link #merged dominant} of the ethers it absorbed.
      */
     private static WorldSectorEtherData[] halve( WorldSectorEtherData[] grid, int res ) {
         int half = res / 2;
@@ -185,26 +203,31 @@ public final class SectorMeshCache
         return out;
     }
 
-    /** @return The ether representing a merged 2x2x2 block: the shared ether if uniform, else the per-side average. */
+    /**
+     *  @return The ether representing a merged 2x2x2 block: the most frequent of the present ethers
+     *          (first wins ties). Reusing a dominant EXISTING instance &mdash; the generator's own
+     *          "a block is its dominant material" rule &mdash; rather than averaging a fresh one is
+     *          deliberate: a freshly averaged ether per mixed block allocated six profiles and
+     *          recomputed its lazily-memoized predicates on every (re)build, which alone accounted
+     *          for tens of milliseconds per mid-band chunk mesh; a shared instance costs nothing,
+     *          and at the distances coarse resolutions are drawn the appearance difference is
+     *          invisible while greedy merging actually improves (equal instances merge perfectly).
+     */
     private static WorldSectorEtherData merged( List<WorldSectorEtherData> present ) {
-        WorldSectorEtherData first = present.get(0);
-        boolean uniform = true;
-        for ( int i = 1; uniform && i < present.size(); i++ )
-            uniform = first.equals(present.get(i));
-        if ( uniform )
-            return first;
-        List<MaterialId> ids = new ArrayList<>(present.size());
-        for ( WorldSectorEtherData ether : present )
-            ids.add(ether.material());
-        WorldSectorEtherData result = WorldSectorEtherData.empty().withMaterial(MaterialId.merge(ids));
-        List<TextureProfile> faces = new ArrayList<>(present.size());
-        for ( Side side : Side.values() ) {
-            faces.clear();
-            for ( WorldSectorEtherData ether : present )
-                faces.add(ether.sideOf(side));
-            result = result.withSide(side, TextureProfile.average(faces));
+        WorldSectorEtherData best = present.get(0);
+        int bestCount = 0;
+        for ( int i = 0; i < present.size(); i++ ) {
+            WorldSectorEtherData candidate = present.get(i);
+            int count = 0;
+            for ( WorldSectorEtherData other : present )
+                if ( candidate.equals(other) )
+                    count++;
+            if ( count > bestCount ) {
+                bestCount = count;
+                best = candidate;
+            }
         }
-        return result;
+        return best;
     }
 
     /**
@@ -273,9 +296,34 @@ public final class SectorMeshCache
      *  perpendicular inset) and share appearance <i>and</i> recession still merge into maximal rectangles,
      *  so flush, uniform regions (solid interiors, flat ground, voxel chunks) mesh as cheaply as before.
      */
+    /**
+     *  How finely cell insets are honoured geometrically: floored to multiples of {@code 1/16} of a
+     *  cell. Two things depend on this being a quantization (and on it FLOORING):
+     *  <ul>
+     *      <li><b>Merging.</b> Faces only merge when their recession is exactly equal; raw insets are
+     *          continuous (every surface cell unique), which degenerated whole hillsides into 1&times;1
+     *          quads &mdash; the quad explosion that originally got per-cell insets reverted. Sixteen
+     *          buckets keep the error sub-pixel (a cell is on the order of 25 screen pixels at every
+     *          level of detail) while letting locally-flat terrain merge again.</li>
+     *      <li><b>Occlusion.</b> Flooring means a face never recedes <i>more</i> than its raw inset, so
+     *          drawn geometry always covers what the (raw-inset-based) occlusion marking claims.</li>
+     *  </ul>
+     */
+    private static final double INSET_STEP = 16;
+
+    private static double quantized( double inset ) {
+        return Math.floor(inset * INSET_STEP) / INSET_STEP;
+    }
+
     private static SectorMesh greedyMesh( BoundsF64 bounds, WorldSectorEtherData[] grid, int res ) {
         double[] origin = { bounds.min().x(), bounds.min().y(), bounds.min().z() };
         double[] cell = { bounds.size().x() / res, bounds.size().y() / res, bounds.size().z() / res };
+
+        // One opacity probe per cell for the whole build: the per-face loops below would otherwise hit
+        // each cell's (lazily computed, per-instance) majority-opacity a dozen times across the 6 sides.
+        boolean[] solid = new boolean[res * res * res];
+        for ( int i = 0; i < solid.length; i++ )
+            solid[i] = grid[i] != null && grid[i].isMajorityOpaque();
 
         List<Quad> quads = new ArrayList<>();
         TextureProfile[][] face = new TextureProfile[res][res]; // this cell's face appearance, or null if none here
@@ -298,16 +346,17 @@ public final class SectorMeshCache
                     for ( int uu = 0; uu < res; uu++ ) {
                         used[uu][vv] = false;
                         face[uu][vv] = null;
-                        WorldSectorEtherData e = cellAt(grid, res, a, u, v, la, uu, vv);
-                        if ( e == null || !e.isMajorityOpaque() )
+                        int ci = cellIndex(res, a, u, v, la, uu, vv);
+                        if ( !solid[ci] )
                             continue;
-                        double insetA = e.insetOf(side);
-                        if ( insetA == 0 && covered(grid, res, a, u, v, la + step, uu, vv, e, opposite, uNeg, uPos, vNeg, vPos) )
+                        WorldSectorEtherData e = grid[ci];
+                        double insetA = quantized(e.insetOf(side));
+                        if ( insetA == 0 && covered(grid, solid, res, a, u, v, la + step, uu, vv, e, opposite, uNeg, uPos, vNeg, vPos) )
                             continue; // flush face fully hidden behind the neighbour's content.
                         face[uu][vv] = WorldRenderer.faceProfile(e, side);
                         depth[uu][vv] = insetA;
-                        uLoI[uu][vv] = e.insetOf(uNeg); uHiI[uu][vv] = e.insetOf(uPos);
-                        vLoI[uu][vv] = e.insetOf(vNeg); vHiI[uu][vv] = e.insetOf(vPos);
+                        uLoI[uu][vv] = quantized(e.insetOf(uNeg)); uHiI[uu][vv] = quantized(e.insetOf(uPos));
+                        vLoI[uu][vv] = quantized(e.insetOf(vNeg)); vHiI[uu][vv] = quantized(e.insetOf(vPos));
                         mergeable[uu][vv] = uLoI[uu][vv] == 0 && uHiI[uu][vv] == 0 && vLoI[uu][vv] == 0 && vHiI[uu][vv] == 0;
                     }
 
@@ -359,16 +408,19 @@ public final class SectorMeshCache
      *          exposed step wall is still emitted.
      */
     private static boolean covered(
-        WorldSectorEtherData[] grid, int res, int a, int u, int v, int nla, int uu, int vv,
+        WorldSectorEtherData[] grid, boolean[] solid, int res, int a, int u, int v, int nla, int uu, int vv,
         WorldSectorEtherData e, Side opposite, Side uNeg, Side uPos, Side vNeg, Side vPos
     ) {
         if ( nla < 0 || nla >= res )
             return false; // the unit boundary: always exposed.
-        WorldSectorEtherData n = cellAt(grid, res, a, u, v, nla, uu, vv);
-        if ( n == null || !n.isMajorityOpaque() || n.insetOf(opposite) > 0 )
+        int ni = cellIndex(res, a, u, v, nla, uu, vv);
+        if ( !solid[ni] )
             return false;
-        return n.insetOf(uNeg) <= e.insetOf(uNeg) && n.insetOf(uPos) <= e.insetOf(uPos)
-            && n.insetOf(vNeg) <= e.insetOf(vNeg) && n.insetOf(vPos) <= e.insetOf(vPos);
+        WorldSectorEtherData n = grid[ni];
+        if ( quantized(n.insetOf(opposite)) > 0 )
+            return false;
+        return quantized(n.insetOf(uNeg)) <= quantized(e.insetOf(uNeg)) && quantized(n.insetOf(uPos)) <= quantized(e.insetOf(uPos))
+            && quantized(n.insetOf(vNeg)) <= quantized(e.insetOf(vNeg)) && quantized(n.insetOf(vPos)) <= quantized(e.insetOf(vPos));
     }
 
     /** @return Whether the full face at {@code (uu,vv)} can join a merge run: unused, mergeable, present, same recession and appearance. */
@@ -380,11 +432,9 @@ public final class SectorMeshCache
             && depth[uu][vv] == d && p.sameAppearance(face[uu][vv]);
     }
 
-    /** @return The ether of the grid cell at ({@code la} along axis {@code a}, {@code uu}/{@code vv} on the free axes). */
-    private static @Nullable WorldSectorEtherData cellAt(
-        WorldSectorEtherData[] grid, int res, int a, int u, int v, int la, int uu, int vv
-    ) {
-        return grid[index(coord(0, a, la, u, uu, v, vv), coord(1, a, la, u, uu, v, vv), coord(2, a, la, u, uu, v, vv), res)];
+    /** @return The linear grid index of the cell at ({@code la} along axis {@code a}, {@code uu}/{@code vv} on the free axes). */
+    private static int cellIndex( int res, int a, int u, int v, int la, int uu, int vv ) {
+        return index(coord(0, a, la, u, uu, v, vv), coord(1, a, la, u, uu, v, vv), coord(2, a, la, u, uu, v, vv), res);
     }
 
     /** @return The {@link Side} on {@code axis} (0=X, 1=Y, 2=Z) in the positive or negative direction. */
