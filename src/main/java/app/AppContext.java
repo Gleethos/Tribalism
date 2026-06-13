@@ -32,36 +32,11 @@ public final class AppContext
 
     public AppContext(App app) {
         this.app = app;
-        this.db = DataBase.at(app.getDatabaseLocation()+"/"+app.getSaveFileName(), createQueryProcessor());
+        this.db = DataBase.at(app.getDatabaseLocation()+"/"+app.getSaveFileName(), app.createQueryProcessor());
         this.modelTypes = new ModelTypes(db, app.getDatabaseLocation());
     }
 
     public ModelTypes modelTypes() { return modelTypes; }
-
-    private DataBaseProcessor createQueryProcessor() {
-        var mainThread = Thread.currentThread();
-        return new DataBaseProcessor() {
-            @Override
-            public void process(Runnable task) {
-                if ( Thread.currentThread() == mainThread ) {
-                    task.run();
-                    return;
-                }
-                EventProcessor.DECOUPLED.registerAppEvent(task);
-            }
-
-            @Override
-            public void processNow(Runnable task) {
-                if ( Thread.currentThread() == mainThread ) {
-                    task.run();
-                    return;
-                }
-                EventProcessor.DECOUPLED.registerAndRunAppEventNow(task);
-            }
-
-            @Override public List<Thread> getThreads() { return List.of(mainThread); }
-        };
-    }
 
     /**
      * Returns the application configuration which contains things like the database location, server port, etc.

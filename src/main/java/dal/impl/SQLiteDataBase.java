@@ -121,7 +121,7 @@ public final class SQLiteDataBase implements DataBase
                     statement = statement.substring(0, statement.length()-1);
                 // We check for equality
                 if ( !tableSQL.equals(statement) ) {
-                    throw new IllegalStateException(
+                    throw new IncompatibleDatabaseFile(
                             "The database at '" + _db.getURL() + "' is not compatible with the provided source code model" +
                             modelTable.entityType().map(m -> " '" + m.getName() + "'" ).orElse("") + "! \n" +
                             "The sql code of table '" + collision + "' encountered inside the database, \n" +

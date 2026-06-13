@@ -1,5 +1,8 @@
 package app;
 
+import dal.api.DataBase;
+import dal.impl.IncompatibleDatabaseFile;
+
 import javax.swing.JPanel;
 import java.util.Optional;
 
@@ -12,7 +15,7 @@ import static swingtree.UI.*;
  */
 public class FatalErrorView extends JPanel
 {
-    public FatalErrorView(Exception e)
+    public FatalErrorView(Exception e, App app)
     {
         of(this).withLayout(FILL.and(WRAP(1)))
         .withPrefSize(1100, 500)
@@ -26,7 +29,7 @@ public class FatalErrorView extends JPanel
                 label("Please send this error message to the maintainer of Tribalism:")
             )
             .add(GROW.and(SPAN), separator())
-            .add("alignx center, aligny center, wrap",
+            .add("push, alignx center, aligny center, wrap",
                 scrollPane().add(
                     panel(FILL.and(INS(16))).add(label(nicelyHtmlFormattedError(e)))
                 )
@@ -34,9 +37,22 @@ public class FatalErrorView extends JPanel
             .add(GROW.and(SPAN), separator())
         )
         .add("span, alignx center, aligny top",
-            button("Reset Save Folder").isEnabledIf(false)
-            .onClick( it -> {
-                // TODO
+            panel("fill")
+            .add(
+                button("Reset Save Folder").isEnabledIf(false)
+                .onClick( it -> {
+                    // TODO
+                })
+            )
+            .applyIf(e instanceof IncompatibleDatabaseFile, ui -> {
+                ui.add(
+                    button("Reset Database File")
+                    .onClick( it -> {
+                        var db = DataBase.at(app.getDatabaseLocation()+"/"+app.getSaveFileName(), app.createQueryProcessor());
+                        db.dropAllTables();
+                        db.close();
+                    })
+                );
             })
         );
     }

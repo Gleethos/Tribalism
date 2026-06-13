@@ -2,13 +2,13 @@ package app;
 
 import com.beust.jcommander.Parameter;
 import com.formdev.flatlaf.FlatLightLaf;
+import dal.api.DataBaseProcessor;
+import swingtree.UI;
 import swingtree.style.SvgIcon;
 import swingtree.threading.EventProcessor;
-import swingtree.UI;
 
-import javax.swing.*;
-import java.awt.event.WindowAdapter;
-import java.awt.event.WindowEvent;
+import javax.swing.WindowConstants;
+import java.util.List;
 
 /**
  *  The start class of the application which simply holds the startup parameters and
@@ -186,7 +186,7 @@ public final class App implements Runnable
             if (!isHeadless()) {
                 UI.runLater(()->{
                     FlatLightLaf.setup();
-                    UI.showUsing(EventProcessor.DECOUPLED, f -> new FatalErrorView(e));
+                    UI.showUsing(EventProcessor.DECOUPLED, f -> new FatalErrorView(e, this));
                 });
                 EventProcessor.DECOUPLED.join();
             }
@@ -202,5 +202,31 @@ public final class App implements Runnable
         AppContext context = new AppContext(this);
         return new RootViewModel(context);
     }
+
+    public DataBaseProcessor createQueryProcessor() {
+        var mainThread = Thread.currentThread();
+        return new DataBaseProcessor() {
+            @Override
+            public void process(Runnable task) {
+                if ( Thread.currentThread() == mainThread ) {
+                    task.run();
+                    return;
+                }
+                EventProcessor.DECOUPLED.registerAppEvent(task);
+            }
+
+            @Override
+            public void processNow(Runnable task) {
+                if ( Thread.currentThread() == mainThread ) {
+                    task.run();
+                    return;
+                }
+                EventProcessor.DECOUPLED.registerAndRunAppEventNow(task);
+            }
+
+            @Override public List<Thread> getThreads() { return List.of(mainThread); }
+        };
+    }
+
 
 }
