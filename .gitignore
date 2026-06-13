@@ -46,3 +46,6 @@ bin/
 src/main/resources/web/*
 # Per-spec SQLite test databases (created by Spock specs)
 test_data/*_spec.db
+
+### Bundled sandbox binaries (podman + git) — downloaded & SHA-256-verified by the build, never committed ###
+binaries/

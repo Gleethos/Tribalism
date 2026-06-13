@@ -218,7 +218,7 @@ These hold across every module. New code that violates them is wrong.
 | **Domain model** | `app.models.*` | **Reshaping**: `Campaign` + `GameMap` landed (§5); `CharacterSheet` value tree (§6.3) with a lens-driven desktop view; a `CampaignService` + `CampaignView` roster. | this doc §6 |
 | **Map↔engine seam** | `app.maps.*` | **Rendering**: `MapWorlds` builds an engine `World` from a `GameMap`; `MapView` embeds the renderer (free-fly Build mode, software backend). No editing/GL/persistence/fog yet. | this doc §8 |
 | **Live play (sessions, chat, dice, fog)** | `app.dice.*`, `app.messaging.*`, `app.session.*` | **Core values built**: dice (notation/roll/checks), messaging (audiences + visibility-filtered log), and a `Session` tying participants + chat + dice + turns — all headless-tested. No fog-of-war/engine integration, GUI, or persistence yet. | this doc §7 |
-| **Agent harness** | *(none yet)* | **Vision only — no code.** | this doc §9 |
+| **Agent harness** | `app.agent.*` | **In progress:** the sandbox seam (podman + git wrappers, binary resolver) and the `TribalismAgentHarness` facade (messages + event listeners + context/snapshot management) are being built behind SPIs; provider + real podman wiring follow. | this doc §9 (esp. §9.8) |
 | **Snapshots / time-travel** | *(none yet)* | **Vision only.** | this doc §10 |
 
 ---
@@ -541,6 +541,46 @@ time-travel mechanism as domain persistence — see §10.
 5. **Autonomous mode** + visual perception (its own screen/scene description) + local models.
 6. **Context & workspace snapshotting** (folds into §10).
 
+### 9.8 The `TribalismAgentHarness` facade (current build)
+
+Everything in §9.1–§9.6 is reached through **one Java interface, `TribalismAgentHarness`** (package
+`app.agent`), which hides the podman container, the git-versioned workspace, the provider call and
+the agent loop behind a small, stable surface. The rest of the app talks to *this* — never to
+`podman`/`git` directly — so the sandbox stays an implementation detail (principle 7).
+
+The facade owns four responsibilities:
+
+1. **Messaging — talk to the agent.** `send(String)` / `send(AgentMessage)` hands the agent a turn of
+   input; the agent's replies (and its tool activity) come back **asynchronously** through an
+   **event-listener** mechanism: `addListener(AgentEventListener)` receives a stream of `AgentEvent`s
+   (a sum type: assistant text/Δtext, a tool call dispatched, a tool result, turn started/ended,
+   errors). This is the same shape as the in-game message channel (§7.3) but for the harness's own
+   chat with the model, so the GM can watch the agent think and act.
+2. **The loop.** Behind `send`, the harness runs the §9.4 loop: build prompt from context → call the
+   `AgentProvider` (SPI: local model or configured API) → parse tool calls → dispatch **domain tools**
+   to the GM's services or **sandbox tools** into the **podman container** → stream effects back as
+   events → repeat until the turn settles. Providers and tools are SPIs with deterministic fakes so
+   the loop is unit-testable without a model or a container (per `API_STABILITY.md`).
+3. **Context management.** `context()` exposes the current immutable `AgentContext` (system prompt,
+   the running transcript, token/turn budget); `clearContext()` / `compactContext()` / `setSystemPrompt(..)`
+   reshape it. Because it is an immutable value, it snapshots for free.
+4. **State management across time (the headline).** `snapshot()` captures **one coherent
+   point-in-time** — the `AgentContext` value **and** a `git commit` of the container's workspace —
+   and returns a **`SnapshotKey` keyed by date-time** (§10.2). `snapshots()` lists them;
+   `restore(SnapshotKey)` switches the live agent back to that moment (context value + `git checkout`
+   of the workspace). This is the agent half of the unified time-travel in §10.
+
+Sandbox plumbing under the facade:
+
+- **`SandboxRuntime`** — SPI over the container engine. `PodmanSandboxRuntime` shells out to the
+  shipped `podman` binary (resolved by `SandboxBinaries`); a host-isolated `LocalSandboxRuntime` is a
+  **dev/test double only — explicitly not the security boundary**.
+- **`WorkspaceRepo`** — wraps the shipped `git` binary over the container's working directory: `commit`
+  (returns a snapshot id), `checkout`, `log`. This is what gives §10.2 its "git for the agent workspace".
+- **`SandboxBinaries`** — locates `podman`/`git`: a bundled `bin/` under the app data dir first, then a
+  configured override, then system `PATH`; reports cleanly when a binary is absent so the harness can
+  refuse sandbox tools rather than fall back to the host.
+
 ---
 
 ## 10. Persistence, snapshots & time-travel
@@ -655,9 +695,17 @@ Engine-internal LoD work proceeds in parallel under `WORLD_ENGINE_LOD_DESIGN.md`
 - AI as a **session participant** posting/reading messages (§7.3).
 - **Domain tools + GM gate**: AI proposes sheet/NPC/map/dice/message actions for approval (§9.3).
 
-### Phase 6 — The sandbox & autonomous GM (§9.5)
-- Ship `podman` + `git`; workspace container + shell/file tools; network policy; local models;
-  autonomous mode + visual perception (its own screen/scene description).
+### Phase 6 — The sandbox & autonomous GM (§9.5) — **[in progress]**
+- **[done]** Ship `podman` + `git`: `./gradlew fetchSandboxBinaries` downloads + SHA-256-verifies
+  podman-static and an embeddable git into a gitignored per-platform bundle (Linux x86-64), found at
+  runtime by `app.agent.sandbox.SandboxBinaries`.
+- **[done]** The `TribalismAgentHarness` facade (§9.8): messages + event listeners, the agent loop,
+  context management, and date-time-keyed snapshot/restore (context value + workspace git commit).
+  Built behind provider/tool/runtime SPIs; end-to-end tested with a mocked provider (`agent.*` specs).
+- **[done]** Sandbox seam: `SandboxRuntime` (`PodmanSandboxRuntime` real boundary + `LocalSandboxRuntime`
+  dev/test double), `WorkspaceRepo` (git time-travel), shell/file sandbox tools.
+- Real provider implementations (local models + configured APIs); domain tools wired to GM services;
+  network policy hardening; autonomous mode + visual perception (its own screen/scene description).
 
 ### Phase 7 — Time-travel & sharing (§10)
 - `Value`-root snapshots + `SnapshotService`; session-end snapshots; campaign rewind.

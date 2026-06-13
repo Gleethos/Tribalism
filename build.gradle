@@ -224,4 +224,115 @@ tasks.register('appNpmTest', NpmTask) { // TODO: Make this depend on the server 
 
 test {
     useJUnitPlatform()
+    // Forward the opt-in flag for the heavyweight podman integration test into the forked test JVM.
+    if ( System.getProperty('tribalism.podman.it') != null )
+        systemProperty 'tribalism.podman.it', System.getProperty('tribalism.podman.it')
+}
+
+/* =====================================================================================
+   Agent sandbox binaries (podman + git) — see VISION.md §9.5 / §9.8
+   -------------------------------------------------------------------------------------
+   The agent harness ships its OWN podman and git so it never depends on the host. Per the
+   chosen strategy these are NOT committed: 'fetchSandboxBinaries' downloads pinned releases,
+   verifies their SHA-256, and extracts them into a gitignored per-platform bundle dir that
+   app.agent.sandbox.SandboxBinaries discovers at runtime. Currently Linux x86-64 only (§9.5).
+   ===================================================================================== */
+ext {
+    sandboxPlatform = 'linux-x86_64'
+    sandboxBundleDir = file("binaries/${sandboxPlatform}")
+    sandboxCacheDir  = file('binaries/cache')
+
+    // podman-static: a self-contained podman + crun/conmon/netavark/pasta/fuse-overlayfs bundle.
+    podmanVersion = 'v5.8.2'
+    podmanUrl     = "https://github.com/mgoltzsche/podman-static/releases/download/${podmanVersion}/podman-linux-amd64.tar.gz"
+    podmanSha256  = '228b9adf1ba3585d1d72f0a4bb9a669de5ea806d13884b2c43b5e65601a1a580'
+
+    // dugite-native: the portable git GitHub Desktop embeds (purpose-built for bundling).
+    gitVersion = 'v2.53.0-3'
+    gitUrl     = 'https://github.com/desktop/dugite-native/releases/download/v2.53.0-3/dugite-native-v2.53.0-f49d009-ubuntu-x64.tar.gz'
+    gitSha256  = 'b3a85433c8dfde76d21b90938ad2f971653deff4340b1b4d347258c63250eafc'
+}
+
+// Downloads to dest (if absent/mismatched), following redirects, then verifies SHA-256.
+def fetchVerified(String url, File dest, String expectedSha) {
+    dest.parentFile.mkdirs()
+    if ( dest.exists() && sha256Of(dest) == expectedSha ) {
+        logger.lifecycle("sandbox: ${dest.name} present and verified")
+        return
+    }
+    logger.lifecycle("sandbox: downloading ${url}")
+    def current = url
+    for ( int hop = 0; hop < 6; hop++ ) {
+        def conn = new URL(current).openConnection()
+        conn.setRequestProperty('User-Agent', 'tribalism-build')
+        conn.instanceFollowRedirects = false
+        conn.connectTimeout = 30_000
+        conn.readTimeout = 120_000   // never hang forever on a stalled socket (the bug we hit once)
+        conn.connect()
+        int code = conn.responseCode
+        if ( code in [301, 302, 303, 307, 308] ) { current = conn.getHeaderField('Location'); continue }
+        if ( code != 200 ) throw new GradleException("download failed (${code}) for ${current}")
+        dest.withOutputStream { out -> conn.inputStream.withStream { it.transferTo(out) } }
+        break
+    }
+    def actual = sha256Of(dest)
+    if ( actual != expectedSha )
+        throw new GradleException("SHA-256 mismatch for ${dest.name}:\n  expected ${expectedSha}\n  actual   ${actual}")
+    logger.lifecycle("sandbox: verified ${dest.name} (${actual})")
+}
+
+def sha256Of(File file) {
+    def md = java.security.MessageDigest.getInstance('SHA-256')
+    file.withInputStream { ins ->
+        byte[] buf = new byte[1 << 16]; int n
+        while ( (n = ins.read(buf)) > 0 ) md.update(buf, 0, n)
+    }
+    return md.digest().encodeHex().toString()
+}
+
+tasks.register('fetchSandboxBinaries') {
+    group = 'sandbox'
+    description = 'Downloads + SHA-256-verifies podman and git into the gitignored binaries/<platform> bundle.'
+    outputs.dir sandboxBundleDir
+    doLast {
+        def podmanTar = new File(sandboxCacheDir, "podman-${podmanVersion}.tar.gz")
+        def gitTar    = new File(sandboxCacheDir, "git-${gitVersion}.tar.gz")
+        fetchVerified(podmanUrl, podmanTar, podmanSha256)
+        fetchVerified(gitUrl,    gitTar,    gitSha256)
+
+        // podman-static wraps everything in a 'podman-linux-amd64/' dir — strip that leading segment.
+        def podmanOut = new File(sandboxBundleDir, 'podman')
+        delete podmanOut
+        copy {
+            from tarTree(resources.gzip(podmanTar))
+            into podmanOut
+            includeEmptyDirs = false
+            eachFile { fcd -> fcd.relativePath = new RelativePath(true, fcd.relativePath.segments[1..-1] as String[]) }
+        }
+        // dugite git extracts bin/ etc/ libexec/ ... at the top level — no stripping.
+        def gitOut = new File(sandboxBundleDir, 'git')
+        delete gitOut
+        copy { from tarTree(resources.gzip(gitTar)); into gitOut; includeEmptyDirs = false }
+
+        // Ensure the executables are runnable (tar modes can be lost depending on the extractor).
+        ant.chmod(dir: new File(podmanOut, 'usr/local/bin'), perm: 'a+rx', includes: '*')
+        ant.chmod(dir: new File(podmanOut, 'usr/local/lib/podman'), perm: 'a+rx', includes: '*')
+        ant.chmod(dir: new File(gitOut, 'bin'), perm: 'a+rx', includes: '*')
+        logger.lifecycle("sandbox: bundle ready at ${sandboxBundleDir}")
+    }
+}
+
+tasks.register('cleanSandboxBinaries', Delete) {
+    group = 'sandbox'
+    description = 'Removes the downloaded sandbox binaries bundle (keeps the verified cache).'
+    delete sandboxBundleDir
+}
+
+// Stages the bundle into the build output so a packaged distribution can ship it.
+tasks.register('bundleSandboxBinaries', Copy) {
+    group = 'sandbox'
+    description = 'Copies the fetched sandbox binaries into build/sandbox-binaries for packaging.'
+    dependsOn 'fetchSandboxBinaries'
+    from sandboxBundleDir
+    into layout.buildDirectory.dir("sandbox-binaries/${sandboxPlatform}")
 }
