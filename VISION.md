@@ -9,6 +9,7 @@
 > - [`WORLD_ENGINE_LOD_DESIGN.md`](WORLD_ENGINE_LOD_DESIGN.md) — the engine's level-of-detail roadmap.
 > - [`WORLD_ENGINE_REVIEW.md`](WORLD_ENGINE_REVIEW.md) — engine review notes.
 > - [`agent-skills/SWING_TREE_SKILL.md`](agent-skills/SWING_TREE_SKILL.md) — how all GUI/binding code is written.
+> - [`API_STABILITY.md`](API_STABILITY.md) — which APIs are stable contracts (pin with tests) vs flexible (test behavior, keep the shape free).
 
 ---
 

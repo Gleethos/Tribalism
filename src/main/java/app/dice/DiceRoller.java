@@ -3,6 +3,7 @@ package app.dice;
 import sprouts.Tuple;
 
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.List;
 import java.util.Random;
 import java.util.random.RandomGenerator;
@@ -57,10 +58,30 @@ public final class DiceRoller
         };
     }
 
+    /**
+     *  Selects which dice count toward the subtotal, returning them in <b>roll order</b> (uniform
+     *  with {@link Keep#ALL}). For HIGHEST/LOWEST it picks the n best/worst <em>by value</em>
+     *  (ties broken by earliest roll) but preserves the original order of those kept, so a
+     *  breakdown reads naturally and the ordering is consistent across all keep modes.
+     */
     private static List<Integer> keep( List<Integer> rolls, Keep keep ) {
         if ( keep.isAll() ) return rolls;
-        List<Integer> sorted = new ArrayList<>(rolls);
-        sorted.sort(keep.mode() == Keep.Mode.HIGHEST ? (a, b) -> b - a : (a, b) -> a - b);
-        return new ArrayList<>(sorted.subList(0, Math.min(keep.n(), sorted.size())));
+        int n = Math.min(keep.n(), rolls.size());
+
+        // Order indices by value (desc for HIGHEST, asc for LOWEST), tie-break by earlier index.
+        Integer[] indices = new Integer[rolls.size()];
+        for ( int i = 0; i < indices.length; i++ ) indices[i] = i;
+        Comparator<Integer> byValue = keep.mode() == Keep.Mode.HIGHEST
+                ? Comparator.<Integer>comparingInt(rolls::get).reversed().thenComparingInt(i -> i)
+                : Comparator.<Integer>comparingInt(rolls::get).thenComparingInt(i -> i);
+        java.util.Arrays.sort(indices, byValue);
+
+        // Take the n winning indices, then restore roll order.
+        List<Integer> keepIndices = new ArrayList<>(java.util.Arrays.asList(indices).subList(0, n));
+        keepIndices.sort(Comparator.naturalOrder());
+
+        List<Integer> kept = new ArrayList<>(n);
+        for ( int i : keepIndices ) kept.add(rolls.get(i));
+        return kept;
     }
 }
