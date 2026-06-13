@@ -44,3 +44,5 @@ bin/
 
 ### We ignore the java resources folder, because it is regenerated as part of the build ###
 src/main/resources/web/*
+# Per-spec SQLite test databases (created by Spock specs)
+test_data/*_spec.db
