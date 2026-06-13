@@ -216,7 +216,7 @@ These hold across every module. New code that violates them is wrong.
 | **Web portal** | `src/main/web-portal` | **Early prototype**: mirror MVVM, login/register/user views. | — |
 | **Domain model** | `app.models.*` | **Reshaping**: `Campaign` + `GameMap` landed (§5); `CharacterSheet` value tree (§6.3) with a lens-driven desktop view; a `CampaignService` + `CampaignView` roster. | this doc §6 |
 | **Map↔engine seam** | `app.maps.*` | **Rendering**: `MapWorlds` builds an engine `World` from a `GameMap`; `MapView` embeds the renderer (free-fly Build mode, software backend). No editing/GL/persistence/fog yet. | this doc §8 |
-| **Live play (sessions, chat, dice, fog)** | *(none yet)* | **Vision only — no code.** The core multiplayer experience. | this doc §7 |
+| **Live play (sessions, chat, dice, fog)** | `app.dice.*`, `app.messaging.*`, `app.session.*` | **Core values built**: dice (notation/roll/checks), messaging (audiences + visibility-filtered log), and a `Session` tying participants + chat + dice + turns — all headless-tested. No fog-of-war/engine integration, GUI, or persistence yet. | this doc §7 |
 | **Agent harness** | *(none yet)* | **Vision only — no code.** | this doc §9 |
 | **Snapshots / time-travel** | *(none yet)* | **Vision only.** | this doc §10 |
 
@@ -632,15 +632,16 @@ Engine-internal LoD work proceeds in parallel under `WORLD_ENGINE_LOD_DESIGN.md`
 - Map **editing tools** (place/remove material, prefabs) — also the AI's map tools (§9.3); GL embed.
 - Map persistence (seed + edit diff, §10).
 
-### Phase 3 — Live play: sessions, messaging, dice (the multiplayer core, §7) — **NEW**
-- **Dice**: `DiceNotation` parser + `DiceRoll` value + roller; sheet-linked checks (pure, fully
-  unit-testable — a good first slice).
-- **Messaging**: `Message` value + audiences + a session message log + a send/whisper service;
-  desktop chat panel; (web once the bridge collections land).
-- **Session** + **SessionParticipant** model: active map, participants, logs, turn order; a
-  `SessionService`/`SessionViewModel` tying the GM + players together.
+### Phase 3 — Live play: sessions, messaging, dice (the multiplayer core, §7) — **[in progress]**
+- **[done]** **Dice** (`app.dice`): `DiceNotation` parser + `DiceRoll` value + injectable-randomness
+  roller + sheet-linked checks + crit helpers (fully unit-tested).
+- **[done]** **Messaging** (`app.messaging`): `Message`/`Sender`/`Audience` values + a
+  visibility-filtered `MessageLog` (everyone/party/GM-only/whisper, GM omniscient).
+- **[done]** **Session** (`app.session`): `SessionParticipant` (+ `VisibilityScope`) and a `Session`
+  value tying participants + chat + dice + turn order; rolling records *and* announces.
+- Desktop **chat panel + dice tray**; a `SessionViewModel` over `Var<Session>` (binds the above).
 - **Per-player views & fog of war** (§7.2): per-character `VisionState`, one screen per participant,
-  a fog mask on the engine visibility walk; GM "reveal" actions.
+  a fog mask on the engine visibility walk; GM "reveal" actions. *(Engine-side; bigger.)*
 
 ### Phase 4 — Multiplayer over the LAN — **NEW**
 - Per-participant **scope filtering** in the MVVM bridge (§11.2): each client sees only its
