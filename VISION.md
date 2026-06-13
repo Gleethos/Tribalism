@@ -112,11 +112,12 @@ These hold across every module. New code that violates them is wrong.
 | Module | Package(s) | State | Where it's documented |
 |---|---|---|---|
 | **World engine** | `app.engine.*` | **Mature**, standalone. Not yet in the app UI. | `ARCHITECTURE.md` |
-| **Topsoil ORM** | `dal.*` | **Mature** for the `Model` style; `Value`-tree evolution pending. | javadoc in `dal.api` |
+| **Topsoil ORM** | `dal.*` | **Mature** for both `Model` and `Value` trees (the `CharacterSheet` value tree round-trips). | javadoc in `dal.api`; gotchas in `[[topsoil-orm-gotchas]]` memory |
 | **MVVM bridge** | `net.*` | **Working** for primitives/enums/nested VMs; needs lists, binary, lifecycle hardening. | this doc §9 |
 | **Desktop shell + auth** | `app`, `app.user`, `app.dev` | **Early prototype**: login/register, user page, dev inspectors. | — |
 | **Web portal** | `src/main/web-portal` | **Early prototype**: mirror MVVM, login/register/user views. | — |
-| **Domain model** | `app.models.*` | **Early prototype**: thin interfaces, needs the real schema (§5). | this doc §5 |
+| **Domain model** | `app.models.*` | **Reshaping**: `Campaign` + `GameMap` landed (§4); `CharacterSheet` value tree (§5.3) landed with a lens-driven desktop view. | this doc §5 |
+| **Map↔engine seam** | `app.maps.*` | **Started**: `MapWorlds` builds an engine `World` from a `GameMap` recipe (§6). No editor/viewport yet. | this doc §6 |
 | **Agent harness** | *(none yet)* | **Vision only — no code.** | this doc §7 |
 | **Snapshots / time-travel** | *(none yet)* | **Vision only.** | this doc §8 |
 
@@ -408,20 +409,24 @@ content value rather than a spray of mutable columns.
 
 Each phase lists outcomes an agent can scope independently. Earlier phases unblock later
 ones. Engine-internal LoD work proceeds in parallel under `WORLD_ENGINE_LOD_DESIGN.md`.
+Status markers below: **[done]**, **[in progress]**, unmarked = not started.
 
-### Phase 0 — Foundations & naming (small, do first)
-- Resolve the `World` collision (§4): rename `app.models.World` → `Campaign`; introduce
-  `Map` as the campaign↔engine seam.
-- Settle the domain schema (§5) as interfaces/records; write `CharacterSheet` as the
-  first `Value` tree (§5.3).
+### Phase 0 — Foundations & naming (small, do first) — **[done]**
+- **[done]** Resolve the `World` collision (§4): renamed `app.models.World` → `Campaign`;
+  introduced `GameMap` (the class is `GameMap`, the concept is "map") as the campaign↔engine seam.
+- **[done]** `CharacterSheet` written as the first `Value` tree (§5.3); broader domain schema
+  (Campaign/Map/Session relations, registries per campaign) still to settle.
 
-### Phase 1 — Character sheets end-to-end (proves the whole stack)
-- `CharacterSheet` value + lens-driven **desktop** sheet view.
+### Phase 1 — Character sheets end-to-end (proves the whole stack) — **[in progress]**
+- **[done]** `CharacterSheet` value + lens-driven **desktop** sheet view (`CharacterSheetView`,
+  `CharacterSheetViewModel`; lenses exposed on the VM, tested headlessly).
 - **Bridge: collections + lenses** over the websocket (§9.2) — unblock list/sheet UIs.
 - **Web** sheet view binding the same VM; players edit their own sheet over LAN.
-- Roster/campaign management (create campaign, add characters, assign players).
+- Roster/campaign management (create campaign, add characters, assign players); wire the sheet
+  view onto a persisted `Character.sheet()` so desktop edits round-trip to the database.
 
-### Phase 2 — Maps in the app
+### Phase 2 — Maps in the app — **[in progress]**
+- **[done]** `MapWorlds`: build an engine `World` from a `GameMap` recipe (the seam, §6).
 - Embed the engine renderer in a `MapView`; **Build mode** first (§6.1/§6.2).
 - Map persistence (seed + edit diff), tied to the value/snapshot model.
 - **Table/Play mode** with character tokens; **First-person** mode.
