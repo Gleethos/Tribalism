@@ -206,6 +206,15 @@ tasks.register('runWorldDemo', JavaExec) {
     systemProperty 'engine.renderer', System.getProperty('engine.renderer', '')
 }
 
+// Runs the main() of any class, e.g. a standalone view demo:
+//   ./gradlew runMain -PmainClass=app.campaign.CampaignView
+tasks.register('runMain', JavaExec) {
+    group = 'application'
+    description = 'Runs the main() of the class given by -PmainClass=...'
+    mainClass = providers.gradleProperty('mainClass').orElse('app.campaign.CampaignView')
+    classpath = sourceSets.main.runtimeClasspath
+}
+
 // A task for executing the react tests:
 tasks.register('appNpmTest', NpmTask) { // TODO: Make this depend on the server task!
     description = "Runs the react tests"
