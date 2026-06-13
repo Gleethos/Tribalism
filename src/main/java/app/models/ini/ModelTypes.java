@@ -2,6 +2,12 @@ package app.models.ini;
 
 import app.models.*;
 import app.models.Character;
+import app.models.sheet.AbilityScore;
+import app.models.sheet.CharacterSheet;
+import app.models.sheet.Identity;
+import app.models.sheet.InventoryItem;
+import app.models.sheet.SkillScore;
+import app.models.sheet.Vitals;
 import dal.api.DataBase;
 import sprouts.Result;
 
@@ -24,7 +30,14 @@ public class ModelTypes
                 AbilityType.class,
                 Skill.class,
                 SkillType.class,
-                Role.class
+                Role.class,
+                // CharacterSheet value tree (the data-oriented sheet representation):
+                CharacterSheet.class,
+                Identity.class,
+                Vitals.class,
+                AbilityScore.class,
+                SkillScore.class,
+                InventoryItem.class
             );
         abilityTypes = new AbilityTypes(db, workingDirectory);
         skillTypes   = new SkillTypes(db, workingDirectory, abilityTypes);
