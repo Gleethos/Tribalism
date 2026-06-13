@@ -116,8 +116,8 @@ These hold across every module. New code that violates them is wrong.
 | **MVVM bridge** | `net.*` | **Working** for primitives/enums/nested VMs; needs lists, binary, lifecycle hardening. | this doc §9 |
 | **Desktop shell + auth** | `app`, `app.user`, `app.dev` | **Early prototype**: login/register, user page, dev inspectors. | — |
 | **Web portal** | `src/main/web-portal` | **Early prototype**: mirror MVVM, login/register/user views. | — |
-| **Domain model** | `app.models.*` | **Reshaping**: `Campaign` + `GameMap` landed (§4); `CharacterSheet` value tree (§5.3) landed with a lens-driven desktop view. | this doc §5 |
-| **Map↔engine seam** | `app.maps.*` | **Started**: `MapWorlds` builds an engine `World` from a `GameMap` recipe (§6). No editor/viewport yet. | this doc §6 |
+| **Domain model** | `app.models.*` | **Reshaping**: `Campaign` + `GameMap` landed (§4); `CharacterSheet` value tree (§5.3) with a lens-driven desktop view; a `CampaignService` + `CampaignView` roster (create campaign/characters, edit persisted sheets). | this doc §5 |
+| **Map↔engine seam** | `app.maps.*` | **Rendering**: `MapWorlds` builds an engine `World` from a `GameMap`; `MapView` embeds the engine renderer (free-fly Build mode, software backend) — a `GameMap` renders as 3D terrain in-app. No editing tools/GL/persistence yet. | this doc §6 |
 | **Agent harness** | *(none yet)* | **Vision only — no code.** | this doc §7 |
 | **Snapshots / time-travel** | *(none yet)* | **Vision only.** | this doc §8 |
 
@@ -419,15 +419,22 @@ Status markers below: **[done]**, **[in progress]**, unmarked = not started.
 
 ### Phase 1 — Character sheets end-to-end (proves the whole stack) — **[in progress]**
 - **[done]** `CharacterSheet` value + lens-driven **desktop** sheet view (`CharacterSheetView`,
-  `CharacterSheetViewModel`; lenses exposed on the VM, tested headlessly).
-- **Bridge: collections + lenses** over the websocket (§9.2) — unblock list/sheet UIs.
+  `CharacterSheetViewModel`; lenses exposed on the VM, tested headlessly, rendered + screenshotted).
+- **[done]** Roster: `CampaignService` (find-or-create GM, create/list campaigns & characters,
+  persisted-sheet init) + `CampaignViewModel`/`CampaignView` master-detail (rendered + screenshotted).
+  Edits to a selected character's sheet round-trip to the database via the persisted-lens path.
+- **Bridge: collections + lenses** over the websocket (§9.2) — unblock list/sheet UIs. *(Java side
+  unit-testable; React side needs a browser to verify — deferred until a browser runtime is available.)*
 - **Web** sheet view binding the same VM; players edit their own sheet over LAN.
-- Roster/campaign management (create campaign, add characters, assign players); wire the sheet
-  view onto a persisted `Character.sheet()` so desktop edits round-trip to the database.
+- Wire the roster into the actual login flow (`ContentViewModel`/`UserContext`) so it's reachable
+  in-app, not just via the standalone `runMain` demos (uses `AppContext`'s thread-marshalling DB processor).
 
 ### Phase 2 — Maps in the app — **[in progress]**
 - **[done]** `MapWorlds`: build an engine `World` from a `GameMap` recipe (the seam, §6).
-- Embed the engine renderer in a `MapView`; **Build mode** first (§6.1/§6.2).
+- **[done]** `MapView`: embed the engine renderer (free-fly **Build mode**, software backend) — a
+  `GameMap` renders as navigable 3D terrain in a SwingTree component (§6.1/§6.2).
+- Editing tools (place/remove material, prefabs); GL backend embed; **Table/Play** + **First-person** modes.
+- Map persistence (seed + edit diff), tied to the value/snapshot model.
 - Map persistence (seed + edit diff), tied to the value/snapshot model.
 - **Table/Play mode** with character tokens; **First-person** mode.
 - Prefab/object generators (furniture, simple structures).
