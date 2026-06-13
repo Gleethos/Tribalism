@@ -6,7 +6,9 @@ import app.models.sheet.Identity
 import app.models.sheet.InventoryItem
 import app.models.sheet.SkillScore
 import app.models.sheet.Vitals
+import app.user.CharacterSheetViewModel
 import dal.api.DataBase
+import sprouts.From
 import groovy.transform.CompileDynamic
 import spock.lang.Narrative
 import spock.lang.Specification
@@ -165,6 +167,41 @@ class CharacterSheet_Spec extends Specification
             holder.sheet().set(second)
         then : 'A freshly selected proxy sees only the new sheet.'
             db.select(SheetHolder, holder.id().get()).sheet().get() == second
+        cleanup :
+            db?.close()
+    }
+
+    def 'Lens editing through the view model bound to a PERSISTED sheet writes straight to the database.'() {
+        reportInfo """
+            This is the end-to-end proof of the data-oriented persistence thesis (VISION §8.1):
+            when a CharacterSheetViewModel's editing root is a Topsoil model property
+            (`holder.sheet()`), editing any field through its lens — exactly as a SwingTree text
+            field does — produces a new immutable sheet value that Topsoil persists. A freshly
+            selected proxy then sees the change, proving the edit reached the database and was not
+            held only in memory.
+        """
+        given : 'A persisted holder carrying an empty sheet.'
+            var db = DataBase.at(TEST_DB_FILE)
+            db.dropAllTables()
+            db.createTablesFor(
+                    SheetHolder, CharacterSheet, Identity, Vitals,
+                    AbilityScore, SkillScore, InventoryItem
+            )
+            var holder = db.create(SheetHolder)
+            holder.sheet().set(CharacterSheet.empty())
+        and : 'A view model whose editing root IS the persisted sheet property.'
+            var vm = new CharacterSheetViewModel(holder.sheet())
+        when : 'We edit fields through the view model lenses, as the desktop view would.'
+            vm.forename().set(From.VIEW, "Frodo")
+            vm.currentHealth().set(From.VIEW, 5)
+            vm.abilityLevel("wisdom").set(From.VIEW, 12)
+            vm.addInventoryItem()
+        then : 'A brand-new proxy selected from the database sees every edit, persisted.'
+            var reloaded = db.select(SheetHolder, holder.id().get())
+            reloaded.sheet().get().identity().forename() == "Frodo"
+            reloaded.sheet().get().vitals().currentHealth() == 5
+            reloaded.sheet().get().abilities().contains(AbilityScore.of("wisdom", 12))
+            reloaded.sheet().get().inventory().size() == 1
         cleanup :
             db?.close()
     }
