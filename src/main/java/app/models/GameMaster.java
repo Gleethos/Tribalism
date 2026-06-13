@@ -8,5 +8,5 @@ public interface GameMaster extends Model<GameMaster>
 {
     Var<User> identity();
 
-    Vars<World> worlds();
+    Vars<Campaign> campaigns();
 }

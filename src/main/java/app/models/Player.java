@@ -7,6 +7,6 @@ import sprouts.Vars;
 public interface Player extends Model<Player>
 {
     Var<User> identity();
-    Var<World> world();
+    Var<Campaign> campaign();
     Vars<CharacterModel> characters();
 }

@@ -1,9 +1,9 @@
 package app.dev;
 
+import app.models.Campaign;
 import app.models.Character;
 import app.models.GameMaster;
 import app.models.User;
-import app.models.World;
 import dal.api.DataBase;
 import dal.impl.SQLiteDataBase;
 import sprouts.Event;
@@ -26,7 +26,7 @@ public class DataBaseViewModel {
     private final Var<Integer> numberOfTables    = Var.of(0);
     private final Var<Integer> numberUsers       = Var.of(0);
     private final Var<Integer> numberCharacters  = Var.of(0);
-    private final Var<Integer> numberWorlds      = Var.of(0);
+    private final Var<Integer> numberCampaigns   = Var.of(0);
     private final Var<Integer> numberGameMasters = Var.of(0);
     private final Var<String> sql                = Var.of("");
     private final Var<String> sqlFeedback        = Var.of("");
@@ -46,7 +46,7 @@ public class DataBaseViewModel {
         numberOfTables.set(tables.size());
         numberUsers.set(db.select(User.class).count());
         numberCharacters.set(db.select(Character.class).count());
-        numberWorlds.set(db.select(World.class).count());
+        numberCampaigns.set(db.select(Campaign.class).count());
         numberGameMasters.set(db.select(GameMaster.class).count());
         listOfTables.addAll(tables);
     }
@@ -54,7 +54,7 @@ public class DataBaseViewModel {
     public Var<Integer> numberOfTables() { return numberOfTables; }
     public Var<Integer> numberUsers() { return numberUsers; }
     public Var<Integer> numberCharacters() { return numberCharacters; }
-    public Var<Integer> numberWorlds() { return numberWorlds; }
+    public Var<Integer> numberCampaigns() { return numberCampaigns; }
     public Var<Integer> numberGameMasters() { return numberGameMasters; }
     public Var<String> sql() { return sql; }
     public Var<String> sqlFeedback() { return sqlFeedback; }

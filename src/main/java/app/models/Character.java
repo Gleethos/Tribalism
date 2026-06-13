@@ -5,6 +5,6 @@ import sprouts.Var;
 public interface Character extends AbstractCharacter<Character>
 {
     Var<CharacterModel> model();
-    Var<World> world();
+    Var<Campaign> campaign();
     Var<Player> player();
 }
