@@ -1,8 +1,11 @@
 package dal
 
 import dal.api.DataBase
+import dal.models.AccountModel
 import dal.models.ProductModel
+import dal.values.Address
 import dal.values.Product
+import dal.values.User
 import groovy.transform.CompileDynamic
 import spock.lang.Narrative
 import spock.lang.Specification
@@ -414,6 +417,87 @@ class DataBase_Querying_Values_In_Models_Spec extends Specification
             db.select(ProductModel).where(ProductModel::price).greaterThanOrEqual(0.0).expectOneOrNone()
         then : 'It throws as well.'
             thrown(IllegalStateException)
+
+        cleanup:
+            db.close()
+    }
+
+    /**
+     *  Opens a fresh database and stocks a few accounts whose state is a {@link User} value that
+     *  itself nests an {@link Address} value. This is the fixture for the multi-level zoom scenarios.
+     */
+    private DataBase accountBook() {
+        def db = DataBase.at(TEST_DB_FILE)
+        db.dropAllTables()
+        db.createTablesFor(AccountModel, User, Address)
+
+        db.create(AccountModel).user().set(new User("alice", new Address("1 Main St",  "10001", "New York")))
+        db.create(AccountModel).user().set(new User("bob",   new Address("2 Oak Ave",  "90001", "Los Angeles")))
+        db.create(AccountModel).user().set(new User("carol", new Address("3 Pine Rd",  "10001", "Yonkers")))
+        return db
+    }
+
+    def 'A two-level zoom lens queries a Value nested inside another Value.'()
+    {
+        reportInfo """
+            This is the headline recursive case. `AccountModel::postalCode` is a zoom lens that
+            reaches *two* values deep:
+            ```java
+                default Var<String> postalCode() {
+                    return user().zoomTo(User::address,    User::withAddress)
+                                 .zoomTo(Address::postalCode, Address::withPostalCode);
+                }
+            ```
+            The query API resolves the whole chain `user -> address -> postalCode` and translates
+            it into nested `IN (SELECT id ...)` sub-queries against the `User` and `Address` value
+            tables, so we can filter accounts by a field buried two values down.
+        """
+        given : 'An account book with three users in two postal codes.'
+            def db = accountBook()
+
+        when : 'We select every account in postal code "10001".'
+            var names = db.select(AccountModel)
+                            .where(AccountModel::postalCode).is("10001")
+                            .asList()
+                            .collect { it.username().get() } as Set
+        then : 'Alice and Carol match; Bob (90001) does not.'
+            names == ["alice", "carol"] as Set
+
+        and : 'A single-level zoom into the same User value still works alongside the deep one.'
+            db.select(AccountModel).where(AccountModel::username).is("bob")
+              .expectOne().postalCode().get() == "90001"
+        and : 'And a postal code nobody lives in matches nothing.'
+            db.select(AccountModel).where(AccountModel::postalCode).is("00000").notExists()
+
+        cleanup:
+            db.close()
+    }
+
+    def 'Multi-level zoom lenses compose with `and` across different depths.'()
+    {
+        reportInfo """
+            Two zoom lenses of different depths can be combined in one query: here a two-level
+            `postalCode` and a two-level `city`, plus a one-level `username`. Each becomes its own
+            nested sub-query, all `AND`-ed together against the same account row.
+        """
+        given : 'An account book.'
+            def db = accountBook()
+
+        expect : 'Filtering by postal code AND city pins down the single matching account.'
+            db.select(AccountModel)
+              .where(AccountModel::postalCode).is("10001")
+              .and(AccountModel::city).is("Yonkers")
+              .expectOne().username().get() == "carol"
+        and : 'Combining a deep zoom with a shallow one works too.'
+            db.select(AccountModel)
+              .where(AccountModel::city).like("Los%")
+              .and(AccountModel::username).is("bob")
+              .count() == 1
+        and : 'A contradictory combination matches nothing.'
+            db.select(AccountModel)
+              .where(AccountModel::postalCode).is("10001")
+              .and(AccountModel::city).is("Los Angeles")
+              .notExists()
 
         cleanup:
             db.close()

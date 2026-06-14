@@ -408,121 +408,88 @@ public final class SQLiteDataBase implements DataBase
         EntityTable table = _getTableFor(model);
         List<Object> values = new ArrayList<>();
         Junction[] junc = {null};
+        // The currently selected field/zoom-path, set by where(..)/and(..)/or(..) and consumed by the
+        // operator methods below, which render it into the SQL via Selection.wherePredicate(..).
+        Selection[] pendingSel = {null};
         Compare<M, Object> valueCollector = new Compare<>() {
             @Override
             public Junction<M> is(Object value) {
-                // First sql:
-                sql.append(" = ?");
-                // Then values:
+                sql.append(pendingSel[0].wherePredicate("= ?"));
                 values.add(value);
                 return junc[0];
             }
 
             @Override
             public Junction<M> isNot(Object value) {
-                // First sql:
-                sql.append(" != ?");
-                // Then values:
+                sql.append(pendingSel[0].wherePredicate("!= ?"));
                 values.add(value);
                 return junc[0];
             }
 
             @Override
             public Junction<M> like(Object value) {
-                // First sql:
-                sql.append(" LIKE ?");
-                // Then values:
+                sql.append(pendingSel[0].wherePredicate("LIKE ?"));
                 values.add(value);
                 return junc[0];
             }
 
             @Override
             public Junction<M> notLike(Object value) {
-                // First sql:
-                sql.append(" NOT LIKE ?");
-                // Then values:
+                sql.append(pendingSel[0].wherePredicate("NOT LIKE ?"));
                 values.add(value);
                 return junc[0];
             }
 
             @Override
             public Junction<M> in(Object... objects) {
-                // First sql:
-                sql.append(" IN (");
-                for (int i = 0; i < objects.length; i++) {
-                    sql.append("?");
-                    if (i < objects.length - 1)
-                        sql.append(", ");
-                }
-                sql.append(")");
-                // Then values:
+                sql.append(pendingSel[0].wherePredicate(_placeholders("IN", objects.length)));
                 values.addAll(Arrays.asList(objects));
                 return junc[0];
             }
 
             @Override
             public Junction<M> notIn(Object... objects) {
-                // First sql:
-                sql.append(" NOT IN (");
-                for (int i = 0; i < objects.length; i++) {
-                    sql.append("?");
-                    if (i < objects.length - 1)
-                        sql.append(", ");
-                }
-                sql.append(")");
-                // Then values:
+                sql.append(pendingSel[0].wherePredicate(_placeholders("NOT IN", objects.length)));
                 values.addAll(Arrays.asList(objects));
                 return junc[0];
             }
 
             @Override
             public Junction<M> isNull() {
-                // First sql:
-                sql.append(" IS NULL");
-                // Then values:
+                sql.append(pendingSel[0].wherePredicate("IS NULL"));
                 return junc[0];
             }
 
             @Override
             public Junction<M> isNotNull() {
-                // First sql:
-                sql.append(" IS NOT NULL");
-                // Then values:
+                sql.append(pendingSel[0].wherePredicate("IS NOT NULL"));
                 return junc[0];
             }
 
             @Override
             public Junction<M> greaterThan(Object value) {
-                // First sql:
-                sql.append(" > ?");
-                // Then values:
+                sql.append(pendingSel[0].wherePredicate("> ?"));
                 values.add(value);
                 return junc[0];
             }
 
             @Override
             public Junction<M> greaterThanOrEqual(Object value) {
-                // First sql:
-                sql.append(" >= ?");
-                // Then values:
+                sql.append(pendingSel[0].wherePredicate(">= ?"));
                 values.add(value);
                 return junc[0];
             }
 
             @Override
             public Junction<M> lessThan(Object value) {
-                // First sql:
-                sql.append(" < ?");
-                // Then values:
+                sql.append(pendingSel[0].wherePredicate("< ?"));
                 values.add(value);
                 return junc[0];
             }
 
             @Override
             public Junction<M> lessThanOrEqual(Object value) {
-                // First sql:
-                sql.append(" <= ?");
-                // Then values:
+                sql.append(pendingSel[0].wherePredicate("<= ?"));
                 values.add(value);
                 return junc[0];
             }
@@ -533,62 +500,53 @@ public final class SQLiteDataBase implements DataBase
 
             @Override
             public <T> Compare<M, T> and(Function<M, Val<T>> selector) {
-                var field = _selectTableField(selector, model);
-                sql.append(" AND ").append(field.name()).append(" ");
+                sql.append(" AND ");
+                pendingSel[0] = _resolveSelection(selector, model);
                 return (Compare<M, T>) valueCollector;
             }
 
             @Override
             public <T> Compare<M, T> or( Function<M, Val<T>> selector ) {
-                var field = _selectTableField(selector, model);
-                sql.append(" OR ").append(field.name()).append(" ");
+                sql.append(" OR ");
+                pendingSel[0] = _resolveSelection(selector, model);
                 return (Compare<M, T>) valueCollector;
             }
 
             @Override
             public <T> Compare<M, T> and( Class<? extends Val<T>> field ) {
-                sql.append(" AND ").append(table.getField(field).name());
+                sql.append(" AND ");
+                pendingSel[0] = new Selection.Flat(table.getField(field));
                 return (Compare<M, T>) valueCollector;
             }
 
             @Override
             public <T> Compare<M, T> or( Class<? extends Val<T>> field ) {
                 sql.append(" OR ");
-                sql.append(table.getField(field).name());
+                pendingSel[0] = new Selection.Flat(table.getField(field));
                 return (Compare<M, T>) valueCollector;
             }
 
             @Override
             public <N extends Number> Query<M> orderAscendingBy( Function<M, Val<N>> selector ) {
-                var field = _selectTableField(selector, model);
-                sql.append(" ORDER BY ");
-                sql.append(field.name());
-                sql.append(" ASC");
+                sql.append(" ORDER BY ").append(_resolveSelection(selector, model).orderByExpression()).append(" ASC");
                 return this;
             }
 
             @Override
             public <N extends Number> Query<M> orderDescendingBy( Function<M, Val<N>> selector ) {
-                var field = _selectTableField(selector, model);
-                sql.append(" ORDER BY ");
-                sql.append(field.name());
-                sql.append(" DESC");
+                sql.append(" ORDER BY ").append(_resolveSelection(selector, model).orderByExpression()).append(" DESC");
                 return this;
             }
 
             @Override
             public Query<M> orderAscendingBy( Class<? extends Val<?>> field ) {
-                sql.append(" ORDER BY ");
-                sql.append(table.getField(field).name());
-                sql.append(" ASC");
+                sql.append(" ORDER BY ").append(new Selection.Flat(table.getField(field)).orderByExpression()).append(" ASC");
                 return this;
             }
 
             @Override
             public Query<M> orderDescendingBy( Class<? extends Val<?>> field ) {
-                sql.append(" ORDER BY ");
-                sql.append(table.getField(field).name());
-                sql.append(" DESC");
+                sql.append(" ORDER BY ").append(new Selection.Flat(table.getField(field)).orderByExpression()).append(" DESC");
                 return this;
             }
 
@@ -617,22 +575,28 @@ public final class SQLiteDataBase implements DataBase
 
             @Override
             public <T> Compare<M, T> where( Class<? extends Val<T>> field ) {
-                // First sql:
-                sql.append(table.getField(field).name()).append(" ");
-                // Then values:
+                pendingSel[0] = new Selection.Flat(table.getField(field));
                 return (Compare<M, T>) valueCollector;
             }
 
             @Override
             public <T> Compare<M, T> where( Function<M, Val<T>> selector )
             {
-                var field = _selectTableField(selector, model);
-                // First sql:
-                sql.append(field.name()).append(" ");
-                // Then values:
+                pendingSel[0] = _resolveSelection(selector, model);
                 return (Compare<M, T>) valueCollector;
             }
         };
+    }
+
+    /** Builds an {@code IN}/{@code NOT IN} operator fragment with the right number of {@code ?} placeholders. */
+    private static String _placeholders(String op, int count) {
+        StringBuilder sb = new StringBuilder(op).append(" (");
+        for ( int i = 0; i < count; i++ ) {
+            sb.append("?");
+            if ( i < count - 1 )
+                sb.append(", ");
+        }
+        return sb.append(")").toString();
     }
 
     @Override
@@ -640,18 +604,18 @@ public final class SQLiteDataBase implements DataBase
         _db.close();
     }
 
-    private <T, M extends Model<M>> EntityTableField _selectTableField(
+    private <T, M extends Model<M>> Selection _resolveSelection(
         Function<M, Val<T>> selector,
         Class<M> model
     ) {
-        var propSelector = new PropertySelectionProxy(_getTableFor(model));
-        var selection = selector.apply((M) Proxy.newProxyInstance(
+        var propSelector = new PropertySelectionProxy(_getTableFor(model), _entityRegistry);
+        // Driving the selector records the selection (or throws if it is not a valid one); the
+        // returned stand-in property proxy is intentionally unused.
+        var ignored = selector.apply((M) Proxy.newProxyInstance(
                                 model.getClassLoader(),
                                 new Class<?>[]{model},
                                 propSelector
                             ));
-        if ( selection == null )
-            log.error("Selection is null!", new Throwable());
         return propSelector.getSelection().orElseThrow();
     }
 
