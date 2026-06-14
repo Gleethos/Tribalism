@@ -9,6 +9,7 @@ import org.slf4j.LoggerFactory;
 import java.io.File;
 import java.sql.Date;
 import java.sql.*;
+import java.time.LocalDateTime;
 import java.util.*;
 import java.util.function.Consumer;
 
@@ -187,7 +188,15 @@ final class BasicSQLiteDataBase {
     private PreparedStatement _newPreparedStatement(String sql, List<? extends Object> values) throws SQLException {
         PreparedStatement pstmt = _getConnection().prepareStatement(sql);
         if ( values != null ) {
-            for(int i=0; i<values.size(); i++) pstmt.setObject(i + 1, values.get(i));
+            for(int i=0; i<values.size(); i++) {
+                Object value = values.get(i);
+                // SQLite has no native date type, so we persist a LocalDateTime as its
+                // canonical ISO-8601 text. Doing the conversion here, at the single binding
+                // chokepoint, keeps stored values and query parameters perfectly consistent.
+                if ( value instanceof LocalDateTime )
+                    value = value.toString();
+                pstmt.setObject(i + 1, value);
+            }
         }
         return pstmt;
     }
@@ -415,6 +424,8 @@ final class BasicSQLiteDataBase {
             return "CHAR";
         else if ( Enum.class.isAssignableFrom(type) )
             return "TEXT";
+        else if ( type == LocalDateTime.class )
+            return "TEXT"; // Persisted as canonical ISO-8601 text, see _newPreparedStatement.
         else
             throw new IllegalArgumentException("The type " + type.getName() + " is not supported");
     }
@@ -453,6 +464,7 @@ final class BasicSQLiteDataBase {
                         type.equals(byte.class) ||
                         type.equals(Character.class) ||
                         type.equals(char.class) ||
+                        type.equals(LocalDateTime.class) ||
                         Enum.class.isAssignableFrom(type);
     }
 

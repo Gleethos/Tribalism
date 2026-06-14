@@ -1118,6 +1118,9 @@ public final class SQLiteDataBase implements DataBase
             Object enumVal = Enum.valueOf((Class<Enum>) targetType, raw.toString());
             return enumVal;
         }
+        if ( targetType == java.time.LocalDateTime.class )
+            // Stored as canonical ISO-8601 text (see BasicSQLiteDataBase._newPreparedStatement).
+            return java.time.LocalDateTime.parse(raw.toString());
         return raw;
     }
 

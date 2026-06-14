@@ -527,6 +527,8 @@ record EntityTableField(
                 return (byte) 0;
             else if ( Enum.class.isAssignableFrom(itemType) )
                 return itemType.getEnumConstants()[0];
+            else if ( itemType == java.time.LocalDateTime.class )
+                return java.time.LocalDateTime.of(1970, 1, 1, 0, 0, 0);
             else
                 throw new IllegalStateException( "Unknown property type: " + itemType);
         } else if ( kind == FieldKind.ID ) {
