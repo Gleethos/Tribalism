@@ -572,13 +572,23 @@ The facade owns four responsibilities:
 
 Sandbox plumbing under the facade:
 
-- **`SandboxRuntime`** — SPI over the container engine. `PodmanSandboxRuntime` shells out to the
-  shipped `podman` binary (resolved by `SandboxBinaries`); a host-isolated `LocalSandboxRuntime` is a
-  **dev/test double only — explicitly not the security boundary**.
+- **`SandboxRuntime`** — SPI over the container engine. `PodmanSandboxRuntime` runs a **rootless**
+  container via the shipped `podman`; a host-isolated `LocalSandboxRuntime` is a **dev/test double only —
+  explicitly not the security boundary**. The static podman build's helpers (`crun`/`conmon`/
+  `fuse-overlayfs`…) aren't at their compile-time paths, so the runtime **generates** a
+  `containers.conf`/`storage.conf` pointing at the extracted binaries with a self-contained graph root.
+- **The one un-bundleable dependency:** rootless containers need the **setuid-root** `newuidmap`/
+  `newgidmap` to map a subordinate-UID range into the container's user namespace. Setuid-root can only be
+  granted by a privileged install, so these **must come from the OS** (`uidmap` on Debian/Ubuntu,
+  `shadow-utils` on Fedora/RHEL — auto-installed with a distro podman, which we bypass by shipping our
+  own). The installer therefore **declares `uidmap` as a dependency** (`packaging/`, `ext.osRuntimeDependencies`),
+  and `PodmanSandboxRuntime.preflight()` checks every prerequisite and refuses to start with a
+  **distro-aware** fix (e.g. `sudo apt install uidmap`) rather than a cryptic podman error.
 - **`WorkspaceRepo`** — wraps the shipped `git` binary over the container's working directory: `commit`
-  (returns a snapshot id), `checkout`, `log`. This is what gives §10.2 its "git for the agent workspace".
-- **`SandboxBinaries`** — locates `podman`/`git`: a bundled `bin/` under the app data dir first, then a
-  configured override, then system `PATH`; reports cleanly when a binary is absent so the harness can
+  (returns a snapshot id), `checkout` (force + clean for a faithful rewind), `log`. This gives §10.2 its
+  "git for the agent workspace".
+- **`SandboxBinaries`** — locates `podman`/`git`: a bundled per-platform dir first, then a configured
+  override, then system `PATH` (git only); reports cleanly when a binary is absent so the harness can
   refuse sandbox tools rather than fall back to the host.
 
 ---

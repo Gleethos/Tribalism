@@ -16,19 +16,64 @@ import java.util.Map;
 import java.util.Objects;
 
 /**
- *  The real, host-isolated {@link SandboxRuntime} (§9.5): it drives the bundled {@code podman} to run
- *  a long-lived container whose only host mount is the agent's workspace, with network default-denied,
- *  and dispatches every sandbox command as a {@code podman exec} into that container. The agent thus
- *  gets a Linux-like playground and <b>never</b> the host shell (principle 7).
+ *  The real, host-isolated {@link SandboxRuntime} (§9.5): it drives the bundled {@code podman} to run a
+ *  long-lived <b>rootless</b> container whose only host mount is the agent's workspace, with network
+ *  default-denied, and dispatches every sandbox command as a {@code podman exec} into that container.
+ *  The agent thus gets a Linux-like playground and <b>never</b> the host shell (principle 7).
+ *
+ *  <h2>How a Linux container actually works (so this class is maintainable)</h2>
+ *  A container is <i>not</i> a virtual machine — there is no second kernel. The agent's commands run as
+ *  ordinary processes on the host kernel, which is told to <i>lie</i> to them about what they can see and
+ *  do. Several kernel features combine to produce that illusion:
+ *  <ul>
+ *    <li><b>Namespaces</b> — per-resource "filtered views". A <i>mount</i> namespace gives the container
+ *        its own filesystem tree; a <i>PID</i> namespace its own process numbering; a <i>network</i>
+ *        namespace its own interfaces; and — central here — a <i>user</i> namespace its own user-ID
+ *        mapping (below).</li>
+ *    <li><b>cgroups</b> — caps on how much CPU/memory the container may use.</li>
+ *    <li><b>An OCI runtime</b> ({@code crun}) — the low-level tool that performs the namespace/cgroup
+ *        setup and execs the program. Bundled.</li>
+ *    <li><b>{@code conmon}</b> — a tiny monitor process that holds the container's I/O and reaps its exit
+ *        code so it survives the {@code podman} command returning. Bundled.</li>
+ *    <li><b>overlayfs / {@code fuse-overlayfs}</b> — stacks the read-only image layer and a writable
+ *        layer into one filesystem. Bundled (the fuse variant, for rootless).</li>
+ *  </ul>
+ *  podman is the conductor that orchestrates these per request.
+ *
+ *  <h2>Rootless containers and the UID-mapping problem (the crux)</h2>
+ *  Historically this setup needed <b>root</b>, which is exactly the ambient authority principle 7
+ *  forbids for AI-run commands. <b>Rootless</b> mode avoids it via the <i>user namespace</i>: inside the
+ *  container a process can be "root", but that fake root is <i>mapped</i> back to the unprivileged host
+ *  user (e.g. host uid 1001) the moment it touches anything real — full power inside the box, none
+ *  outside.
  *  <p>
- *  The static podman build ships its own OCI runtime and helpers ({@code crun}, {@code conmon},
- *  {@code netavark}, {@code pasta}, {@code fuse-overlayfs}…). They are <b>not</b> at the compile-time
- *  {@code /usr/local} paths podman's defaults expect, so this class <b>generates</b> a
- *  {@code containers.conf} + {@code storage.conf} with absolute paths to the extracted binaries and a
- *  self-contained graph/run root under the app, and points podman at them via {@code CONTAINERS_CONF}/
- *  {@code CONTAINERS_STORAGE_CONF}. The host {@code PATH} is appended so the setuid {@code newuidmap}/
- *  {@code newgidmap} (the one thing that <i>must</i> come from the OS, see {@link #preflight}) are found
- *  when the host provides them.
+ *  A container needs <b>many</b> internal UIDs (its own {@code root}, {@code nobody}, service users…), so
+ *  it must map a <i>range</i> of host UIDs. The host reserves such a range per user in
+ *  {@code /etc/subuid} / {@code /etc/subgid}. But <b>allocating a range into a namespace is itself
+ *  privileged</b> (letting a user map arbitrary host UIDs would be identity theft). Linux delegates just
+ *  that one step to two small <b>setuid-root</b> helpers, {@code newuidmap} / {@code newgidmap}: they run
+ *  with root's authority only long enough to verify the user's {@code /etc/subuid} entitlement and write
+ *  the mapping — the single, audited escape hatch that makes rootless containers safe.
+ *
+ *  <h2>What we ship, and the one thing we cannot</h2>
+ *  We bundle podman + {@code crun} + {@code conmon} + {@code fuse-overlayfs} + networking helpers
+ *  (downloaded & SHA-256-verified by {@code ./gradlew fetchSandboxBinaries}). The static build expects
+ *  them at compile-time {@code /usr/local} paths, so this class <b>generates</b> a {@code containers.conf}
+ *  + {@code storage.conf} pointing at the actual extracted locations, with a self-contained graph/run
+ *  root, wired via {@code CONTAINERS_CONF} / {@code CONTAINERS_STORAGE_CONF}.
+ *  <p>
+ *  <b>{@code newuidmap}/{@code newgidmap} are the exception: they cannot be shipped.</b> Being setuid-root
+ *  means the <i>file</i> must be owned by root and carry the setuid bit — a state only root can establish.
+ *  An app unpacked into a user directory cannot grant itself that, by design. So they must come from the
+ *  OS: the {@code uidmap} package (Debian/Ubuntu) or {@code shadow-utils} (Fedora/RHEL), part of base on
+ *  Fedora/Arch/openSUSE and pulled in automatically when podman is installed via a distro package manager
+ *  — which is why <b>Tribalism's installer declares {@code uidmap} as a runtime dependency</b> (we ship
+ *  our own podman and thus bypass that automatic pull). The host {@code PATH} is appended to podman's
+ *  environment so these OS-provided helpers are found.
+ *  <p>
+ *  {@link #preflight()} checks every prerequisite and, when one is missing, {@link #start()} logs a
+ *  precise, distro-aware remediation (e.g. "run: sudo apt install uidmap") and refuses to start rather
+ *  than silently degrading.
  */
 public final class PodmanSandboxRuntime implements SandboxRuntime {
 
@@ -65,8 +110,17 @@ public final class PodmanSandboxRuntime implements SandboxRuntime {
     public void start() {
         if ( running ) return;
         PreflightReport report = preflight();
-        if ( !report.canRunContainers() )
-            throw new IllegalStateException("Sandbox cannot start a container:\n" + report);
+        if ( !report.canRunContainers() ) {
+            // Elaborate, actionable logging — the missing piece is almost always the OS uidmap package,
+            // which we deliberately do not (and cannot) bundle. Make the fix obvious in the logs.
+            LOG.error("""
+                The AI agent sandbox cannot start a rootless container. Prerequisite check:
+                {}
+                {}""", report, report.remediation());
+            throw new IllegalStateException(
+                "Sandbox cannot start a container — missing rootless prerequisites.\n" + report +
+                "\n" + report.remediation());
+        }
         try {
             Files.createDirectories(config.workspaceDir());
         } catch ( IOException e ) {
@@ -235,6 +289,54 @@ public final class PodmanSandboxRuntime implements SandboxRuntime {
             b.append(ok ? "  [ok]   " : "  [MISSING] ").append(name);
             if ( !ok && fix != null ) b.append(" — ").append(fix);
             b.append('\n');
+        }
+
+        /**
+         *  A human-facing, distro-aware fix for whatever is missing (empty when ready). The common case is
+         *  the absent {@code uidmap}/{@code shadow-utils} package — which our installer declares as a
+         *  dependency, so this guidance is the safety net for hosts where it is somehow absent.
+         */
+        public String remediation() {
+            if ( canRunContainers() ) return "";
+            StringBuilder b = new StringBuilder("To enable the AI agent sandbox on this host:\n");
+            if ( !newuidmap || !newgidmap )
+                b.append("  • Install the rootless UID-mapping helpers (setuid-root; not bundleable):\n")
+                 .append("      ").append(uidmapInstallCommand()).append('\n');
+            if ( !subIdConfigured )
+                b.append("  • Reserve a subordinate-ID range for this user, e.g.:\n")
+                 .append("      sudo usermod --add-subuids 100000-165535 --add-subgids 100000-165535 ")
+                 .append(System.getProperty("user.name", "<user>")).append('\n');
+            if ( !userNamespaces )
+                b.append("  • Enable unprivileged user namespaces:\n")
+                 .append("      sudo sysctl -w kernel.unprivileged_userns_clone=1\n");
+            if ( !podmanExecutable || !conmonExecutable || !crunExecutable )
+                b.append("  • Re-fetch the bundled container binaries:  ./gradlew fetchSandboxBinaries\n");
+            return b.toString().stripTrailing();
+        }
+
+        /** Picks the right package-manager command for the host's distro family (best-effort). */
+        private static String uidmapInstallCommand() {
+            String id = osReleaseField("ID");
+            String like = osReleaseField("ID_LIKE");
+            String fam = (id + " " + like).toLowerCase(java.util.Locale.ROOT);
+            if ( fam.contains("debian") || fam.contains("ubuntu") )           return "sudo apt install uidmap";
+            if ( fam.contains("fedora") || fam.contains("rhel") || fam.contains("centos") )
+                                                                              return "sudo dnf install shadow-utils";
+            if ( fam.contains("suse") )                                       return "sudo zypper install shadow";
+            if ( fam.contains("arch") )                                       return "sudo pacman -S shadow";
+            if ( fam.contains("alpine") )                                     return "sudo apk add shadow-uidmap";
+            return "install your distro's 'uidmap' / 'shadow-utils' package (provides newuidmap/newgidmap)";
+        }
+
+        private static String osReleaseField( String key ) {
+            try {
+                Path p = Path.of("/etc/os-release");
+                if ( !Files.isReadable(p) ) return "";
+                for ( String l : Files.readAllLines(p) )
+                    if ( l.startsWith(key + "=") )
+                        return l.substring(key.length() + 1).replace("\"", "").trim();
+            } catch ( IOException ignored ) { }
+            return "";
         }
     }
 

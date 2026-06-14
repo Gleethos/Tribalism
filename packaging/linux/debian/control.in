@@ -1,0 +1,23 @@
+Source: tribalism
+Section: games
+Priority: optional
+Maintainer: Tribalism <gleethros@gmail.com>
+Build-Depends: debhelper-compat (= 13)
+Standards-Version: 4.6.2
+
+Package: tribalism
+Architecture: amd64
+# Runtime dependencies.
+#  - default-jre: the application is a JVM app.
+#  - uidmap: provides the setuid-root newuidmap/newgidmap helpers REQUIRED for the AI agent's
+#    rootless podman sandbox (we ship podman+crun+conmon ourselves, but these two helpers MUST come
+#    from the OS — they cannot be bundled, being setuid-root). See packaging/README.md and the
+#    app.agent.sandbox.PodmanSandboxRuntime class documentation.
+Depends: ${misc:Depends},
+         default-jre (>= 2:1.21),
+         uidmap
+# fuse-overlayfs, slirp4netns, crun, conmon, podman, git are all bundled by the app — do NOT add them.
+Description: Tribalism — the AI-assisted pen & paper game master
+ A desktop tool for pen & paper game masters with a 3D voxel map engine, live multiplayer
+ sessions over the LAN, and a sandboxed agentic AI game master that runs in its own rootless
+ podman container.

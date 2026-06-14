@@ -242,6 +242,17 @@ ext {
     sandboxBundleDir = file("binaries/${sandboxPlatform}")
     sandboxCacheDir  = file('binaries/cache')
 
+    // Single source of truth for the OS runtime dependency the native installers must declare. We ship
+    // podman/crun/conmon/fuse-overlayfs ourselves, but the setuid-root newuidmap/newgidmap helpers
+    // (rootless UID mapping) cannot be bundled and must come from the OS. See packaging/README.md and
+    // app.agent.sandbox.PodmanSandboxRuntime. Keep in sync with packaging/linux/*.
+    osRuntimeDependencies = [
+        debian: ['uidmap'],          // provides newuidmap/newgidmap (Debian/Ubuntu)
+        rpm   : ['shadow-utils'],    // base on Fedora/RHEL; declared for safety
+        arch  : ['shadow'],
+        alpine: ['shadow-uidmap'],
+    ]
+
     // podman-static: a self-contained podman + crun/conmon/netavark/pasta/fuse-overlayfs bundle.
     podmanVersion = 'v5.8.2'
     podmanUrl     = "https://github.com/mgoltzsche/podman-static/releases/download/${podmanVersion}/podman-linux-amd64.tar.gz"
