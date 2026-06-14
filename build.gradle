@@ -3,12 +3,20 @@ plugins {
     id 'java'
     id "com.github.node-gradle.node" version "7.1.0"
     // For static null checking:
-    id "net.ltgt.errorprone" version "3.1.0"
+    id "net.ltgt.errorprone" version "5.1.0"
 }
 
 group 'org.gleethos'
 version '0.0.0'
-sourceCompatibility = '21'
+
+java {
+    // Java 25 gives us the final java.lang.classfile ClassFile API, which the Topsoil ORM
+    // uses to statically resolve "zoom lens" property selectors (default methods that zoom
+    // into a Value field). The toolchain forks compilation/tests onto the installed JDK 25.
+    toolchain {
+        languageVersion = JavaLanguageVersion.of(25)
+    }
+}
 
 var REACT_SKIN_LOCATION = 'src/main/web-portal'
 
@@ -18,13 +26,24 @@ repositories {
     google()
 }
 
+// Spock's BOM pins Groovy 4.0.13, whose bundled ASM cannot read JDK 25 (class file v69)
+// class files, which breaks Groovy test compilation (it decompiles the main classes to
+// resolve them). Force the whole Groovy 4.0 line to a JDK 25-capable patch (ASM 9.8+).
+// 4.0.32 stays binary-compatible with Spock 2.3 (same 4.0 line).
+configurations.all {
+    resolutionStrategy.eachDependency { details ->
+        if ( details.requested.group == 'org.apache.groovy' )
+            details.useVersion '4.0.32'
+    }
+}
+
 dependencies {
 
     // JSpecify
-    errorprone "com.uber.nullaway:nullaway:0.12.8"
+    errorprone "com.uber.nullaway:nullaway:0.13.6"
     compileOnly "com.google.code.findbugs:jsr305:3.0.2"
-    errorprone "com.google.errorprone:error_prone_core:2.27.0"
-    implementation group: 'com.google.errorprone', name: 'error_prone_annotations', version: '2.27.0'
+    errorprone "com.google.errorprone:error_prone_core:2.50.0"
+    implementation group: 'com.google.errorprone', name: 'error_prone_annotations', version: '2.50.0'
     implementation 'org.jspecify:jspecify:1.0.0'
 
 
@@ -58,6 +77,9 @@ dependencies {
     // Testing with Spock :
     testImplementation 'org.junit.jupiter:junit-jupiter-api:5.8.2'
     testRuntimeOnly 'org.junit.jupiter:junit-jupiter-engine:5.8.2'    // mandatory dependencies for using Spock
+    // Gradle 9 no longer puts the JUnit Platform launcher on the test runtime classpath
+    // automatically; it must be declared explicitly. Pinned to the platform version Spock resolves.
+    testRuntimeOnly 'org.junit.platform:junit-platform-launcher:1.9.0'
 
     testImplementation 'org.apache.groovy:groovy'
     testImplementation platform('org.spockframework:spock-bom:2.3-groovy-4.0')
