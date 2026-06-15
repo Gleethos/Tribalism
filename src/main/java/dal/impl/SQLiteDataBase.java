@@ -527,6 +527,48 @@ public final class SQLiteDataBase implements DataBase
             }
 
             @Override
+            public <V, T> Compare<M, T> and( Function<M, Val<V>> rootSelector, Function<V, T> nested ) {
+                sql.append(" AND ");
+                pendingSel[0] = _nested(model, rootSelector, _lenses(nested));
+                return (Compare<M, T>) valueCollector;
+            }
+
+            @Override
+            public <V, A, T> Compare<M, T> and( Function<M, Val<V>> rootSelector, Function<V, A> nested1, Function<A, T> nested2 ) {
+                sql.append(" AND ");
+                pendingSel[0] = _nested(model, rootSelector, _lenses(nested1, nested2));
+                return (Compare<M, T>) valueCollector;
+            }
+
+            @Override
+            public <V, A, B, T> Compare<M, T> and( Function<M, Val<V>> rootSelector, Function<V, A> nested1, Function<A, B> nested2, Function<B, T> nested3 ) {
+                sql.append(" AND ");
+                pendingSel[0] = _nested(model, rootSelector, _lenses(nested1, nested2, nested3));
+                return (Compare<M, T>) valueCollector;
+            }
+
+            @Override
+            public <V, T> Compare<M, T> or( Function<M, Val<V>> rootSelector, Function<V, T> nested ) {
+                sql.append(" OR ");
+                pendingSel[0] = _nested(model, rootSelector, _lenses(nested));
+                return (Compare<M, T>) valueCollector;
+            }
+
+            @Override
+            public <V, A, T> Compare<M, T> or( Function<M, Val<V>> rootSelector, Function<V, A> nested1, Function<A, T> nested2 ) {
+                sql.append(" OR ");
+                pendingSel[0] = _nested(model, rootSelector, _lenses(nested1, nested2));
+                return (Compare<M, T>) valueCollector;
+            }
+
+            @Override
+            public <V, A, B, T> Compare<M, T> or( Function<M, Val<V>> rootSelector, Function<V, A> nested1, Function<A, B> nested2, Function<B, T> nested3 ) {
+                sql.append(" OR ");
+                pendingSel[0] = _nested(model, rootSelector, _lenses(nested1, nested2, nested3));
+                return (Compare<M, T>) valueCollector;
+            }
+
+            @Override
             public <N extends Number> Query<M> orderAscendingBy( Function<M, Val<N>> selector ) {
                 sql.append(" ORDER BY ").append(_resolveSelection(selector, model).orderByExpression()).append(" ASC");
                 return this;
@@ -547,6 +589,42 @@ public final class SQLiteDataBase implements DataBase
             @Override
             public Query<M> orderDescendingBy( Class<? extends Val<?>> field ) {
                 sql.append(" ORDER BY ").append(new Selection.Flat(table.getField(field)).orderByExpression()).append(" DESC");
+                return this;
+            }
+
+            @Override
+            public <V, T> Query<M> orderAscendingBy( Function<M, Val<V>> rootSelector, Function<V, T> nested ) {
+                sql.append(" ORDER BY ").append(_nested(model, rootSelector, _lenses(nested)).orderByExpression()).append(" ASC");
+                return this;
+            }
+
+            @Override
+            public <V, A, T> Query<M> orderAscendingBy( Function<M, Val<V>> rootSelector, Function<V, A> nested1, Function<A, T> nested2 ) {
+                sql.append(" ORDER BY ").append(_nested(model, rootSelector, _lenses(nested1, nested2)).orderByExpression()).append(" ASC");
+                return this;
+            }
+
+            @Override
+            public <V, A, B, T> Query<M> orderAscendingBy( Function<M, Val<V>> rootSelector, Function<V, A> nested1, Function<A, B> nested2, Function<B, T> nested3 ) {
+                sql.append(" ORDER BY ").append(_nested(model, rootSelector, _lenses(nested1, nested2, nested3)).orderByExpression()).append(" ASC");
+                return this;
+            }
+
+            @Override
+            public <V, T> Query<M> orderDescendingBy( Function<M, Val<V>> rootSelector, Function<V, T> nested ) {
+                sql.append(" ORDER BY ").append(_nested(model, rootSelector, _lenses(nested)).orderByExpression()).append(" DESC");
+                return this;
+            }
+
+            @Override
+            public <V, A, T> Query<M> orderDescendingBy( Function<M, Val<V>> rootSelector, Function<V, A> nested1, Function<A, T> nested2 ) {
+                sql.append(" ORDER BY ").append(_nested(model, rootSelector, _lenses(nested1, nested2)).orderByExpression()).append(" DESC");
+                return this;
+            }
+
+            @Override
+            public <V, A, B, T> Query<M> orderDescendingBy( Function<M, Val<V>> rootSelector, Function<V, A> nested1, Function<A, B> nested2, Function<B, T> nested3 ) {
+                sql.append(" ORDER BY ").append(_nested(model, rootSelector, _lenses(nested1, nested2, nested3)).orderByExpression()).append(" DESC");
                 return this;
             }
 
@@ -585,6 +663,24 @@ public final class SQLiteDataBase implements DataBase
                 pendingSel[0] = _resolveSelection(selector, model);
                 return (Compare<M, T>) valueCollector;
             }
+
+            @Override
+            public <V, T> Compare<M, T> where( Function<M, Val<V>> rootSelector, Function<V, T> nested ) {
+                pendingSel[0] = _nested(model, rootSelector, _lenses(nested));
+                return (Compare<M, T>) valueCollector;
+            }
+
+            @Override
+            public <V, A, T> Compare<M, T> where( Function<M, Val<V>> rootSelector, Function<V, A> nested1, Function<A, T> nested2 ) {
+                pendingSel[0] = _nested(model, rootSelector, _lenses(nested1, nested2));
+                return (Compare<M, T>) valueCollector;
+            }
+
+            @Override
+            public <V, A, B, T> Compare<M, T> where( Function<M, Val<V>> rootSelector, Function<V, A> nested1, Function<A, B> nested2, Function<B, T> nested3 ) {
+                pendingSel[0] = _nested(model, rootSelector, _lenses(nested1, nested2, nested3));
+                return (Compare<M, T>) valueCollector;
+            }
         };
     }
 
@@ -617,6 +713,34 @@ public final class SQLiteDataBase implements DataBase
                                 propSelector
                             ));
         return propSelector.getSelection().orElseThrow();
+    }
+
+    /**
+     *  Resolves a nested selector: a root model property selector (which must pick a single
+     *  Value-typed field) plus one or more navigation functions into that value. The navigation is
+     *  resolved by {@link NestedSelectionResolver} (probe-execution), then rendered as a zoom path.
+     */
+    private <M extends Model<M>, V> Selection _nested(
+        Class<M> model,
+        Function<M, Val<V>> rootSelector,
+        List<Function<Object, Object>> lenses
+    ) {
+        Selection rootSel = _resolveSelection(rootSelector, model);
+        if ( !(rootSel instanceof Selection.Flat flat) )
+            throw new IllegalArgumentException(
+                "The root selector of a nested where(..)/and(..)/or(..) must select a single Value-typed " +
+                "model property (e.g. AccountModel::user), not a derived/zoom property."
+            );
+        String what = model.getSimpleName() + "::" + flat.field().baseName();
+        return NestedSelectionResolver.resolve(flat.field(), lenses, _entityRegistry, what);
+    }
+
+    @SuppressWarnings("unchecked")
+    private static List<Function<Object, Object>> _lenses(Function<?, ?>... fns) {
+        List<Function<Object, Object>> out = new ArrayList<>(fns.length);
+        for ( Function<?, ?> f : fns )
+            out.add((Function<Object, Object>) f);
+        return out;
     }
 
     public Map<String, List<String>> query(String sql) {

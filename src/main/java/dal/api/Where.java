@@ -58,4 +58,36 @@ public interface Where<M extends Model<M>> extends Query<M>
      */
     <T> Compare<M, T> where( Class<? extends Val<T>> field );
 
+    /**
+     *  Selects a field <b>nested inside a {@link dal.api.Value}</b> held by the model, without
+     *  requiring a dedicated zoom method on the model. The first argument selects the model's
+     *  {@code Value} property, the second navigates into that value:
+     *  <pre>{@code
+     *    db.select(AccountModel.class)
+     *      .where(AccountModel::user, User::username)
+     *      .is("Tom")
+     *  }</pre>
+     *  The navigation argument may also be a deeper lambda chain, e.g.
+     *  {@code .where(AccountModel::user, u -> u.address().city())}.
+     *
+     * @param rootSelector Selects the model's {@code Value}-typed property (a method reference).
+     * @param nested       Navigates from that value to the field to test (a pure accessor chain).
+     */
+    <V, T> Compare<M, T> where( Function<M, Val<V>> rootSelector, Function<V, T> nested );
+
+    /**
+     *  Like {@link #where(Function, Function)} but navigating two values deep, e.g.
+     *  <pre>{@code
+     *    db.select(AccountModel.class)
+     *      .where(AccountModel::user, User::address, Address::postalCode)
+     *      .is("10001")
+     *  }</pre>
+     */
+    <V, A, T> Compare<M, T> where( Function<M, Val<V>> rootSelector, Function<V, A> nested1, Function<A, T> nested2 );
+
+    /**
+     *  Like {@link #where(Function, Function)} but navigating three values deep.
+     */
+    <V, A, B, T> Compare<M, T> where( Function<M, Val<V>> rootSelector, Function<V, A> nested1, Function<A, B> nested2, Function<B, T> nested3 );
+
 }

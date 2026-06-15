@@ -83,6 +83,30 @@ public interface Junction<M extends Model<M>> extends Query<M>
     <T> Compare<M, T> or( Class<? extends Val<T>> field );
 
     /**
+     *  Appends an AND operator and selects a field nested inside a {@link dal.api.Value} held by the
+     *  model. See {@link Where#where(Function, Function)} for the semantics of the selectors.
+     */
+    <V, T> Compare<M, T> and( Function<M, Val<V>> rootSelector, Function<V, T> nested );
+
+    /** Two-value-deep nested variant of {@link #and(Function, Function)}. */
+    <V, A, T> Compare<M, T> and( Function<M, Val<V>> rootSelector, Function<V, A> nested1, Function<A, T> nested2 );
+
+    /** Three-value-deep nested variant of {@link #and(Function, Function)}. */
+    <V, A, B, T> Compare<M, T> and( Function<M, Val<V>> rootSelector, Function<V, A> nested1, Function<A, B> nested2, Function<B, T> nested3 );
+
+    /**
+     *  Appends an OR operator and selects a field nested inside a {@link dal.api.Value} held by the
+     *  model. See {@link Where#where(Function, Function)} for the semantics of the selectors.
+     */
+    <V, T> Compare<M, T> or( Function<M, Val<V>> rootSelector, Function<V, T> nested );
+
+    /** Two-value-deep nested variant of {@link #or(Function, Function)}. */
+    <V, A, T> Compare<M, T> or( Function<M, Val<V>> rootSelector, Function<V, A> nested1, Function<A, T> nested2 );
+
+    /** Three-value-deep nested variant of {@link #or(Function, Function)}. */
+    <V, A, B, T> Compare<M, T> or( Function<M, Val<V>> rootSelector, Function<V, A> nested1, Function<A, B> nested2, Function<B, T> nested3 );
+
+    /**
      *  Finished the where clause and defines that the query result should be
      *  sorted in ascending order by the specified field.
      *
@@ -117,5 +141,32 @@ public interface Junction<M extends Model<M>> extends Query<M>
      * @return The final fluent builder API which defines how the result should be returned.
      */
     Query<M> orderDescendingBy( Class<? extends Val<?>> field );
+
+    /**
+     *  Sorts ascending by a field nested inside a {@link dal.api.Value} held by the model, selected
+     *  inline (no zoom method required), e.g.
+     *  {@code orderAscendingBy(OrgModel::org, Org::rank)} or
+     *  {@code orderAscendingBy(OrgModel::org, o -> o.place().location().lat())}.
+     *  See {@link Where#where(Function, Function)} for the selector semantics.
+     */
+    <V, T> Query<M> orderAscendingBy( Function<M, Val<V>> rootSelector, Function<V, T> nested );
+
+    /** Two-value-deep nested variant of {@link #orderAscendingBy(Function, Function)}. */
+    <V, A, T> Query<M> orderAscendingBy( Function<M, Val<V>> rootSelector, Function<V, A> nested1, Function<A, T> nested2 );
+
+    /** Three-value-deep nested variant of {@link #orderAscendingBy(Function, Function)}. */
+    <V, A, B, T> Query<M> orderAscendingBy( Function<M, Val<V>> rootSelector, Function<V, A> nested1, Function<A, B> nested2, Function<B, T> nested3 );
+
+    /**
+     *  Sorts descending by a field nested inside a {@link dal.api.Value} held by the model, selected
+     *  inline (no zoom method required). See {@link Where#where(Function, Function)} for the semantics.
+     */
+    <V, T> Query<M> orderDescendingBy( Function<M, Val<V>> rootSelector, Function<V, T> nested );
+
+    /** Two-value-deep nested variant of {@link #orderDescendingBy(Function, Function)}. */
+    <V, A, T> Query<M> orderDescendingBy( Function<M, Val<V>> rootSelector, Function<V, A> nested1, Function<A, T> nested2 );
+
+    /** Three-value-deep nested variant of {@link #orderDescendingBy(Function, Function)}. */
+    <V, A, B, T> Query<M> orderDescendingBy( Function<M, Val<V>> rootSelector, Function<V, A> nested1, Function<A, B> nested2, Function<B, T> nested3 );
 
 }

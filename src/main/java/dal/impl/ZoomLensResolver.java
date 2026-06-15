@@ -1,6 +1,5 @@
 package dal.impl;
 
-import dal.api.Value;
 import org.jspecify.annotations.NullMarked;
 import org.jspecify.annotations.Nullable;
 
@@ -27,9 +26,9 @@ import java.util.concurrent.ConcurrentHashMap;
  *  by inspecting the bytecode of a {@link dal.api.Model} default method with the Java 25
  *  {@link java.lang.classfile ClassFile API}.
  *  <p>
- *  The supported shape is intentionally strict: a default method on a {@code ModelTable}-backed
- *  model whose body does nothing but delegate to a {@code Value}-typed field getter and then
- *  chain one or more {@code zoomTo(getter, wither)} calls, e.g.
+ *  The supported shape is intentionally strict: a default method whose body does nothing but
+ *  delegate to a {@code Value}-typed field getter and then chain one or more
+ *  {@code zoomTo(getter, wither)} calls, e.g.
  *  <pre>{@code
  *    default Var<String> name() {
  *        return state().zoomTo(Product::name, Product::withName);
@@ -40,11 +39,13 @@ import java.util.concurrent.ConcurrentHashMap;
  *    }
  *  }</pre>
  *  Each {@code zoomTo} getter (e.g. {@code Product::name}) is read out of the {@code invokedynamic}
- *  bootstrap constants and resolved against the value table of the current value type. Intermediate
- *  hops must be {@code Value} foreign keys; the final hop must be a primitive column.
+ *  bootstrap constants; the ordered chain of getter names is then handed to {@link ZoomPaths} for
+ *  validation against the value tables. Anything that does not fit this exact shape throws an
+ *  {@link IllegalArgumentException} explaining precisely why.
  *  <p>
- *  Anything that does not fit this exact shape throws an {@link IllegalArgumentException} that
- *  explains precisely why the method could not be treated as a zoom selector.
+ *  This handles the case where the zoom lens lives as a default method <em>on the model interface</em>.
+ *  For zoom navigation passed inline as lambdas/method-references to {@code where(..)}, see
+ *  {@link NestedSelectionResolver}.
  */
 @NullMarked
 final class ZoomLensResolver {
@@ -58,84 +59,49 @@ final class ZoomLensResolver {
     }
 
     private static Selection.Zoom _resolve(Method method, ModelTable modelTable, EntityRegistry registry) {
-        CodeModel code = _codeOf(method);
+        String what = method.getDeclaringClass().getSimpleName() + "::" + method.getName();
+        CodeModel code = _codeOf(method, what);
 
         @Nullable EntityTableField rootField = null;
-        @Nullable Class<?> currentValueType = null;
-        @Nullable ValueTable currentVT = null;
-        List<String> tables = new ArrayList<>();
-        List<String> links = new ArrayList<>();
-        @Nullable EntityTableField pendingSub = null; // the field a zoomTo resolved to, awaiting "is it the leaf?"
+        List<String> getterNames = new ArrayList<>();
         List<LambdaImpl> pendingLambdas = new ArrayList<>();
         boolean rootSeen = false;
 
         for ( CodeElement element : code ) {
             if ( element instanceof InvokeDynamicInstruction idc ) {
-                pendingLambdas.add(_lambdaImpl(idc, method));
+                pendingLambdas.add(_lambdaImpl(idc, what));
             }
             else if ( element instanceof InvokeInstruction inv ) {
                 String calledName = inv.name().stringValue();
                 ClassDesc owner = inv.owner().asSymbol();
 
                 if ( !rootSeen ) {
-                    // The first call must be the Value-typed field getter on 'this'.
-                    rootField = _findField(modelTable, calledName);
+                    // The first call must be the field getter on 'this'.
+                    rootField = ZoomPaths.findField(modelTable, calledName);
                     if ( rootField == null )
-                        throw _fail(method, "it begins by calling '" + calledName + "()', which is not a persisted " +
-                                "property of model table '" + modelTable.getTableName() + "'");
-                    if ( !rootField.isForeignKey() || !Value.class.isAssignableFrom(rootField.type().item()) )
-                        throw _fail(method, "the property '" + calledName + "()' it delegates to is not a Value-typed " +
-                                "field; only fields holding a Value can be zoomed into");
-                    currentValueType = rootField.type().item();
-                    currentVT = _valueTable(registry, currentValueType, method);
-                    tables.add(currentVT.getTableName());
+                        throw ZoomPaths.fail(what, "it begins by calling '" + calledName + "()', which is not a " +
+                                "persisted property of model table '" + modelTable.getTableName() + "'");
                     rootSeen = true;
                 }
                 else {
                     // Every following call must be a zoomTo on a sprouts Val/Var.
                     if ( !calledName.equals("zoomTo") || !_isSproutsProperty(owner) )
-                        throw _fail(method, "it calls '" + _simpleOf(owner) + "." + calledName + "(...)'; a zoom selector " +
-                                "may only chain 'zoomTo(getter, wither)' calls after the initial field getter");
-                    // rootSeen implies both are set; guard anyway to keep the null-checker happy.
-                    if ( currentVT == null || currentValueType == null )
-                        throw _fail(method, "its zoom chain could not be tracked from the initial field getter");
-
-                    // A previous zoom step that is now being zoomed further must itself be a Value FK.
-                    if ( pendingSub != null ) {
-                        if ( !pendingSub.isForeignKey() || !Value.class.isAssignableFrom(pendingSub.type().item()) )
-                            throw _fail(method, "the intermediate zoom step '" + pendingSub.baseName() + "' is not a " +
-                                    "Value-typed field, so it cannot be zoomed into further");
-                        links.add(pendingSub.name());
-                        currentValueType = pendingSub.type().item();
-                        currentVT = _valueTable(registry, currentValueType, method);
-                        tables.add(currentVT.getTableName());
-                    }
-
+                        throw ZoomPaths.fail(what, "it calls '" + _simpleOf(owner) + "." + calledName + "(...)'; a zoom " +
+                                "selector may only chain 'zoomTo(getter, wither)' calls after the initial field getter");
                     LambdaImpl getter = _pickGetter(pendingLambdas);
                     if ( getter == null )
-                        throw _fail(method, "a 'zoomTo(..)' call has no recognizable field-getter method reference " +
-                                "(expected something like " + _simpleName(currentValueType) + "::someField)");
-                    if ( !getter.ownerDescriptor.equals(currentValueType.descriptorString()) )
-                        throw _fail(method, "the zoom getter '" + getter.name + "' operates on '" + getter.ownerDescriptor +
-                                "' but the value being zoomed is '" + currentValueType.getName() + "'");
-                    EntityTableField sub = _findField(currentVT, getter.name);
-                    if ( sub == null )
-                        throw _fail(method, "value type '" + currentValueType.getName() + "' has no field named '" +
-                                getter.name + "' to zoom into");
-                    pendingSub = sub;
+                        throw ZoomPaths.fail(what, "a 'zoomTo(..)' call has no recognizable field-getter method reference");
+                    getterNames.add(getter.name);
                     pendingLambdas.clear();
                 }
             }
             // All other instructions (aload, checkcast, areturn, ...) are irrelevant to the shape.
         }
 
-        if ( !rootSeen || rootField == null || pendingSub == null )
-            throw _fail(method, "it never zooms into a value field (expected 'aValueField().zoomTo(Type::subField, ..)')");
-        if ( !BasicSQLiteDataBase._isBasicDataType(pendingSub.type().item()) )
-            throw _fail(method, "the final zoom target '" + pendingSub.baseName() + "' is not a primitive/queryable column " +
-                    "(its type is '" + pendingSub.type().item().getName() + "'); only leaf primitives can be queried");
+        if ( !rootSeen || rootField == null || getterNames.isEmpty() )
+            throw ZoomPaths.fail(what, "it never zooms into a value field (expected 'aValueField().zoomTo(Type::subField, ..)')");
 
-        return new Selection.Zoom(rootField.name(), List.copyOf(tables), List.copyOf(links), pendingSub.name());
+        return ZoomPaths.build(rootField, getterNames, registry, what);
     }
 
     /** A method reference captured from an {@code invokedynamic} (LambdaMetafactory) site. */
@@ -149,31 +115,15 @@ final class ZoomLensResolver {
         return null;
     }
 
-    private static LambdaImpl _lambdaImpl(InvokeDynamicInstruction idc, Method method) {
+    private static LambdaImpl _lambdaImpl(InvokeDynamicInstruction idc, String what) {
         var args = idc.invokedynamic().bootstrap().arguments();
         // LambdaMetafactory bootstrap args: [samMethodType, implMethod, instantiatedMethodType, ...]
         if ( args.size() < 2 || !(args.get(1) instanceof MethodHandleEntry mhe) )
-            throw _fail(method, "a 'zoomTo(..)' argument is not a plain method reference");
+            throw ZoomPaths.fail(what, "a 'zoomTo(..)' argument is not a plain method reference");
         MethodHandleDesc mhd = mhe.asSymbol();
         if ( !(mhd instanceof DirectMethodHandleDesc dmh) )
-            throw _fail(method, "a 'zoomTo(..)' argument is not a direct method reference");
+            throw ZoomPaths.fail(what, "a 'zoomTo(..)' argument is not a direct method reference");
         return new LambdaImpl(dmh.owner().descriptorString(), dmh.methodName(), dmh.invocationType().parameterCount());
-    }
-
-    private static @Nullable EntityTableField _findField(EntityTable table, String baseName) {
-        for ( EntityTableField field : table.getFields() )
-            if ( field.baseName().equals(baseName) )
-                return field;
-        return null;
-    }
-
-    private static ValueTable _valueTable(EntityRegistry registry, Class<?> valueType, Method method) {
-        @SuppressWarnings("unchecked")
-        var vt = registry.getValueTable((Class<? extends Value>) valueType).orElse(null);
-        if ( vt == null )
-            throw _fail(method, "no value table is registered for '" + valueType.getName() +
-                    "' (pass it to createTablesFor(..))");
-        return vt;
     }
 
     private static boolean _isSproutsProperty(ClassDesc owner) {
@@ -181,30 +131,30 @@ final class ZoomLensResolver {
         return d.equals("Lsprouts/Var;") || d.equals("Lsprouts/Val;");
     }
 
-    private static CodeModel _codeOf(Method method) {
+    private static CodeModel _codeOf(Method method, String what) {
         Class<?> declaring = method.getDeclaringClass();
-        ClassModel cm = _parse(declaring, method);
+        ClassModel cm = _parse(declaring, what);
         String wantName = method.getName();
         String wantDesc = _descriptorOf(method);
         MethodModel mm = cm.methods().stream()
                 .filter(x -> x.methodName().stringValue().equals(wantName)
                           && x.methodType().stringValue().equals(wantDesc))
                 .findFirst()
-                .orElseThrow(() -> _fail(method, "its bytecode could not be located in " + declaring.getName()));
-        return mm.code().orElseThrow(() -> _fail(method, "it has no method body to inspect"));
+                .orElseThrow(() -> ZoomPaths.fail(what, "its bytecode could not be located in " + declaring.getName()));
+        return mm.code().orElseThrow(() -> ZoomPaths.fail(what, "it has no method body to inspect"));
     }
 
-    private static ClassModel _parse(Class<?> declaring, Method method) {
+    private static ClassModel _parse(Class<?> declaring, String what) {
         String resource = declaring.getName().replace('.', '/') + ".class";
         ClassLoader cl = declaring.getClassLoader();
         if ( cl == null )
             cl = ClassLoader.getSystemClassLoader();
         try ( InputStream in = cl.getResourceAsStream(resource) ) {
             if ( in == null )
-                throw _fail(method, "its class file '" + resource + "' could not be found on the classpath");
+                throw ZoomPaths.fail(what, "its class file '" + resource + "' could not be found on the classpath");
             return ClassFile.of().parse(in.readAllBytes());
         } catch ( IOException e ) {
-            throw _fail(method, "its class file could not be read: " + e.getMessage());
+            throw ZoomPaths.fail(what, "its class file could not be read: " + e.getMessage());
         }
     }
 
@@ -219,18 +169,5 @@ final class ZoomLensResolver {
         String d = cd.descriptorString();
         int slash = d.lastIndexOf('/');
         return slash >= 0 ? d.substring(slash + 1, d.length() - 1) : d;
-    }
-
-    private static String _simpleName(@Nullable Class<?> c) {
-        return c == null ? "?" : c.getSimpleName();
-    }
-
-    private static IllegalArgumentException _fail(Method method, String reason) {
-        return new IllegalArgumentException(
-                "Cannot use '" + method.getDeclaringClass().getSimpleName() + "::" + method.getName() +
-                "' as a query property selector, because " + reason + ".\n" +
-                "A zoom selector must be a default method that does nothing but delegate to a Value-typed " +
-                "field and chain 'zoomTo(getter, wither)' calls down to a primitive value field."
-        );
     }
 }
