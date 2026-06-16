@@ -215,4 +215,21 @@ public interface Compare<M extends Model<M>, T>
      */
     default Junction<M> lessThanOrEqual( Val<T> value ) { return lessThanOrEqual(value.get()); }
 
+    /**
+     *  Narrows a sum-typed (sealed value) field to one of its permitted record subtypes {@code V}.
+     *  This filters the query to rows whose value is of that concrete subtype and narrows the
+     *  comparison type from {@code T} to {@code V}, so that a following {@link #is(Object)} /
+     *  {@link #isNot(Object)} matches the whole narrowed value:
+     *  <pre>{@code
+     *    db.select(Drawing.class).where(Drawing::shape).isOfType(Circle.class).asList();          // type filter
+     *    db.select(Drawing.class).where(Drawing::shape).isOfType(Circle.class).is(new Circle(5)); // narrowed match
+     *  }</pre>
+     *  The result is also a terminal {@link Query}, so the type filter may stand on its own.
+     *
+     * @param type The permitted record subtype to narrow to.
+     * @param <V> The narrowed subtype.
+     * @return A {@link NarrowedCompare} for the narrowed subtype.
+     */
+    <V> NarrowedCompare<M, V> isOfType( Class<V> type );
+
 }

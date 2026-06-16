@@ -206,9 +206,9 @@ final class ModelProperty implements Var<Object>, Viewable<Object>
             // currently-stored FK; it is null only if the property has not been set yet.
             Object oldValue = orElseNull();
             if (oldValue instanceof Value oldVal) {
-                _dataBase._removeValueAndDecrementCounter(oldVal);
+                _dataBase._removeReferencedValue(_fieldType.item(), oldVal);
             }
-            long id = _dataBase._storeValueAndIncreaseCounter(dataBaseValue);
+            long id = _dataBase._storeReferencedValue(_fieldType.item(), dataBaseValue);
             boolean success = _updateField(id);
             if ( !success )
                 throw new IllegalStateException("Failed to update table entry for id " + _id);
@@ -225,7 +225,7 @@ final class ModelProperty implements Var<Object>, Viewable<Object>
         // Read the current tuple to know which value usages to decrement:
         Tuple<?> oldTuple = _dataBase._readTupleFromIntermediateTable(_tableName, _fieldName, _id, itemType);
         for (Object o : oldTuple) {
-            if (o != null) _dataBase._removeValueAndDecrementCounter((Value) o);
+            if (o != null) _dataBase._removeReferencedValue(itemType, (Value) o);
         }
         // Wipe existing rows for this owner in the intermediate table:
         _dataBase._clearIntermediateTable(_tableName, _fieldName, _id);
@@ -234,7 +234,7 @@ final class ModelProperty implements Var<Object>, Viewable<Object>
         for (Object o : newTuple) {
             if (o != null) {
                 Value v = (Value) o;
-                long valueId = _dataBase._storeValueAndIncreaseCounter(v);
+                long valueId = _dataBase._storeReferencedValue(itemType, v);
                 _dataBase._insertIntermediateTableRow(_tableName, _fieldName, _id, itemType, valueId, pos);
             }
             pos++;

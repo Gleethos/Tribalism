@@ -32,6 +32,22 @@ final class EntityRegistry
             modelTable.entityType().ifPresent(modelInterface -> distinct.add(modelInterface));
 
         distinct.addAll(modelInterfaces);
+
+        // Expand sum types: a sealed Value interface implies tables for all of its permitted
+        // subtypes (record tips, or recursively further sealed value interfaces).
+        Deque<Class<? extends DataBaseEntity>> work = new ArrayDeque<>(distinct);
+        while ( !work.isEmpty() ) {
+            Class<? extends DataBaseEntity> c = work.poll();
+            if ( _isSumType(c) ) {
+                for (Class<?> permit : c.getPermittedSubclasses()) {
+                    @SuppressWarnings("unchecked")
+                    var pc = (Class<? extends DataBaseEntity>) permit;
+                    if ( distinct.add(pc) )
+                        work.add(pc);
+                }
+            }
+        }
+
         var finalModelInterfaces = (Tuple<Class<? extends DataBaseEntity>>) ((Tuple) Tuple.of(Class.class)).addAll(distinct);
 
         Map<String, EntityTable> newModelTables = new LinkedHashMap<>();
@@ -45,6 +61,9 @@ final class EntityRegistry
                                 t -> newModelTables.put(t.getTableName(), t)
                         )
                 );
+            } else if (_isSumType(modelInterface)) {
+                SumTable sumTable = SumTable.of((Class<? extends Value>) modelInterface);
+                newModelTables.put(sumTable.getTableName(), sumTable);
             } else if (Value.class.isAssignableFrom(modelInterface)) {
                 ValueTable valueTable = ValueTable.of((Class<? extends Value>) modelInterface, finalModelInterfaces);
                 Objects.requireNonNull(valueTable, "valueTable");
@@ -190,6 +209,18 @@ final class EntityRegistry
             throw new IllegalStateException("The model table for " + modelInterface + " is not consistent!");
 
         return Optional.ofNullable(found1);
+    }
+
+    static boolean _isSumType(Class<?> type) {
+        return type.isInterface() && type.isSealed() && Value.class.isAssignableFrom(type);
+    }
+
+    /** The union ({@link SumTable}) for a sealed sum-type interface, if one is registered. */
+    Optional<SumTable> getSumTable(Class<?> type) {
+        if ( !_isSumType(type) )
+            return Optional.empty();
+        var t = entityTables.get(BasicSQLiteDataBase._tableNameFromClass(type)).orElse(null);
+        return ( t instanceof SumTable st ) ? Optional.of(st) : Optional.empty();
     }
 
     Optional<ValueTable> getValueTable(Class<? extends Value> valueClass ) {

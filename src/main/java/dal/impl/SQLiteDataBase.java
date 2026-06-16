@@ -414,15 +414,23 @@ public final class SQLiteDataBase implements DataBase
         Compare<M, Object> valueCollector = new Compare<>() {
             @Override
             public Junction<M> is(Object value) {
-                sql.append(pendingSel[0].wherePredicate("= ?"));
-                values.add(value);
+                if ( _sumFlat(pendingSel[0]) != null && value instanceof Value v )
+                    _appendSumWholeMatch(sql, values, (Selection.Flat) pendingSel[0], v, false);
+                else {
+                    sql.append(pendingSel[0].wherePredicate("= ?"));
+                    values.add(value);
+                }
                 return junc[0];
             }
 
             @Override
             public Junction<M> isNot(Object value) {
-                sql.append(pendingSel[0].wherePredicate("!= ?"));
-                values.add(value);
+                if ( _sumFlat(pendingSel[0]) != null && value instanceof Value v )
+                    _appendSumWholeMatch(sql, values, (Selection.Flat) pendingSel[0], v, true);
+                else {
+                    sql.append(pendingSel[0].wherePredicate("!= ?"));
+                    values.add(value);
+                }
                 return junc[0];
             }
 
@@ -492,6 +500,46 @@ public final class SQLiteDataBase implements DataBase
                 sql.append(pendingSel[0].wherePredicate("<= ?"));
                 values.add(value);
                 return junc[0];
+            }
+
+            @Override
+            public <V> NarrowedCompare<M, V> isOfType(Class<V> narrowType) {
+                if ( !(pendingSel[0] instanceof Selection.Flat flat) )
+                    throw new IllegalArgumentException("isOfType(..) can only be used on a directly selected sum-type field.");
+                EntityTableField field = flat.field();
+                SumTable st = _entityRegistry.getSumTable(field.type().item()).orElseThrow(() ->
+                        new IllegalArgumentException("The field '" + field.baseName() + "' is not a sum-type (sealed value) " +
+                                "field, so isOfType(..) does not apply."));
+                if ( !st.isPermitted(narrowType) )
+                    throw new IllegalArgumentException("'" + narrowType.getName() + "' is not a permitted subtype of " +
+                            "sealed type '" + st.sealedType().getName() + "'.");
+                // Emit the (complete) type-discriminator predicate. The result is also a terminal Query.
+                sql.append(field.name()).append(" IN (SELECT ").append(EntityTable.ID).append(" FROM ")
+                   .append(st.getTableName()).append(" WHERE ").append(SumTable.TYPE_FIELD).append(" = ?)");
+                values.add(SumTable.discriminatorOf(narrowType));
+
+                return new NarrowedCompare<M, V>() {
+                    @Override public List<M> asList() { return junc[0].asList(); }
+                    @Override public Junction<M> is(V value) {
+                        _appendSumValueMatch(sql, values, field, st, narrowType, (Value) value, false); return junc[0];
+                    }
+                    @Override public Junction<M> isNot(V value) {
+                        _appendSumValueMatch(sql, values, field, st, narrowType, (Value) value, true); return junc[0];
+                    }
+                    @Override public Junction<M> like(V value) { throw _narrowOnlyIsIsNot(); }
+                    @Override public Junction<M> notLike(V value) { throw _narrowOnlyIsIsNot(); }
+                    @Override public Junction<M> in(V... values2) { throw _narrowOnlyIsIsNot(); }
+                    @Override public Junction<M> notIn(V... values2) { throw _narrowOnlyIsIsNot(); }
+                    @Override public Junction<M> isNull() { throw _narrowOnlyIsIsNot(); }
+                    @Override public Junction<M> isNotNull() { throw _narrowOnlyIsIsNot(); }
+                    @Override public Junction<M> greaterThan(V value) { throw _narrowOnlyIsIsNot(); }
+                    @Override public Junction<M> greaterThanOrEqual(V value) { throw _narrowOnlyIsIsNot(); }
+                    @Override public Junction<M> lessThan(V value) { throw _narrowOnlyIsIsNot(); }
+                    @Override public Junction<M> lessThanOrEqual(V value) { throw _narrowOnlyIsIsNot(); }
+                    @Override public <V2> NarrowedCompare<M, V2> isOfType(Class<V2> t) {
+                        throw new IllegalArgumentException("The selection has already been narrowed via isOfType(..).");
+                    }
+                };
             }
 
         };
@@ -684,6 +732,45 @@ public final class SQLiteDataBase implements DataBase
         };
     }
 
+    /** Returns the {@link SumTable} backing a directly-selected sum-type field, or null. */
+    private @org.jspecify.annotations.Nullable SumTable _sumFlat(Selection sel) {
+        if ( sel instanceof Selection.Flat f )
+            return _entityRegistry.getSumTable(f.field().type().item()).orElse(null);
+        return null;
+    }
+
+    /** Appends a whole-value equality/inequality predicate for a polymorphic sum field. */
+    private void _appendSumWholeMatch(StringBuilder sql, List<Object> values, Selection.Flat flat, Value value, boolean negate) {
+        SumTable st = _entityRegistry.getSumTable(flat.field().type().item()).orElseThrow();
+        long unionId = _findSumId(st, value);
+        String col = flat.field().name();
+        if ( negate )
+            sql.append("(").append(col).append(" IS NULL OR ").append(col).append(" != ?)");
+        else
+            sql.append(col).append(" = ?");
+        values.add(unionId < 0 ? -1L : unionId);
+    }
+
+    /** Appends an {@code AND}-ed whole-value match within an already type-narrowed sum field. */
+    private void _appendSumValueMatch(StringBuilder sql, List<Object> values, EntityTableField field, SumTable st, Class<?> narrowType, Value value, boolean negate) {
+        long permitId = _findReferencedId(narrowType, value);
+        if ( permitId < 0 ) {
+            sql.append(negate ? " AND 1=1" : " AND 1=0");
+            return;
+        }
+        sql.append(" AND ").append(field.name()).append(negate ? " NOT IN (SELECT " : " IN (SELECT ")
+           .append(EntityTable.ID).append(" FROM ").append(st.getTableName())
+           .append(" WHERE ").append(st.fkColumnFor(narrowType)).append(" = ?)");
+        values.add(permitId);
+    }
+
+    private static IllegalArgumentException _narrowOnlyIsIsNot() {
+        return new IllegalArgumentException(
+                "After isOfType(..), only is(..)/isNot(..) (whole-value match) or a terminal operation " +
+                "(asList(), exists(), count(), ...) are supported."
+        );
+    }
+
     /** Builds an {@code IN}/{@code NOT IN} operator fragment with the right number of {@code ?} placeholders. */
     private static String _placeholders(String op, int count) {
         StringBuilder sb = new StringBuilder(op).append(" (");
@@ -794,7 +881,7 @@ public final class SQLiteDataBase implements DataBase
                 int pos = 0;
                 for (Object item : tuple) {
                     if (item != null) {
-                        long childId = _storeValueAndIncreaseCounter((Value) item);
+                        long childId = _storeReferencedValue(itemType, (Value) item);
                         _insertIntermediateTableRow(
                                 valueTable.getTableName(), field.baseName(), valueId, itemType, childId, pos
                         );
@@ -836,6 +923,121 @@ public final class SQLiteDataBase implements DataBase
         return existingId;
     }
 
+    // ============================ Sum-type (sealed value) routing =============================
+    // A field whose declared type is a sealed "sum" interface is stored polymorphically through a
+    // SumTable union row. These wrappers route by the *declared* field type: when it is a sum type
+    // the operation goes through the union table, otherwise through the regular value table.
+
+    long _storeReferencedValue(Class<?> declaredType, Value value) {
+        var sum = _entityRegistry.getSumTable(declaredType).orElse(null);
+        return ( sum != null ) ? _storeSumValue(sum, value) : _storeValueAndIncreaseCounter(value);
+    }
+
+    void _removeReferencedValue(Class<?> declaredType, Value value) {
+        var sum = _entityRegistry.getSumTable(declaredType).orElse(null);
+        if ( sum != null ) _removeSumValue(sum, value);
+        else               _removeValueAndDecrementCounter(value);
+    }
+
+    long _findReferencedId(Class<?> declaredType, Value value) {
+        var sum = _entityRegistry.getSumTable(declaredType).orElse(null);
+        if ( sum != null )
+            return _findSumId(sum, value);
+        var vt = _entityRegistry.getValueTable(value.getClass())
+                .orElseThrow(() -> new IllegalArgumentException(
+                        "The value table for " + value.getClass().getName() + " does not exist!"));
+        return _findIdOfValue(vt, value, value.hashCode());
+    }
+
+    /** Stores a sum value and returns the union-row id (deduplicated by concrete subtype + content). */
+    long _storeSumValue(SumTable sumTable, Value value) {
+        Class<? extends Value> permit = sumTable.directPermitFor(value);
+        long permitId = _findReferencedId(permit, value);
+        long unionId = ( permitId >= 0 ) ? _findUnionRow(sumTable, permit, permitId) : -1;
+        if ( unionId >= 0 ) {
+            _modifySumUsage(sumTable, unionId, +1);
+            return unionId;
+        }
+        permitId = _storeReferencedValue(permit, value); // create/increment the concrete subtype row
+        unionId = _insertUnionRow(sumTable, permit, permitId);
+        _modifySumUsage(sumTable, unionId, +1);
+        return unionId;
+    }
+
+    void _removeSumValue(SumTable sumTable, Value value) {
+        Class<? extends Value> permit = sumTable.directPermitFor(value);
+        long permitId = _findReferencedId(permit, value);
+        if ( permitId < 0 ) return;
+        long unionId = _findUnionRow(sumTable, permit, permitId);
+        if ( unionId < 0 ) return;
+        if ( _readSumUsages(sumTable, unionId) <= 1 ) {
+            _delete(sumTable.getTableName(), Collections.singletonList(unionId));
+            _removeReferencedValue(permit, value); // release the concrete subtype row
+        } else {
+            _modifySumUsage(sumTable, unionId, -1);
+        }
+    }
+
+    long _findSumId(SumTable sumTable, Value value) {
+        Class<? extends Value> permit = sumTable.directPermitFor(value);
+        long permitId = _findReferencedId(permit, value);
+        if ( permitId < 0 ) return -1;
+        return _findUnionRow(sumTable, permit, permitId);
+    }
+
+    private long _findUnionRow(SumTable sumTable, Class<?> permit, long permitId) {
+        String sql = "SELECT " + EntityTable.ID + " FROM " + sumTable.getTableName() +
+                     " WHERE " + SumTable.TYPE_FIELD + " = ? AND " + sumTable.fkColumnFor(permit) + " = ?";
+        Map<String, List<Object>> result = _db._query(sql, List.of(SumTable.discriminatorOf(permit), permitId));
+        List<Object> ids = result.getOrDefault(EntityTable.ID, Collections.emptyList());
+        return ids.isEmpty() ? -1 : ((Number) ids.get(0)).longValue();
+    }
+
+    private long _insertUnionRow(SumTable sumTable, Class<?> permit, long permitId) {
+        List<Object> row = new ArrayList<>();
+        for ( EntityTableField field : sumTable.getFields() ) {
+            if ( field.name().equals(EntityTable.ID) )                  row.add(-1L);
+            else if ( field.name().equals(SumTable.USAGE_FIELD_COUNTER) ) row.add(0);
+            else if ( field.name().equals(SumTable.TYPE_FIELD) )         row.add(SumTable.discriminatorOf(permit));
+            else                                                         row.add(field.name().equals(sumTable.fkColumnFor(permit)) ? permitId : null);
+        }
+        return _storeEntity(sumTable, sumTable.sealedType(), Tuple.ofNullable(Object.class, row));
+    }
+
+    private void _modifySumUsage(SumTable sumTable, long unionId, int delta) {
+        String sql = "UPDATE " + sumTable.getTableName() + " SET " + SumTable.USAGE_FIELD_COUNTER + " = " +
+                     SumTable.USAGE_FIELD_COUNTER + " + ? WHERE " + EntityTable.ID + " = ?";
+        if ( !_db._update(sql, List.of(delta, unionId)) )
+            throw new IllegalStateException("Failed to update sum-type usage counter for union id " + unionId);
+    }
+
+    private int _readSumUsages(SumTable sumTable, long unionId) {
+        String sql = "SELECT " + SumTable.USAGE_FIELD_COUNTER + " FROM " + sumTable.getTableName() +
+                     " WHERE " + EntityTable.ID + " = ?";
+        Map<String, List<Object>> result = _db._query(sql, Collections.singletonList(unionId));
+        List<Object> col = result.getOrDefault(SumTable.USAGE_FIELD_COUNTER, Collections.emptyList());
+        return col.isEmpty() ? 0 : ((Number) col.get(0)).intValue();
+    }
+
+    @org.jspecify.annotations.Nullable
+    private Value _readSumValue(SumTable sumTable, long unionId) {
+        String sql = "SELECT * FROM " + sumTable.getTableName() + " WHERE " + EntityTable.ID + " = ?";
+        Map<String, List<Object>> result = _db._query(sql, Collections.singletonList(unionId));
+        List<Object> typeCol = result.getOrDefault(SumTable.TYPE_FIELD, Collections.emptyList());
+        if ( typeCol.isEmpty() || typeCol.get(0) == null )
+            return null;
+        String discriminator = typeCol.get(0).toString();
+        Class<? extends Value> permit = sumTable.permitByDiscriminator(discriminator)
+                .orElseThrow(() -> new IllegalStateException(
+                        "Stored sum discriminator '" + discriminator + "' is not a permitted subtype of '" +
+                        sumTable.sealedType().getName() + "'"));
+        List<Object> fkCol = result.getOrDefault(sumTable.fkColumnFor(permit), Collections.emptyList());
+        if ( fkCol.isEmpty() || fkCol.get(0) == null )
+            return null;
+        long permitId = ((Number) fkCol.get(0)).longValue();
+        return _readValue(permit, permitId); // recurses through the sum branch for nested sum types
+    }
+
     /**
      *  When a value row is about to be deleted (its usage counter has reached zero),
      *  any nested value references it owns must also be released. This walks the
@@ -858,12 +1060,12 @@ public final class SQLiteDataBase implements DataBase
                 if (ft instanceof FieldType.Tuple) {
                     if (nested instanceof Tuple<?> t) {
                         for (Object item : t) {
-                            if (item != null) _removeValueAndDecrementCounter((Value) item);
+                            if (item != null) _removeReferencedValue(ft.item(), (Value) item);
                         }
                     }
                     _clearIntermediateTable(tableName, field.baseName(), valueId);
                 } else if (ft instanceof FieldType.Value) {
-                    if (nested instanceof Value v) _removeValueAndDecrementCounter(v);
+                    if (nested instanceof Value v) _removeReferencedValue(ft.item(), v);
                 }
             } catch (NoSuchMethodException | IllegalAccessException | InvocationTargetException e) {
                 throw new RuntimeException(
@@ -889,20 +1091,20 @@ public final class SQLiteDataBase implements DataBase
                 long fkId = _readFkIdFromColumn(tableName, field.name(), modelId);
                 if (fkId > 0) {
                     Value v = _readValue(valueFt.item(), fkId);
-                    if (v != null) _removeValueAndDecrementCounter(v);
+                    if (v != null) _removeReferencedValue(valueFt.item(), v);
                 }
             } else if (ft instanceof FieldType.VarOf.Tuple tupleFt) {
                 Class<? extends Value> itemType = tupleFt.item();
                 Tuple<?> tuple = _readTupleFromIntermediateTable(tableName, field.baseName(), modelId, itemType);
                 for (Object item : tuple) {
-                    if (item != null) _removeValueAndDecrementCounter((Value) item);
+                    if (item != null) _removeReferencedValue(itemType, (Value) item);
                 }
                 _clearIntermediateTable(tableName, field.baseName(), modelId);
             } else if (ft instanceof FieldType.VarsOf.Value valuesFt) {
                 Class<? extends Value> itemType = valuesFt.item();
                 Tuple<?> values = _readTupleFromIntermediateTable(tableName, field.baseName(), modelId, itemType);
                 for (Object item : values) {
-                    if (item != null) _removeValueAndDecrementCounter((Value) item);
+                    if (item != null) _removeReferencedValue(itemType, (Value) item);
                 }
                 _clearIntermediateTable(tableName, field.baseName(), modelId);
             }
@@ -984,8 +1186,9 @@ public final class SQLiteDataBase implements DataBase
                 } else if (BasicSQLiteDataBase._isBasicDataType(fieldValue.getClass())) {
                     values.add(fieldValue);
                 } else if (fieldValue instanceof Value) {
-                    // If the field value is a Value, we need to store it in the database
-                    long id = _storeValueAndIncreaseCounter((Value) fieldValue);
+                    // If the field value is a Value, we need to store it in the database (routing
+                    // through the union table when the declared field type is a sum type).
+                    long id = _storeReferencedValue(field.type().item(), (Value) fieldValue);
                     values.add(id);
                 } else {
                     throw new IllegalArgumentException(
@@ -1105,6 +1308,11 @@ public final class SQLiteDataBase implements DataBase
      */
     @org.jspecify.annotations.Nullable
     Value _readValue(Class<? extends Value> valueClass, long id) {
+        // Sum types are stored polymorphically through a union table; route the read accordingly.
+        var sumTable = _entityRegistry.getSumTable(valueClass).orElse(null);
+        if ( sumTable != null )
+            return _readSumValue(sumTable, id);
+
         var valueTable = _entityRegistry.getValueTable(valueClass)
                 .orElseThrow(() -> new IllegalArgumentException(
                         "The value table for " + valueClass.getName() + " does not exist!"

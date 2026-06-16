@@ -8,7 +8,7 @@ import java.util.Objects;
 import java.util.Optional;
 
 @NullMarked
-sealed interface EntityTable permits ValueTable, ModelTable, IntermediateTable
+sealed interface EntityTable permits ValueTable, ModelTable, IntermediateTable, SumTable
 {
     String INTER_TABLE_POSTFIX = "_list_table";
     String INTER_LEFT_FK_PREFIX = "fk_self_";
