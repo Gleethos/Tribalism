@@ -4,9 +4,9 @@ import dal.api.Model;
 import sprouts.Var;
 import sprouts.Vars;
 
-public interface Player extends Model<Player>
+public interface PlayerModel extends Model<PlayerModel>
 {
-    Var<User> identity();
-    Var<Campaign> campaign();
+    Var<UserModel> identity();
+    Var<CampaignModel> campaign();
     Vars<CharacterModel> characters();
 }

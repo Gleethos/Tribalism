@@ -2,13 +2,13 @@ package campaign
 
 import app.campaign.CampaignService
 import app.campaign.CampaignViewModel
-import app.models.Campaign
-import app.models.Character
+import app.models.CampaignModel
 import app.models.CharacterModel
-import app.models.GameMap
-import app.models.GameMaster
-import app.models.Player
-import app.models.User
+import app.models.CharacterModel
+import app.models.GameMapModel
+import app.models.GameMasterModel
+import app.models.PlayerModel
+import app.models.UserModel
 import app.models.sheet.AbilityScore
 import app.models.sheet.CharacterSheet
 import app.models.sheet.Identity
@@ -41,7 +41,7 @@ class CampaignViewModel_Spec extends Specification
         var db = DataBase.at(TEST_DB_FILE)
         db.dropAllTables()
         db.createTablesFor(
-                GameMaster, Character, CharacterModel, Campaign, GameMap, Player, User,
+                GameMasterModel, CharacterModel, CharacterModel, CampaignModel, GameMapModel, PlayerModel, UserModel, app.models.User, app.models.Campaign, app.models.GameMap,
                 CharacterSheet, Identity, Vitals, AbilityScore, SkillScore, InventoryItem
         )
         return db
@@ -49,7 +49,7 @@ class CampaignViewModel_Spec extends Specification
 
     private CampaignViewModel newCampaignVm( DataBase db ) {
         var service = new CampaignService(db)
-        var user = db.create(User); user.username().set("dan"); user.password().set("x")
+        var user = db.create(UserModel); user.state().set(app.models.User.empty()); user.username().set("dan"); user.password().set("x")
         var gm = service.gameMasterOf(user)
         var campaign = service.createCampaign(gm, "Lost Mines")
         return new CampaignViewModel(service, campaign)
@@ -71,7 +71,7 @@ class CampaignViewModel_Spec extends Specification
             vm.newCharacterName().get() == ""
         and : 'The selected card displays the name and the character is persisted.'
             vm.selected().get().displayName().get() == "Aragorn"
-            db.selectAll(Character).size() == 1
+            db.selectAll(CharacterModel).size() == 1
     }
 
     def 'Editing the selected character sheet through the card persists to the database.'() {
@@ -86,7 +86,7 @@ class CampaignViewModel_Spec extends Specification
             card.sheet().currentHealth().set(From.VIEW, 17)
             card.sheet().abilityLevel("strength").set(From.VIEW, 16)
         then : 'A freshly selected character sees the persisted edits.'
-            var reloaded = db.select(Character, characterId)
+            var reloaded = db.select(CharacterModel, characterId)
             reloaded.sheet().get().vitals().currentHealth() == 17
             reloaded.sheet().get().abilities().contains(AbilityScore.of("strength", 16))
         and : 'The card display name follows the sheet identity.'
@@ -97,7 +97,7 @@ class CampaignViewModel_Spec extends Specification
         given : 'A campaign that already has two characters.'
             var db = freshDb()
             var service = new CampaignService(db)
-            var gm = service.gameMasterOf(db.create(User).tap { it.username().set("dan"); it.password().set("x") })
+            var gm = service.gameMasterOf(db.create(UserModel).tap { it.state().set(app.models.User.empty()); it.username().set("dan"); it.password().set("x") })
             var campaign = service.createCampaign(gm, "Lost Mines")
             service.createCharacter(campaign, "Frodo")
             service.createCharacter(campaign, "Sam")

@@ -1,6 +1,6 @@
 package app.models.ini;
 
-import app.models.SkillType;
+import app.models.SkillTypeModel;
 import dal.api.DataBase;
 import org.json.JSONArray;
 import org.json.JSONObject;
@@ -28,8 +28,8 @@ public class SkillTypes extends AbstractTypes
 
     private final AbilityTypes abilityTypes;
 
-    private final List<SkillType> skillTypes = new ArrayList<>();
-    private final Map<String, SkillType> skillTypesByName = new HashMap<>();
+    private final List<SkillTypeModel> skillTypes = new ArrayList<>();
+    private final Map<String, SkillTypeModel> skillTypesByName = new HashMap<>();
 
 
     public SkillTypes(DataBase db, String workingDirectory, AbilityTypes abilityTypes) {
@@ -86,11 +86,11 @@ public class SkillTypes extends AbstractTypes
             var terAbility  = newType.getString("tertiary ability");
 
             // First we check if the skill type already exists in the database:
-            var existingSkillType = db.select(SkillType.class)
-                                            .where(SkillType::name).is(name)
+            var existingSkillType = db.select(SkillTypeModel.class)
+                                            .where(SkillTypeModel::name).is(name)
                                             .first();
 
-            SkillType skillType;
+            SkillTypeModel skillType;
 
             if ( existingSkillType.isPresent() ) {
                 skillType = existingSkillType.get();
@@ -98,7 +98,8 @@ public class SkillTypes extends AbstractTypes
                 skillTypesByName.put(name, existingSkillType.get());
             }
             else
-                skillType = db.create(SkillType.class);
+                skillType = db.create(SkillTypeModel.class);
+                skillType.state().set(app.models.SkillType.empty());
 
             skillType.name().set(name);
             skillType.description().set(description);
@@ -112,7 +113,7 @@ public class SkillTypes extends AbstractTypes
 
     @Override
     protected void saveAsJSONToWorkingDirectory(String location, DataBase db) {
-        var skillTypes = db.selectAll(SkillType.class);
+        var skillTypes = db.selectAll(SkillTypeModel.class);
         var json = new org.json.JSONArray();
         for ( var skillType : skillTypes ) {
             var jsonSkillType = new org.json.JSONObject();
@@ -134,8 +135,8 @@ public class SkillTypes extends AbstractTypes
     protected Result<Boolean> isDataBaseStateMatchingWorkingDirectory(DataBase db) {
         List<Problem> problems = new ArrayList<>();
         List<Problem> warnings = new ArrayList<>();
-        List<SkillType> foundInDB = db.selectAll(SkillType.class);
-        List<SkillType> checked = new ArrayList<>();
+        List<SkillTypeModel> foundInDB = db.selectAll(SkillTypeModel.class);
+        List<SkillTypeModel> checked = new ArrayList<>();
         String jsonText = Util.readTextFile(workingDirectory + "/" + fileName);
         // We load the roles from the json file into a json object.
         JSONArray json = null;
@@ -151,7 +152,7 @@ public class SkillTypes extends AbstractTypes
             try {
                 checkJson(json.getJSONObject(i));
             } catch (Exception e) {
-                problems.add(Problem.of("Skill Type Inconsistency", e.getMessage()));
+                problems.add(Problem.of("SkillModel Type Inconsistency", e.getMessage()));
             }
 
         // We iterate over the roles in the json object.
@@ -171,29 +172,29 @@ public class SkillTypes extends AbstractTypes
                     checked.add(skillType);
                     if (!skillType.description().get().equals(description))
                         problems.add(Problem.of(
-                                    "Skill Type Inconsistency",
-                                    "Skill type " + name + " has a different description in " +
+                                    "SkillModel Type Inconsistency",
+                                    "SkillModel type " + name + " has a different description in " +
                                             "the database than in the file " + fileName
                                 ));
 
                     if (!skillType.primaryAbility().get().equals(primAbility))
                         problems.add(Problem.of(
-                                    "Skill Type Inconsistency",
-                                    "Skill type " + name + " has a different primary ability in " +
+                                    "SkillModel Type Inconsistency",
+                                    "SkillModel type " + name + " has a different primary ability in " +
                                             "the database than in the file " + fileName
                                 ));
 
                     if (!skillType.secondaryAbility().get().equals(secAbility))
                         problems.add(Problem.of(
-                                    "Skill Type Inconsistency",
-                                    "Skill type " + name + " has a different secondary ability in " +
+                                    "SkillModel Type Inconsistency",
+                                    "SkillModel type " + name + " has a different secondary ability in " +
                                             "the database than in the file " + fileName
                                 ));
 
                     if (!skillType.tertiaryAbility().get().equals(terAbility))
                         problems.add(Problem.of(
-                                    "Skill Type Inconsistency",
-                                    "Skill type " + name + " has a different tertiary ability in " +
+                                    "SkillModel Type Inconsistency",
+                                    "SkillModel type " + name + " has a different tertiary ability in " +
                                             "the database than in the file " + fileName
                                 ));
 
@@ -203,8 +204,8 @@ public class SkillTypes extends AbstractTypes
 
             if ( !found )
                 problems.add(Problem.of(
-                        "Skill Type Missing",
-                        "Skill type " + name + " is in the file " + fileName + " but not in the database"
+                        "SkillModel Type Missing",
+                        "SkillModel type " + name + " is in the file " + fileName + " but not in the database"
                     ));
         }
 
@@ -212,8 +213,8 @@ public class SkillTypes extends AbstractTypes
             for ( var skillType : foundInDB )
                 if ( !checked.contains(skillType) )
                     problems.add(Problem.of(
-                            "Skill Type Missing",
-                            "Skill type " + skillType.name().get() + " is in the database but not in the file " + fileName
+                            "SkillModel Type Missing",
+                            "SkillModel type " + skillType.name().get() + " is in the database but not in the file " + fileName
                         ));
 
         if ( problems.size() > 0 ) {
@@ -224,8 +225,8 @@ public class SkillTypes extends AbstractTypes
         return Result.of(true);
     }
 
-    public Optional<SkillType> findByName(String name) { return Optional.ofNullable(skillTypesByName.get(name)); }
+    public Optional<SkillTypeModel> findByName(String name) { return Optional.ofNullable(skillTypesByName.get(name)); }
 
-    public List<SkillType> all() { return Collections.unmodifiableList(skillTypes); }
+    public List<SkillTypeModel> all() { return Collections.unmodifiableList(skillTypes); }
 
 }

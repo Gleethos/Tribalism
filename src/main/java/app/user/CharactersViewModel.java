@@ -1,7 +1,7 @@
 package app.user;
 
 import app.UserContext;
-import app.models.Character;
+import app.models.CharacterModel;
 import sprouts.Vals;
 import sprouts.Vars;
 
@@ -17,7 +17,7 @@ public class CharactersViewModel
 
     public CharactersViewModel(UserContext user) {}
 
-    public List<Character> characters() {
+    public List<CharacterModel> characters() {
         return characters.stream()
                             .map(CharacterViewModel::createCharacter)
                             .filter(Optional::isPresent).map(Optional::get)

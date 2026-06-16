@@ -1,8 +1,8 @@
 package app.models.ini;
 
-import app.models.Ability;
-import app.models.Role;
-import app.models.Skill;
+import app.models.AbilityModel;
+import app.models.RoleModel;
+import app.models.SkillModel;
 import dal.api.DataBase;
 import org.json.JSONArray;
 import org.slf4j.Logger;
@@ -32,8 +32,8 @@ public class RoleTypes extends AbstractTypes
 {
     private static final Logger log = LoggerFactory.getLogger(RoleTypes.class);
 
-    private final List<Role> roles = new ArrayList<>();
-    private final Map<String, Role> rolesByName = new HashMap<>();
+    private final List<RoleModel> roles = new ArrayList<>();
+    private final Map<String, RoleModel> rolesByName = new HashMap<>();
 
     private final AbilityTypes abilityTypes;
     private final SkillTypes skillTypes;
@@ -102,18 +102,19 @@ public class RoleTypes extends AbstractTypes
             var name        = newRole.getString("name");
             var description = newRole.getString("description");
             // First we check if the role already exists in the database:
-            var existingRole = db.select(Role.class)
-                                    .where(Role::name).is(name)
+            var existingRole = db.select(RoleModel.class)
+                                    .where(RoleModel::name).is(name)
                                     .first();
 
-            Role role;
+            RoleModel role;
 
             if ( existingRole.isPresent() ) {
                 rolesByName.put(name, existingRole.get());
                 role = existingRole.get();
             }
             else {
-                role = db.create(Role.class);
+                role = db.create(RoleModel.class);
+                role.state().set(app.models.Role.empty());
                 role.name().set(name);
             }
             role.description().set(description);
@@ -126,7 +127,7 @@ public class RoleTypes extends AbstractTypes
                 var ability = abilities.getJSONObject(j);
                 var abilityName = ability.getString("name");
                 var abilityLevel = ability.getInt("level");
-                Ability newAbility;
+                AbilityModel newAbility;
                 // We check if the ability already exists in the role:
                 var existingAbility = role.abilities()
                                             .stream()
@@ -137,7 +138,8 @@ public class RoleTypes extends AbstractTypes
                     newAbility = existingAbility.get();
                 else {
                     var abilityType = abilityTypes.findByName(abilityName).orElseThrow();
-                    newAbility = db.create(Ability.class);
+                    newAbility = db.create(AbilityModel.class);
+                    newAbility.state().set(app.models.Ability.empty());
                     newAbility.type().set(abilityType);
                     role.abilities().add(newAbility);
                 }
@@ -152,7 +154,7 @@ public class RoleTypes extends AbstractTypes
                 var skillLevel = skill.getInt("level");
                 var isProficient = skill.getBoolean("proficient");
                 var learnability = skill.getDouble("learnability");
-                Skill newSkill;
+                SkillModel newSkill;
 
                 // We check if the skill already exists in the role:
                 var existingSkill = role.skills()
@@ -164,7 +166,8 @@ public class RoleTypes extends AbstractTypes
                     newSkill = existingSkill.get();
                 else {
                     var skillType  = skillTypes.findByName(skillName).orElseThrow();
-                    newSkill = db.create(Skill.class);
+                    newSkill = db.create(SkillModel.class);
+                    newSkill.state().set(app.models.Skill.empty());
                     newSkill.type().set(skillType);
                     role.skills().add(newSkill);
                 }
@@ -219,8 +222,8 @@ public class RoleTypes extends AbstractTypes
     protected Result<Boolean> isDataBaseStateMatchingWorkingDirectory(DataBase db) {
         List<Problem> problems = new ArrayList<>();
         List<Problem> warnings = new ArrayList<>();
-        List<Role> foundInDB = db.selectAll(Role.class);
-        List<Role> checked = new ArrayList<>();
+        List<RoleModel> foundInDB = db.selectAll(RoleModel.class);
+        List<RoleModel> checked = new ArrayList<>();
         String jsonText = Util.readTextFile(workingDirectory + "/" + fileName);
         // We load the roles from the json file into a json object.
         JSONArray json;
@@ -244,7 +247,7 @@ public class RoleTypes extends AbstractTypes
                 if ( roleType.name().is(name) ) {
                     found = true;
                     if ( !roleType.description().is(description) )
-                        warnings.add(Problem.of("Role Type Inconsistency", "Role type '" + name + "' has a different description in the database than in the json file!"));
+                        warnings.add(Problem.of("RoleModel Type Inconsistency", "RoleModel type '" + name + "' has a different description in the database than in the json file!"));
                     checked.add(roleType);
                     // We check if the skills are the same:
                     problems.addAll(checkJSONSkills(skills, roleType));
@@ -254,13 +257,13 @@ public class RoleTypes extends AbstractTypes
                 }
             }
             if ( !found )
-                problems.add(Problem.of("Role Type Missing","Role type '" + name + "' is in the json file but not in the database!"));
+                problems.add(Problem.of("RoleModel Type Missing","RoleModel type '" + name + "' is in the json file but not in the database!"));
         }
 
         // Now we check if there are any role types in the database that are not in the json file:
         for ( var roleType : foundInDB )
             if ( !checked.contains(roleType) )
-                problems.add(Problem.of("Role Type Missing","Role type '" + roleType.name().get() + "' is in the database but not in the json file!"));
+                problems.add(Problem.of("RoleModel Type Missing","RoleModel type '" + roleType.name().get() + "' is in the database but not in the json file!"));
 
         if ( problems.isEmpty() )
             return Result.of(true, warnings);
@@ -270,10 +273,10 @@ public class RoleTypes extends AbstractTypes
         }
     }
 
-    private List<Problem> checkJSONSkills(JSONArray jsonSkills, Role role) {
+    private List<Problem> checkJSONSkills(JSONArray jsonSkills, RoleModel role) {
         List<Problem> problems = new ArrayList<>();
-        List<Skill> found = new ArrayList<>();
-        List<Skill> foundInDB = role.skills().toList();
+        List<SkillModel> found = new ArrayList<>();
+        List<SkillModel> foundInDB = role.skills().toList();
         for (int j = 0; j < jsonSkills.length(); j++) {
             var jsonSkill = jsonSkills.getJSONObject(j);
             var skillName = jsonSkill.getString("name");
@@ -288,29 +291,29 @@ public class RoleTypes extends AbstractTypes
                     foundSkill = true;
                     found.add(skill);
                     if ( skill.level().get() != skillLevel )
-                        problems.add(Problem.of("Skill Inconsistency", "Skill '" + skillName + "' in role '" + role.name().get() + "' has a different level in the database than in the json file!"));
+                        problems.add(Problem.of("SkillModel Inconsistency", "SkillModel '" + skillName + "' in role '" + role.name().get() + "' has a different level in the database than in the json file!"));
                     if ( skill.isProficient().get() != isProficient )
-                        problems.add(Problem.of("Skill Inconsistency", "Skill '" + skillName + "' in role '" + role.name().get() + "' has a different proficiency in the database than in the json file!"));
+                        problems.add(Problem.of("SkillModel Inconsistency", "SkillModel '" + skillName + "' in role '" + role.name().get() + "' has a different proficiency in the database than in the json file!"));
                     if ( skill.learnability().get() != learnability )
-                        problems.add(Problem.of("Skill Inconsistency", "Skill '" + skillName + "' in role '" + role.name().get() + "' has a different learnability in the database than in the json file!"));
+                        problems.add(Problem.of("SkillModel Inconsistency", "SkillModel '" + skillName + "' in role '" + role.name().get() + "' has a different learnability in the database than in the json file!"));
                     break;
                 }
             }
             if ( !foundSkill )
-                problems.add(Problem.of("Skill Missing", "Skill '" + skillName + "' in role '" + role.name().get() + "' is in the json file but not in the database!"));
+                problems.add(Problem.of("SkillModel Missing", "SkillModel '" + skillName + "' in role '" + role.name().get() + "' is in the json file but not in the database!"));
         }
         // Now we check if there are any skills in the database that are not in the json file:
         for ( var skill : foundInDB )
             if ( !found.contains(skill) )
-                problems.add(Problem.of("Skill Missing", "Skill '" + skill.type().get().name().get() + "' in role '" + role.name().get() + "' is in the database but not in the json file!"));
+                problems.add(Problem.of("SkillModel Missing", "SkillModel '" + skill.type().get().name().get() + "' in role '" + role.name().get() + "' is in the database but not in the json file!"));
 
         return problems;
     }
 
-    private List<Problem> checkJSONAbilities(JSONArray jsonAbilities, Role role) {
+    private List<Problem> checkJSONAbilities(JSONArray jsonAbilities, RoleModel role) {
         List<Problem> problems = new ArrayList<>();
-        List<Ability> found = new ArrayList<>();
-        List<Ability> foundInDB = role.abilities().toList();
+        List<AbilityModel> found = new ArrayList<>();
+        List<AbilityModel> foundInDB = role.abilities().toList();
         for (int j = 0; j < jsonAbilities.length(); j++) {
             var jsonAbility = jsonAbilities.getJSONObject(j);
             var abilityName = jsonAbility.getString("name");
@@ -323,26 +326,26 @@ public class RoleTypes extends AbstractTypes
                     foundAbility = true;
                     found.add(ability);
                     if ( ability.level().get() != abilityLevel )
-                        problems.add(Problem.of("Ability Inconsistency", "Ability '" + abilityName + "' in role '" + role.name().get() + "' has a different level in the database than in the json file!"));
+                        problems.add(Problem.of("AbilityModel Inconsistency", "AbilityModel '" + abilityName + "' in role '" + role.name().get() + "' has a different level in the database than in the json file!"));
                     break;
                 }
             }
             if ( !foundAbility )
-                problems.add(Problem.of("Ability Missing", "Ability '" + abilityName + "' in role '" + role.name().get() + "' is in the json file but not in the database!"));
+                problems.add(Problem.of("AbilityModel Missing", "AbilityModel '" + abilityName + "' in role '" + role.name().get() + "' is in the json file but not in the database!"));
         }
         // Now we check if there are any abilities in the database that are not in the json file:
         for ( var ability : foundInDB )
             if ( !found.contains(ability) )
-                problems.add(Problem.of("Ability Missing", "Ability '" + ability.type().get().name().get() + "' in role '" + role.name().get() + "' is in the database but not in the json file!"));
+                problems.add(Problem.of("AbilityModel Missing", "AbilityModel '" + ability.type().get().name().get() + "' in role '" + role.name().get() + "' is in the database but not in the json file!"));
 
         return problems;
     }
 
-    public List<Role> all() {
+    public List<RoleModel> all() {
         return roles;
     }
 
-    public Role findByName(String name) {
+    public RoleModel findByName(String name) {
         return rolesByName.get(name);
     }
 

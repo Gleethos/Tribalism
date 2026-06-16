@@ -2,8 +2,8 @@ package app.dev;
 
 import app.AppContext;
 import app.common.StickyRef;
-import app.models.AbilityType;
-import app.models.SkillType;
+import app.models.AbilityTypeModel;
+import app.models.SkillTypeModel;
 import sprouts.*;
 import swingtree.UI;
 import swingtree.UIForAnySwing;
@@ -14,7 +14,7 @@ import javax.swing.*;
 import java.util.List;
 
 /**
- *  This is the view model for the {@link app.models.SkillType} model, which is used to represent
+ *  This is the view model for the {@link app.models.SkillTypeModel} model, which is used to represent
  *  the different types of skills that a character can have.
  *  <p>
  *      This view model is used to create, edit, and delete skill types
@@ -31,7 +31,7 @@ public class SkillTypesViewModel
 
     public SkillTypesViewModel(AppContext appContext) {
         this.appContext = appContext;
-        var asModels  = appContext.db().selectAll(app.models.SkillType.class)
+        var asModels  = appContext.db().selectAll(app.models.SkillTypeModel.class)
                                         .stream()
                                         .map(st -> new SkillTypeViewModel(this, st))
                                         .toList();
@@ -40,8 +40,8 @@ public class SkillTypesViewModel
             skillTypes.clear();
             skillTypes.addAll(
                         appContext.db()
-                            .select(app.models.SkillType.class)
-                            .where(SkillType::name)
+                            .select(app.models.SkillTypeModel.class)
+                            .where(SkillTypeModel::name)
                             .like("%" + it.currentValue().orElseThrowUnchecked() + "%")
                             .asList()
                             .stream()
@@ -56,7 +56,7 @@ public class SkillTypesViewModel
     }
 
     public Vals<String> abilityTypes() {
-        List<String> found = appContext.db().selectAll(AbilityType.class).stream().map(at->at.name().get()).toList();
+        List<String> found = appContext.db().selectAll(AbilityTypeModel.class).stream().map(at->at.name().get()).toList();
         return Vars.of(String.class).addAll(found);
     }
 
@@ -65,15 +65,15 @@ public class SkillTypesViewModel
     public Var<String> newSkillTypeName() { return newSkillTypeName; }
 
     public void addNewSkillType() {
-        var newSkillType = appContext.db().create(app.models.SkillType.class);
+        var newSkillType = appContext.db().create(app.models.SkillTypeModel.class);
         newSkillType.name().set(newSkillTypeName.get());
         var vm = new SkillTypeViewModel(this, newSkillType);
         skillTypes.add(vm);
     }
 
-    public Confirmation deleteSkillType(app.models.SkillType skillType) {
+    public Confirmation deleteSkillType(app.models.SkillTypeModel skillType) {
         return new Confirmation() {
-            @Override public String title() { return "Delete Skill Type"; }
+            @Override public String title() { return "Delete SkillModel Type"; }
             @Override public String question() {
                 return "Are you sure you want to delete the skill type: " + skillType.name().get() + "?" +
                         "This will also delete all skills of this type.";
@@ -81,8 +81,8 @@ public class SkillTypesViewModel
             @Override public void yes() {
                 skillTypes.removeIfItem( vm -> vm.skillType() == skillType );
                 var db = appContext.db();
-                var foundSkills = db.select(app.models.Skill.class)
-                                        .where(app.models.Skill::type)
+                var foundSkills = db.select(app.models.SkillModel.class)
+                                        .where(app.models.SkillModel::type)
                                         .is(skillType)
                                         .asList();
                 db.delete(skillType);
@@ -97,18 +97,18 @@ public class SkillTypesViewModel
     public static class SkillTypeViewModel implements EntryViewModel
     {
         private final SkillTypesViewModel parent;
-        private final app.models.SkillType skillType;
+        private final app.models.SkillTypeModel skillType;
         private final Var<Boolean> selected = Var.of(false);
         private final Var<Integer> position = Var.of(0);
 
         private final StickyRef viewCache = new StickyRef();
 
-        public SkillTypeViewModel(SkillTypesViewModel parent, app.models.SkillType skillType) {
+        public SkillTypeViewModel(SkillTypesViewModel parent, app.models.SkillTypeModel skillType) {
             this.parent = parent;
             this.skillType = skillType;
         }
 
-        public app.models.SkillType skillType() { return skillType; }
+        public app.models.SkillTypeModel skillType() { return skillType; }
 
         public Confirmation delete() { return parent.deleteSkillType(skillType); }
 

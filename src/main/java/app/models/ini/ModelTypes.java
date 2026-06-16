@@ -1,7 +1,6 @@
 package app.models.ini;
 
 import app.models.*;
-import app.models.Character;
 import app.models.sheet.AbilityScore;
 import app.models.sheet.CharacterSheet;
 import app.models.sheet.Identity;
@@ -19,13 +18,22 @@ public class ModelTypes
 
     public ModelTypes(dal.api.DataBase db, String workingDirectory) {
         db.createTablesFor(
-                Character.class,
+                // Model interfaces (each backed by an aggregated value where it has scalar state):
+                UserModel.class,
+                GameMasterModel.class,
+                CampaignModel.class,
+                GameMapModel.class,
+                PlayerModel.class,
+                CharacterModel.class,
+                AbilityModel.class,
+                AbilityTypeModel.class,
+                SkillModel.class,
+                SkillTypeModel.class,
+                RoleModel.class,
+                // Aggregated model-state value records:
                 User.class,
-                GameMaster.class,
                 Campaign.class,
                 GameMap.class,
-                Player.class,
-                CharacterModel.class,
                 Ability.class,
                 AbilityType.class,
                 Skill.class,

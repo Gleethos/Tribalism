@@ -112,7 +112,7 @@ public class LoginViewModel implements ViewModel
             });
         }
         else {
-            feedback.set("User does not exist!");
+            feedback.set("UserModel does not exist!");
             feedbackColor.set(Color.RED);
         }
     }

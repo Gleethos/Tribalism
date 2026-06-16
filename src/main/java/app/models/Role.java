@@ -1,21 +1,14 @@
 package app.models;
 
-import dal.api.Model;
-import sprouts.Var;
-import sprouts.Vars;
+import dal.api.Value;
 
-public interface Role extends Model<Role>
-{
-    Var<String> name();
-    Var<String> description();
-
-    /**
-     * @return The skill modifiers of this role.
-     */
-    Vars<Skill> skills();
-
-    /**
-     * @return The ability modifiers of this role.
-     */
-    Vars<Ability> abilities();
+/** The immutable descriptive state of a {@link RoleModel} (its skill/ability modifiers are relations). */
+public record Role(String name, String description) implements Value {
+    public Role {
+        if ( name == null || description == null )
+            throw new IllegalArgumentException("Role fields must not be null");
+    }
+    public static Role empty() { return new Role("", ""); }
+    public Role withName(String name)               { return new Role(name, description); }
+    public Role withDescription(String description) { return new Role(name, description); }
 }

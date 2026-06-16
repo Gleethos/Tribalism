@@ -2,13 +2,13 @@ package app.maps;
 
 import app.engine.world.World;
 import app.engine.world.gen.WorldGenerator;
-import app.models.GameMap;
+import app.models.GameMapModel;
 
 /**
- *  The bridge that turns a {@link GameMap} domain model into a live world-engine {@link World}
+ *  The bridge that turns a {@link GameMapModel} domain model into a live world-engine {@link World}
  *  — the concrete realization of the campaign↔engine seam described in {@code VISION.md} §6.
  *  <p>
- *  A {@code GameMap} stores only the cheap, deterministic <em>recipe</em> for its terrain
+ *  A {@code GameMapModel} stores only the cheap, deterministic <em>recipe</em> for its terrain
  *  (seed plus generation parameters); the heavy spatial simulation is reconstructed on demand
  *  here. Because pristine terrain is a pure function of the seed, a map needs to persist no
  *  voxels until it carries edits that cannot be reproduced from the seed (a later step — see
@@ -25,7 +25,7 @@ public final class MapWorlds
      *  @param map The map whose recipe to read.
      *  @return A generator seeded and configured from the map.
      */
-    public static WorldGenerator generatorOf( GameMap map ) {
+    public static WorldGenerator generatorOf( GameMapModel map ) {
         long seed = orDefault(map.seed().orElseNull(), 0L);
         WorldGenerator generator = WorldGenerator.withSeed(seed);
 
@@ -48,7 +48,7 @@ public final class MapWorlds
      *  @param map The map to realize.
      *  @return A live engine world generating this map's terrain.
      */
-    public static World worldOf( GameMap map ) {
+    public static World worldOf( GameMapModel map ) {
         return World.of(generatorOf(map));
     }
 

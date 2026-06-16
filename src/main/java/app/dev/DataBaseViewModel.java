@@ -1,9 +1,9 @@
 package app.dev;
 
-import app.models.Campaign;
-import app.models.Character;
-import app.models.GameMaster;
-import app.models.User;
+import app.models.CampaignModel;
+import app.models.CharacterModel;
+import app.models.GameMasterModel;
+import app.models.UserModel;
 import dal.api.DataBase;
 import dal.impl.SQLiteDataBase;
 import sprouts.Event;
@@ -44,10 +44,10 @@ public class DataBaseViewModel {
         List<String> tables = db.listOfAllTableNames();
         listOfTables.clear();
         numberOfTables.set(tables.size());
-        numberUsers.set(db.select(User.class).count());
-        numberCharacters.set(db.select(Character.class).count());
-        numberCampaigns.set(db.select(Campaign.class).count());
-        numberGameMasters.set(db.select(GameMaster.class).count());
+        numberUsers.set(db.select(UserModel.class).count());
+        numberCharacters.set(db.select(CharacterModel.class).count());
+        numberCampaigns.set(db.select(CampaignModel.class).count());
+        numberGameMasters.set(db.select(GameMasterModel.class).count());
         listOfTables.addAll(tables);
     }
 

@@ -1,9 +1,9 @@
 package app.campaign;
 
-import app.models.Campaign;
-import app.models.Character;
-import app.models.GameMaster;
-import app.models.User;
+import app.models.CampaignModel;
+import app.models.CharacterModel;
+import app.models.GameMasterModel;
+import app.models.UserModel;
 import app.models.sheet.CharacterSheet;
 import app.models.sheet.Identity;
 import dal.api.DataBase;
@@ -16,8 +16,8 @@ import java.util.Objects;
  *  graph for a user, so the desktop and (later) web views are thin binders over it
  *  (see {@code VISION.md} §5 / §10 Phase 1).
  *  <p>
- *  A {@link User} can be a game master in one campaign and a player in another, so
- *  {@link GameMaster} is a role a user holds, found-or-created on demand here rather than at
+ *  A {@link UserModel} can be a game master in one campaign and a player in another, so
+ *  {@link GameMasterModel} is a role a user holds, found-or-created on demand here rather than at
  *  registration. New characters are created with an initialized {@link CharacterSheet} value —
  *  the canonical, data-oriented representation a {@code CharacterSheetViewModel} edits.
  */
@@ -30,20 +30,20 @@ public final class CampaignService
     }
 
     /**
-     *  Returns the {@link GameMaster} role for a user, creating it the first time.
+     *  Returns the {@link GameMasterModel} role for a user, creating it the first time.
      *  Idempotent: a user has at most one game-master identity.
      *
      *  @param user The user whose game-master role to resolve.
      *  @return The user's (possibly freshly created) game master.
      */
-    public GameMaster gameMasterOf( User user ) {
+    public GameMasterModel gameMasterOf( UserModel user ) {
         long userId = user.id().get();
-        for ( GameMaster gm : db.selectAll(GameMaster.class) ) {
-            User identity = gm.identity().orElseNull();
+        for ( GameMasterModel gm : db.selectAll(GameMasterModel.class) ) {
+            UserModel identity = gm.identity().orElseNull();
             if ( identity != null && identity.id().is(userId) )
                 return gm;
         }
-        GameMaster gm = db.create(GameMaster.class);
+        GameMasterModel gm = db.create(GameMasterModel.class);
         gm.identity().set(user);
         return gm;
     }
@@ -55,8 +55,9 @@ public final class CampaignService
      *  @param name The campaign name.
      *  @return The new campaign.
      */
-    public Campaign createCampaign( GameMaster gm, String name ) {
-        Campaign campaign = db.create(Campaign.class);
+    public CampaignModel createCampaign( GameMasterModel gm, String name ) {
+        CampaignModel campaign = db.create(CampaignModel.class);
+        campaign.state().set(app.models.Campaign.empty());
         campaign.name().set(name);
         campaign.description().set("");
         gm.campaigns().add(campaign);
@@ -64,7 +65,7 @@ public final class CampaignService
     }
 
     /** @return The campaigns owned by a game master. */
-    public List<Campaign> campaignsOf( GameMaster gm ) {
+    public List<CampaignModel> campaignsOf( GameMasterModel gm ) {
         return gm.campaigns().toList();
     }
 
@@ -77,8 +78,8 @@ public final class CampaignService
      *  @param forename The character's forename (seeded into the sheet identity).
      *  @return The new character.
      */
-    public Character createCharacter( Campaign campaign, String forename ) {
-        Character character = db.create(Character.class);
+    public CharacterModel createCharacter( CampaignModel campaign, String forename ) {
+        CharacterModel character = db.create(CharacterModel.class);
         character.sheet().set(
             CharacterSheet.empty().withIdentity(Identity.empty().withForename(forename))
         );
@@ -88,7 +89,7 @@ public final class CampaignService
     }
 
     /** @return The player characters of a campaign. */
-    public List<Character> charactersOf( Campaign campaign ) {
+    public List<CharacterModel> charactersOf( CampaignModel campaign ) {
         return campaign.characters().toList();
     }
 }

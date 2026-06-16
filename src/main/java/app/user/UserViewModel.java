@@ -2,7 +2,7 @@ package app.user;
 
 import app.UserContext;
 import app.ViewModel;
-import app.models.Character;
+import app.models.CharacterModel;
 import sprouts.Vals;
 import sprouts.Var;
 import sprouts.Vars;

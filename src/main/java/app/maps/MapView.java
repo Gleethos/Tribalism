@@ -41,7 +41,7 @@ import static swingtree.UI.*;
  *  {@link ScreenInputEvent}s, and advances the world on a background thread (the immutable world
  *  crosses threads with no locking).
  *  <p>
- *  Construct it over a world built from a {@link GameMap} via {@link MapWorlds#worldOf} to render
+ *  Construct it over a world built from a {@link GameMapModel} via {@link MapWorlds#worldOf} to render
  *  a campaign's map. Call {@link #stop()} when removing it to end the update thread. This first
  *  cut uses the dependable software {@link Graphics2DRenderer}; the OpenGL backend can slot in
  *  behind the same {@link Renderer} SPI later.
@@ -166,7 +166,7 @@ public final class MapView extends JPanel
         };
     }
 
-    /** Standalone demo: render a GameMap-derived world embedded in a SwingTree window. */
+    /** Standalone demo: render a GameMapModel-derived world embedded in a SwingTree window. */
     public static void main( String[] args ) {
         UI.runLater(() -> {
             try {
@@ -177,8 +177,8 @@ public final class MapView extends JPanel
                 f.createNewFile();
                 var db = dal.api.DataBase.at(dbPath);
                 db.dropAllTables();
-                db.createTablesFor(app.models.GameMap.class);
-                var map = db.create(app.models.GameMap.class);
+                db.createTablesFor(app.models.GameMapModel.class);
+                var map = db.create(app.models.GameMapModel.class);
                 map.name().set("Demo Map");
                 map.seed().set(1337L);
                 map.chunkSize().set(64.0d);

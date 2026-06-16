@@ -2,7 +2,7 @@ package app.dev;
 
 import app.AppContext;
 import app.common.StickyRef;
-import app.models.AbilityType;
+import app.models.AbilityTypeModel;
 import sprouts.*;
 import swingtree.UI;
 import swingtree.api.mvvm.EntryViewModel;
@@ -11,7 +11,7 @@ import javax.swing.*;
 import java.util.List;
 
 /**
- *  This is the view model for the {@link AbilityType} model, which is used to represent
+ *  This is the view model for the {@link AbilityTypeModel} model, which is used to represent
  *  the different types of abilities that a character can have.
  *  <p>
  *      This view model is used to create, edit, and delete ability types
@@ -28,7 +28,7 @@ public class AbilityTypesViewModel
 
     public AbilityTypesViewModel(AppContext appContext) {
         this.appContext = appContext;
-        var asModels  = appContext.db().selectAll(AbilityType.class)
+        var asModels  = appContext.db().selectAll(AbilityTypeModel.class)
                                         .stream()
                                         .map(st -> new AbilityTypeViewModel(this, st))
                                         .toList();
@@ -37,8 +37,8 @@ public class AbilityTypesViewModel
             abilityTypes.clear();
             abilityTypes.addAll(
                         appContext.db()
-                            .select(AbilityType.class)
-                            .where(AbilityType::name)
+                            .select(AbilityTypeModel.class)
+                            .where(AbilityTypeModel::name)
                             .like("%" + it.currentValue().orElseThrowUnchecked() + "%")
                             .asList()
                             .stream()
@@ -53,7 +53,7 @@ public class AbilityTypesViewModel
     }
 
     public Vals<String> abilityTypes() {
-        List<String> found = appContext.db().selectAll(AbilityType.class).stream().map(at->at.name().get()).toList();
+        List<String> found = appContext.db().selectAll(AbilityTypeModel.class).stream().map(at->at.name().get()).toList();
         return Vars.of(String.class).addAll(found);
     }
 
@@ -62,15 +62,16 @@ public class AbilityTypesViewModel
     public Var<String> newAbilityTypeName() { return newAbilityTypeName; }
 
     public void addNewAbilityType() {
-        var newAbilityType = appContext.db().create(AbilityType.class);
+        var newAbilityType = appContext.db().create(AbilityTypeModel.class);
+        newAbilityType.state().set(app.models.AbilityType.empty());
         newAbilityType.name().set(newAbilityTypeName.get());
         var vm = new AbilityTypeViewModel(this, newAbilityType);
         abilityTypes.add(vm);
     }
 
-    public Confirmation deleteAbilityType(AbilityType abilityType) {
+    public Confirmation deleteAbilityType(AbilityTypeModel abilityType) {
         return new Confirmation() {
-            @Override public String title() { return "Delete Ability Type"; }
+            @Override public String title() { return "Delete AbilityModel Type"; }
             @Override public String question() {
                 return "Are you sure you want to delete the ability type: " + abilityType.name().get() + "?" +
                        "This will also delete all abilities associated with this type!";
@@ -79,8 +80,8 @@ public class AbilityTypesViewModel
             public void yes() {
                 abilityTypes.removeIfItem(vm -> vm.abilityType() == abilityType );
                 var db = appContext.db();
-                var foundAbilities = db.select(app.models.Ability.class)
-                                           .where(app.models.Ability::type)
+                var foundAbilities = db.select(app.models.AbilityModel.class)
+                                           .where(app.models.AbilityModel::type)
                                            .is(abilityType)
                                            .asList();
                 db.delete(abilityType);
@@ -95,20 +96,20 @@ public class AbilityTypesViewModel
     public static class AbilityTypeViewModel implements EntryViewModel
     {
         private final AbilityTypesViewModel parent;
-        private final AbilityType abilityType;
+        private final AbilityTypeModel abilityType;
         private final Var<Boolean> selected = Var.of(false);
         private final Var<Integer> position = Var.of(0);
 
         private final StickyRef viewCache = new StickyRef();
 
-        public AbilityTypeViewModel(AbilityTypesViewModel parent, AbilityType abilityType) {
+        public AbilityTypeViewModel(AbilityTypesViewModel parent, AbilityTypeModel abilityType) {
             this.parent = parent;
             this.abilityType = abilityType;
         }
 
         public StickyRef getViewCache() { return viewCache; }
 
-        public AbilityType abilityType() { return abilityType; }
+        public AbilityTypeModel abilityType() { return abilityType; }
 
         public Confirmation delete() { return parent.deleteAbilityType(abilityType); }
 

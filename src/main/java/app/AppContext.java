@@ -53,11 +53,11 @@ public final class AppContext
     public DataBase db() { return db; }
 
     public boolean userExists( String username ) {
-        return db.select(User.class).where(User::username).is(username).exists();
+        return db.select(UserModel.class).where(UserModel::username).is(username).exists();
     }
 
-    public Optional<User> loginUser( String username ) {
-        User user = db.select(User.class).where(User::username).is(username).first().orElse(null);
+    public Optional<UserModel> loginUser( String username ) {
+        UserModel user = db.select(UserModel.class).where(UserModel::username).is(username).first().orElse(null);
         if ( user != null ) {
             users.add(new UserContext(user));
             return Optional.of(user);

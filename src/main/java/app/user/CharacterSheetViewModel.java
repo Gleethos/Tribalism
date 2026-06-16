@@ -23,7 +23,7 @@ import java.util.Objects;
  *  web character sheet.
  *  <p>
  *  The root may be an in-memory {@code Var<CharacterSheet>} (demo/test) or a persisted
- *  {@code Character.sheet()} property; in the latter case every edit writes a new sheet value
+ *  {@code CharacterModel.sheet()} property; in the latter case every edit writes a new sheet value
  *  straight to the database. The view model imports no Swing types.
  */
 public final class CharacterSheetViewModel

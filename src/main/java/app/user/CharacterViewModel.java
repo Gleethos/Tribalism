@@ -1,7 +1,9 @@
 package app.user;
 
 import app.AppContext;
-import app.models.Character;
+import app.models.CharacterModel;
+import app.models.sheet.CharacterSheet;
+import app.models.sheet.Identity;
 import sprouts.Var;
 
 import java.util.Optional;
@@ -12,7 +14,7 @@ import java.util.Optional;
 public final class CharacterViewModel
 {
     private final AppContext context;
-    private final Character character;
+    private final CharacterModel character;
 
     private final Var<String> forename;
     private final Var<String> surname;
@@ -24,7 +26,7 @@ public final class CharacterViewModel
     private final Var<String> image;
 
 
-    public CharacterViewModel(AppContext context, Character character) {
+    public CharacterViewModel(AppContext context, CharacterModel character) {
         this.context = context;
         this.character = character;
         this.forename     = Var.of("");
@@ -37,19 +39,18 @@ public final class CharacterViewModel
         this.image        = Var.of("");
     }
 
-    public Optional<Character> createCharacter() {
+    public Optional<CharacterModel> createCharacter() {
         if ( forename.get().isEmpty() || surname.get().isEmpty() ) {
             return Optional.empty();
         }
-        var character = this.context.db().create(Character.class);
-        character.forename().set(forename.get());
-        character.surname().set(surname.get());
-        character.role().set(role.get());
-        character.age().set(age.get());
-        character.height().set(height.get());
-        character.weight().set(weight.get());
-        character.description().set(description.get());
-        character.image().set(image.get());
+        var character = this.context.db().create(CharacterModel.class);
+        // The character's descriptive scalars now live in the CharacterSheet's Identity value.
+        character.sheet().set(
+            CharacterSheet.empty().withIdentity(new Identity(
+                forename.get(), surname.get(), role.get(), age.get(),
+                height.get(), weight.get(), description.get(), image.get()
+            ))
+        );
         return Optional.of(character);
     }
 

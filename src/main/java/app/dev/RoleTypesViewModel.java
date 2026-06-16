@@ -2,8 +2,8 @@ package app.dev;
 
 import app.AppContext;
 import app.common.StickyRef;
-import app.models.Role;
-import app.models.SkillType;
+import app.models.RoleModel;
+import app.models.SkillTypeModel;
 import sprouts.From;
 import sprouts.Var;
 import sprouts.Vars;
@@ -14,7 +14,7 @@ import swingtree.api.mvvm.EntryViewModel;
 import javax.swing.*;
 
 /**
- *  This is the view model for the {@link Role} model, which is used to represent
+ *  This is the view model for the {@link RoleModel} model, which is used to represent
  *  the different types of skills that a character can have.
  *  <p>
  *      This view model is used to create, edit, and delete skill types
@@ -31,7 +31,7 @@ public class RoleTypesViewModel
 
     public RoleTypesViewModel(AppContext appContext) {
         this.appContext = appContext;
-        var asModels  = appContext.db().selectAll(Role.class)
+        var asModels  = appContext.db().selectAll(RoleModel.class)
                                         .stream()
                                         .map(st -> new RoleTypeViewModel(this, st))
                                         .toList();
@@ -40,8 +40,8 @@ public class RoleTypesViewModel
             Roles.clear();
             Roles.addAll(
                     appContext.db()
-                        .select(Role.class)
-                        .where(Role::name)
+                        .select(RoleModel.class)
+                        .where(RoleModel::name)
                         .like("%" + it.currentValue().orElseThrowUnchecked() + "%")
                         .asList()
                         .stream()
@@ -60,15 +60,16 @@ public class RoleTypesViewModel
     public Var<String> newRoleName() { return newRoleName; }
 
     public void addNewRole() {
-        var newRole = appContext.db().create(Role.class);
+        var newRole = appContext.db().create(RoleModel.class);
+        newRole.state().set(app.models.Role.empty());
         newRole.name().set(newRoleName.get());
         var vm = new RoleTypeViewModel(this, newRole);
         Roles.add(vm);
     }
 
-    public void deleteRole(Role Role) {
-        Roles.removeIfItem( vm -> vm.Role() == Role );
-        appContext.db().delete(Role);
+    public void deleteRole(RoleModel RoleModel) {
+        Roles.removeIfItem( vm -> vm.RoleModel() == RoleModel );
+        appContext.db().delete(RoleModel);
     }
 
     JComponent createView() { return new RoleTypesView(this); }
@@ -77,14 +78,14 @@ public class RoleTypesViewModel
     public static class RoleTypeViewModel implements EntryViewModel
     {
         private final RoleTypesViewModel parent;
-        private final Role role;
+        private final RoleModel role;
         private final Var<Boolean> selected = Var.of(false);
         private final Var<Integer> position = Var.of(0);
         private final Vars<SkillViewModel> skillViewModels = Vars.of(SkillViewModel.class);
 
         private StickyRef viewCache = new StickyRef();
 
-        public RoleTypeViewModel(RoleTypesViewModel parent, Role role) {
+        public RoleTypeViewModel(RoleTypesViewModel parent, RoleModel role) {
             this.parent = parent;
             this.role = role;
             var skillVMList  = role.skills()
@@ -95,7 +96,7 @@ public class RoleTypesViewModel
             skillViewModels.addAll(skillVMList);
         }
 
-        public Role Role() { return role; }
+        public RoleModel RoleModel() { return role; }
 
         public void delete() {parent.deleteRole(role);}
 
@@ -123,17 +124,17 @@ public class RoleTypesViewModel
 
     private static class SkillViewModel implements EntryViewModel
     {
-        private final app.models.Skill skill;
+        private final app.models.SkillModel skill;
         private final Var<Boolean> selected = Var.of(false);
         private final Var<Integer> position = Var.of(0);
 
         private Object view = null;
 
-        public SkillViewModel( app.models.Skill skill ) {
+        public SkillViewModel( app.models.SkillModel skill ) {
             this.skill = skill;
         }
 
-        public app.models.Skill skill() { return skill; }
+        public app.models.SkillModel skill() { return skill; }
 
         @Override public Var<Boolean> isSelected() { return selected; }
 
@@ -143,7 +144,7 @@ public class RoleTypesViewModel
 
             if ( this.view != null ) return viewType.cast(view);
 
-            SkillType type = skill.type().get();
+            SkillTypeModel type = skill.type().get();
             view = UI.panel(UI.FILL.and(UI.INS(12)))
                     .add(UI.GROW, UI.label(type.name()).makeBold())
                     .add(UI.GROW, UI.label(type.primaryAbility()))

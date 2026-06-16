@@ -2,7 +2,7 @@ package app.user;
 
 import app.AppContext;
 import app.ContentViewModel;
-import app.models.User;
+import app.models.UserModel;
 import sprouts.From;
 import sprouts.Val;
 import sprouts.Var;
@@ -141,7 +141,8 @@ public class RegisterViewModel implements ViewModel
                 feedback.set("Registration successful!");
                 feedbackColor.set(Color.GREEN);
                 try {
-                    var user = context.db().create(User.class);
+                    var user = context.db().create(UserModel.class);
+                    user.state().set(app.models.User.empty());
                     user.username().set(username.get());
                     user.password().set(password.get());
                 } catch (Exception e) {
@@ -164,8 +165,8 @@ public class RegisterViewModel implements ViewModel
 
     private boolean userDoesNotYetExist() {
         return context.db()
-                .select(User.class)
-                .where(User::username)
+                .select(UserModel.class)
+                .where(UserModel::username)
                 .is(this.username)
                 .notExists();
     }

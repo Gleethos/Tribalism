@@ -13,11 +13,11 @@ import java.util.Objects;
  */
 public record SessionParticipant(
     String          seatId,
-    Role            role,
+    RoleModel            role,
     String          displayName,
     VisibilityScope scope
 ) {
-    public enum Role { GAME_MASTER, PLAYER, AI, OBSERVER }
+    public enum RoleModel { GAME_MASTER, PLAYER, AI, OBSERVER }
 
     public SessionParticipant {
         Objects.requireNonNull(seatId, "seatId");
@@ -28,17 +28,17 @@ public record SessionParticipant(
 
     /** The game master: an omniscient seat. */
     public static SessionParticipant gameMaster( String seatId, String name ) {
-        return new SessionParticipant(seatId, Role.GAME_MASTER, name, VisibilityScope.OMNISCIENT);
+        return new SessionParticipant(seatId, RoleModel.GAME_MASTER, name, VisibilityScope.OMNISCIENT);
     }
 
     /** A player who sees the world through their character (fog of war applies). */
     public static SessionParticipant player( String seatId, String name, long characterId ) {
-        return new SessionParticipant(seatId, Role.PLAYER, name, VisibilityScope.fogged(characterId));
+        return new SessionParticipant(seatId, RoleModel.PLAYER, name, VisibilityScope.fogged(characterId));
     }
 
     /** The AI running as game master (omniscient). NPC-scoped AI seats can be added later. */
     public static SessionParticipant aiGameMaster( String seatId, String name ) {
-        return new SessionParticipant(seatId, Role.AI, name, VisibilityScope.OMNISCIENT);
+        return new SessionParticipant(seatId, RoleModel.AI, name, VisibilityScope.OMNISCIENT);
     }
 
     /** @return Whether this seat sees everything (drives both fog of war and message visibility). */

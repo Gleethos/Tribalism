@@ -1,6 +1,6 @@
 package app;
 
-import app.models.User;
+import app.models.UserModel;
 import app.user.UserViewModel;
 
 /**
@@ -10,15 +10,15 @@ import app.user.UserViewModel;
  */
 public final class UserContext
 {
-    private final User user;
+    private final UserModel user;
 
     // TODO: Add more state here, like a list of characters, worlds, etc.
 
-    public UserContext(User user) {
+    public UserContext(UserModel user) {
         this.user = user;
     }
 
-    public User user() { return user; }
+    public UserModel user() { return user; }
 
     /**
      * @return A view model for displaying and interacting with user information.

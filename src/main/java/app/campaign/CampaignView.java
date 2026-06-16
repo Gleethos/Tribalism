@@ -15,7 +15,7 @@ import static swingtree.UI.*;
  *  characters and an "add character" field; selecting one shows its {@link CharacterSheetView}
  *  in the right pane. Everything binds to {@link CampaignViewModel}; edits to a character sheet
  *  round-trip to the database because the sheet view model edits the persisted
- *  {@code Character.sheet()} property.
+ *  {@code CharacterModel.sheet()} property.
  */
 public final class CampaignView extends JPanel
 {
@@ -32,7 +32,7 @@ public final class CampaignView extends JPanel
 
     private static UIForAnySwing<?,?> rosterPane( CampaignViewModel vm ) {
         return panel(FILL.and(WRAP(1)), "[grow]")
-            .add(GROW_X, html("<h2>Campaign</h2>"))
+            .add(GROW_X, html("<h2>CampaignModel</h2>"))
             .add(GROW_X, textField(vm.name()))
             .add(GROW_X, label("Characters"))
             .add(GROW,
@@ -79,13 +79,13 @@ public final class CampaignView extends JPanel
                 DataBase db = DataBase.at(dbPath);
                 db.dropAllTables();
                 db.createTablesFor(
-                    app.models.GameMaster.class, app.models.Character.class, app.models.CharacterModel.class,
-                    app.models.Campaign.class, app.models.GameMap.class, app.models.Player.class, app.models.User.class,
+                    app.models.GameMasterModel.class, app.models.CharacterModel.class, app.models.CharacterModel.class,
+                    app.models.CampaignModel.class, app.models.GameMapModel.class, app.models.PlayerModel.class, app.models.UserModel.class,
                     app.models.sheet.CharacterSheet.class, app.models.sheet.Identity.class, app.models.sheet.Vitals.class,
                     app.models.sheet.AbilityScore.class, app.models.sheet.SkillScore.class, app.models.sheet.InventoryItem.class
                 );
                 var service = new CampaignService(db);
-                var user = db.create(app.models.User.class);
+                var user = db.create(app.models.UserModel.class);
                 user.username().set("demo"); user.password().set("demo");
                 var gm = service.gameMasterOf(user);
                 var campaign = service.createCampaign(gm, "The Sunless Citadel");

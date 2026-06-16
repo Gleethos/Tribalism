@@ -20,7 +20,7 @@ import static swingtree.UI.*;
  *  A lens-driven desktop character sheet. Every editable field is bound to a {@code zoomTo}
  *  lens exposed by {@link CharacterSheetViewModel}, which all focus on the single
  *  {@code Var<CharacterSheet>} root — so a keystroke produces a brand-new immutable sheet value
- *  (and, when the root is a persisted {@code Character.sheet()}, writes it straight to the
+ *  (and, when the root is a persisted {@code CharacterModel.sheet()}, writes it straight to the
  *  database). See {@code SWING_TREE_SKILL.md} §4 and {@code VISION.md} §5.3.
  *  <p>
  *  Scalar fields (identity, vitals, notes) and the by-name ability/skill level editors are
@@ -46,7 +46,7 @@ public final class CharacterSheetView extends JPanel
             panel(FILL_X.and(WRAP(2)), "[shrink][grow]")
             .add(label("Forename"))    .add(GROW_X, textField(vm.forename()))
             .add(label("Surname"))     .add(GROW_X, textField(vm.surname()))
-            .add(label("Role"))        .add(GROW_X, textField(vm.role()))
+            .add(label("RoleModel"))        .add(GROW_X, textField(vm.role()))
             .add(label("Age"))         .add(GROW_X, numericTextField(vm.age()))
             .add(label("Height (m)"))  .add(GROW_X, numericTextField(vm.height()))
             .add(label("Weight (kg)")) .add(GROW_X, numericTextField(vm.weight()))

@@ -1,13 +1,13 @@
 package campaign
 
 import app.campaign.CampaignService
-import app.models.Campaign
-import app.models.Character
+import app.models.CampaignModel
 import app.models.CharacterModel
-import app.models.GameMap
-import app.models.GameMaster
-import app.models.Player
-import app.models.User
+import app.models.CharacterModel
+import app.models.GameMapModel
+import app.models.GameMasterModel
+import app.models.PlayerModel
+import app.models.UserModel
 import app.models.sheet.AbilityScore
 import app.models.sheet.CharacterSheet
 import app.models.sheet.Identity
@@ -23,7 +23,7 @@ import spock.lang.Title
 @Title("The roster CampaignService")
 @Narrative('''
 
-    CampaignService is the headless roster layer: it finds-or-creates the GameMaster role for a
+    CampaignService is the headless roster layer: it finds-or-creates the GameMasterModel role for a
     user, creates and lists campaigns, and creates characters with an initialized CharacterSheet,
     linking the relations both ways. This pins those operations and, importantly, that the model
     relations (a game master's campaigns, a campaign's characters) actually persist.
@@ -48,14 +48,15 @@ class CampaignService_Spec extends Specification
         var db = DataBase.at(TEST_DB_FILE)
         db.dropAllTables()
         db.createTablesFor(
-                GameMaster, Character, CharacterModel, Campaign, GameMap, Player, User,
+                GameMasterModel, CharacterModel, CharacterModel, CampaignModel, GameMapModel, PlayerModel, UserModel, app.models.User, app.models.Campaign, app.models.GameMap,
                 CharacterSheet, Identity, Vitals, AbilityScore, SkillScore, InventoryItem
         )
         return db
     }
 
-    private User newUser( DataBase db, String name ) {
-        var user = db.create(User)
+    private UserModel newUser( DataBase db, String name ) {
+        var user = db.create(UserModel)
+        user.state().set(app.models.User.empty())
         user.username().set(name)
         user.password().set("secret")
         return user
@@ -71,7 +72,7 @@ class CampaignService_Spec extends Specification
             var gm2 = service.gameMasterOf(user)
         then : 'Both calls return the same game master, and only one exists.'
             gm1.id().get() == gm2.id().get()
-            db.selectAll(GameMaster).size() == 1
+            db.selectAll(GameMasterModel).size() == 1
         and : 'Its identity is the user.'
             gm1.identity().get().id().get() == user.id().get()
         cleanup :
@@ -89,7 +90,7 @@ class CampaignService_Spec extends Specification
         then : 'Both appear among the game master campaigns.'
             service.campaignsOf(gm).collect { it.name().get() }.sort() == ["Curse of Strahd", "Lost Mines"]
         and : 'A freshly selected game master still sees them — the relation persisted.'
-            db.select(GameMaster, gm.id().get()).campaigns().toList().collect { it.name().get() }.sort() ==
+            db.select(GameMasterModel, gm.id().get()).campaigns().toList().collect { it.name().get() }.sort() ==
                     ["Curse of Strahd", "Lost Mines"]
         cleanup :
             db?.close()
@@ -111,8 +112,8 @@ class CampaignService_Spec extends Specification
         and : 'The campaign lists the character.'
             service.charactersOf(campaign).collect { it.id().get() } == [character.id().get()]
         and : 'A freshly selected campaign sees the character, and its sheet survives.'
-            db.select(Campaign, campaign.id().get()).characters().toList().size() == 1
-            db.select(Character, character.id().get()).sheet().get().identity().forename() == "Aragorn"
+            db.select(CampaignModel, campaign.id().get()).characters().toList().size() == 1
+            db.select(CharacterModel, character.id().get()).sheet().get().identity().forename() == "Aragorn"
         cleanup :
             db?.close()
     }

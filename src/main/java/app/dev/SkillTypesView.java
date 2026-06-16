@@ -26,7 +26,7 @@ public class SkillTypesView extends JPanel
         )
         .add(SPAN.and(GROW).and(PUSH),
             panel(FILL.and(WRAP(1)))
-            .add(label("Found Skill Types:"))
+            .add(label("Found SkillModel Types:"))
             .add(GROW.and(PUSH),
                 scrollPanels().withPrefSize(600, 600)
                 .addAll(vm.skillTypes(), svm ->
@@ -39,7 +39,7 @@ public class SkillTypesView extends JPanel
                         .add(UI.SHRINK.and(UI.WRAP),
                             UI.button("Delete").onClick( it ->
                                 UI.run( () -> {
-                                    var answer = UI.confirm("Delete Skill Type", "Are you sure you want to delete this skill type?");
+                                    var answer = UI.confirm("Delete SkillModel Type", "Are you sure you want to delete this skill type?");
                                     if ( answer.isYes() ) {
                                         var confirmation = svm.delete();
                                         var reallyYes = UI.confirm(confirmation.title(), confirmation.question()).isYes();

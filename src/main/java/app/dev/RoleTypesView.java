@@ -26,7 +26,7 @@ public class RoleTypesView extends JPanel
         )
         .add(SPAN.and(GROW).and(PUSH),
             panel(FILL.and(WRAP(1)))
-            .add(label("Found Role Types:"))
+            .add(label("Found RoleModel Types:"))
             .add(GROW.and(PUSH),
                 scrollPanels().withPrefSize(600, 600)
                 .addAll(vm.roleTypes(), rtm -> UI.of(rtm.createView()))

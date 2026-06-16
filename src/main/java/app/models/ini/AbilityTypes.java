@@ -1,6 +1,6 @@
 package app.models.ini;
 
-import app.models.AbilityType;
+import app.models.AbilityTypeModel;
 import dal.api.DataBase;
 import sprouts.Problem;
 import sprouts.Result;
@@ -24,8 +24,8 @@ public class AbilityTypes extends AbstractTypes
 {
     private static final String FILE_NAME = "ability-types.json";
 
-    private final List<AbilityType> abilityTypes = new ArrayList<>();
-    private final Map<String, AbilityType> abilityTypesByName = new HashMap<>();
+    private final List<AbilityTypeModel> abilityTypes = new ArrayList<>();
+    private final Map<String, AbilityTypeModel> abilityTypesByName = new HashMap<>();
 
 
     public AbilityTypes( DataBase db, String workingDirectory ) {
@@ -53,8 +53,8 @@ public class AbilityTypes extends AbstractTypes
             var name        = newType.getString("name");
             var description = newType.getString("description");
             // First we check if the ability type already exists in the database:
-            var existingAbilityType = db.select(AbilityType.class)
-                                            .where(AbilityType::name).is(name)
+            var existingAbilityType = db.select(AbilityTypeModel.class)
+                                            .where(AbilityTypeModel::name).is(name)
                                             .first();
 
             if ( existingAbilityType.isPresent() ) {
@@ -62,7 +62,8 @@ public class AbilityTypes extends AbstractTypes
                 abilityTypesByName.put(name, existingAbilityType.get());
                 continue;
             }
-            AbilityType abilityType = db.create(AbilityType.class);
+            AbilityTypeModel abilityType = db.create(AbilityTypeModel.class);
+            abilityType.state().set(app.models.AbilityType.empty());
             abilityType.name().set(name);
             abilityType.description().set(description);
             abilityTypes.add(abilityType);
@@ -89,8 +90,8 @@ public class AbilityTypes extends AbstractTypes
     protected Result<Boolean> isDataBaseStateMatchingWorkingDirectory(DataBase db) {
         List<Problem> problems = new ArrayList<>();
         List<Problem> warnings = new ArrayList<>();
-        List<AbilityType> foundInDB = db.selectAll(AbilityType.class);
-        List<AbilityType> checked = new ArrayList<>();
+        List<AbilityTypeModel> foundInDB = db.selectAll(AbilityTypeModel.class);
+        List<AbilityTypeModel> checked = new ArrayList<>();
 
         String jsonText = Util.readTextFile(workingDirectory + "/" + fileName);
         // We load the ability types from the json file into a json object.
@@ -106,8 +107,8 @@ public class AbilityTypes extends AbstractTypes
                 if ( abilityType.name().is(name) ) {
                     if ( !abilityType.description().get().equals(description) ) {
                         warnings.add(Problem.of(
-                            "Ability Type Inconsistency",
-                            "Ability type '" + name + "' has a different description in the database.\n " +
+                            "AbilityModel Type Inconsistency",
+                            "AbilityModel type '" + name + "' has a different description in the database.\n " +
                             "Found: '" + abilityType.description().get() + "'\n" +
                             "Expected: '" + description + "'"
                         ));
@@ -119,8 +120,8 @@ public class AbilityTypes extends AbstractTypes
             }
             if ( !found )
                 problems.add(Problem.of(
-                    "Ability Type Missing",
-                    "Ability type '" + name + "' is in the json file but not in the database."
+                    "AbilityModel Type Missing",
+                    "AbilityModel type '" + name + "' is in the json file but not in the database."
                 ));
         }
 
@@ -128,8 +129,8 @@ public class AbilityTypes extends AbstractTypes
             for ( var abilityType : foundInDB )
                 if ( !checked.contains(abilityType) )
                     problems.add(Problem.of(
-                        "Ability Type Inconsistency",
-                        "Ability type '" + abilityType.name().get() + "' is in the database but not in the json file."
+                        "AbilityModel Type Inconsistency",
+                        "AbilityModel type '" + abilityType.name().get() + "' is in the database but not in the json file."
                     ));
 
 
@@ -141,13 +142,13 @@ public class AbilityTypes extends AbstractTypes
         return Result.of(true);
     }
 
-    public Optional<AbilityType> findByName( String name ) {
+    public Optional<AbilityTypeModel> findByName( String name ) {
         var abilityType = abilityTypesByName.get(name);
         if ( abilityType == null ) return Optional.empty();
         return Optional.of(abilityType);
     }
 
-    public List<AbilityType> getAll() { return Collections.unmodifiableList(abilityTypes); }
+    public List<AbilityTypeModel> getAll() { return Collections.unmodifiableList(abilityTypes); }
 
     public boolean exists( String name ) { return abilityTypesByName.containsKey(name); }
 }

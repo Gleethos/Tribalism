@@ -3,17 +3,17 @@ package maps
 import app.engine.primitives.BoundsF64
 import app.engine.primitives.VecF64
 import app.maps.MapWorlds
-import app.models.GameMap
+import app.models.GameMapModel
 import dal.api.DataBase
 import groovy.transform.CompileDynamic
 import spock.lang.Narrative
 import spock.lang.Specification
 import spock.lang.Title
 
-@Title("GameMap to world-engine World bridge")
+@Title("GameMapModel to world-engine World bridge")
 @Narrative('''
 
-    A `GameMap` stores only the deterministic recipe for its terrain (a seed plus generation
+    A `GameMapModel` stores only the deterministic recipe for its terrain (a seed plus generation
     parameters). `MapWorlds` reconstructs the live engine `World` from that recipe. This pins
     the seam: the generator carries the map's parameters, a world can be built from a map, and
     terrain is a pure function of the seed (so two maps with the same seed generate identical
@@ -36,8 +36,9 @@ class MapWorlds_Spec extends Specification
         db.close()
     }
 
-    private GameMap newMap( DataBase db, long seed, Double chunkSize = null, Double genDist = null ) {
-        var map = db.create(GameMap)
+    private GameMapModel newMap( DataBase db, long seed, Double chunkSize = null, Double genDist = null ) {
+        var map = db.create(GameMapModel)
+        map.state().set(app.models.GameMap.empty())
         map.name().set("Test map")
         map.seed().set(seed)
         if ( chunkSize != null ) map.chunkSize().set(chunkSize)
@@ -46,10 +47,10 @@ class MapWorlds_Spec extends Specification
     }
 
     def 'The generator reflects the parameters stored on the map.'() {
-        given : 'A database with a GameMap carrying explicit generation parameters.'
+        given : 'A database with a GameMapModel carrying explicit generation parameters.'
             var db = DataBase.at(TEST_DB_FILE)
             db.dropAllTables()
-            db.createTablesFor(GameMap)
+            db.createTablesFor(GameMapModel, app.models.GameMap)
             var map = newMap(db, 1234L, 32.0d, 128.0d)
         when : 'We build the generator from the map.'
             var generator = MapWorlds.generatorOf(map)
@@ -61,10 +62,10 @@ class MapWorlds_Spec extends Specification
     }
 
     def 'A world can be built from a map.'() {
-        given : 'A database with a simple GameMap.'
+        given : 'A database with a simple GameMapModel.'
             var db = DataBase.at(TEST_DB_FILE)
             db.dropAllTables()
-            db.createTablesFor(GameMap)
+            db.createTablesFor(GameMapModel, app.models.GameMap)
             var map = newMap(db, 42L)
         expect : 'Building a world from it yields a usable, non-null world.'
             MapWorlds.worldOf(map) != null
@@ -76,7 +77,7 @@ class MapWorlds_Spec extends Specification
         given : 'A database with three maps: two share a seed, one differs.'
             var db = DataBase.at(TEST_DB_FILE)
             db.dropAllTables()
-            db.createTablesFor(GameMap)
+            db.createTablesFor(GameMapModel, app.models.GameMap)
             var mapA  = newMap(db, 7L)
             var mapA2 = newMap(db, 7L)
             var mapB  = newMap(db, 8L)

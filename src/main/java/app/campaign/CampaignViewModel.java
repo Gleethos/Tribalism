@@ -1,7 +1,7 @@
 package app.campaign;
 
-import app.models.Campaign;
-import app.models.Character;
+import app.models.CampaignModel;
+import app.models.CharacterModel;
 import sprouts.Var;
 import sprouts.Vars;
 
@@ -19,16 +19,16 @@ import java.util.Objects;
 public final class CampaignViewModel
 {
     private final CampaignService service;
-    private final Campaign campaign;
+    private final CampaignModel campaign;
 
     private final Vars<CharacterCardViewModel> characters = Vars.of(CharacterCardViewModel.class);
     private final Var<CharacterCardViewModel>  selected   = Var.ofNullable(CharacterCardViewModel.class, null);
     private final Var<String> newCharacterName = Var.of("");
 
-    public CampaignViewModel( CampaignService service, Campaign campaign ) {
+    public CampaignViewModel( CampaignService service, CampaignModel campaign ) {
         this.service  = Objects.requireNonNull(service);
         this.campaign = Objects.requireNonNull(campaign);
-        for ( Character character : service.charactersOf(campaign) )
+        for ( CharacterModel character : service.charactersOf(campaign) )
             characters.add(new CharacterCardViewModel(character));
         if ( !characters.isEmpty() )
             selected.set(characters.at(0).get());
@@ -49,7 +49,7 @@ public final class CampaignViewModel
     /** Creates a new persisted character from {@link #newCharacterName()}, selects it, clears the field. */
     public void addCharacter() {
         String forename = newCharacterName.get().isBlank() ? "New character" : newCharacterName.get().trim();
-        Character character = service.createCharacter(campaign, forename);
+        CharacterModel character = service.createCharacter(campaign, forename);
         CharacterCardViewModel card = new CharacterCardViewModel(character);
         characters.add(card);
         selected.set(card);

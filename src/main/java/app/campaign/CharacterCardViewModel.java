@@ -1,6 +1,6 @@
 package app.campaign;
 
-import app.models.Character;
+import app.models.CharacterModel;
 import app.models.sheet.CharacterSheet;
 import app.user.CharacterSheetViewModel;
 import sprouts.Val;
@@ -14,10 +14,10 @@ import java.util.Objects;
  */
 public final class CharacterCardViewModel
 {
-    private final Character character;
+    private final CharacterModel character;
     private final CharacterSheetViewModel sheet;
 
-    public CharacterCardViewModel( Character character ) {
+    public CharacterCardViewModel( CharacterModel character ) {
         this.character = Objects.requireNonNull(character);
         // Defensively ensure the character has a sheet to edit (createCharacter sets one, but a
         // character loaded from older data might not).
@@ -27,7 +27,7 @@ public final class CharacterCardViewModel
         this.sheet = new CharacterSheetViewModel(character.sheet());
     }
 
-    public Character character() { return character; }
+    public CharacterModel character() { return character; }
 
     /** @return The sheet editor for this character (over its persisted sheet property). */
     public CharacterSheetViewModel sheet() { return sheet; }
